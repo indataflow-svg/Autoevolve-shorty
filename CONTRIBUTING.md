@@ -1,5 +1,8 @@
 # Contributing
 
+Repository: `AutoEvolve`. Application: `Company Core` (dashboard, config keys, and
+`company-core-g1/g2/g3` binaries).
+
 Company Core is an early open-source project. Small changes with tests and a clear lifecycle impact
 are preferred over broad feature additions.
 
@@ -39,3 +42,8 @@ A provider adapter must:
 ## Commit style
 
 Use imperative, scoped messages such as `sales: enforce approval hash before send`. Maintainers may squash pull requests when merging.
+
+## Public demos
+
+Never record `.env`, API keys, real contacts, email bodies containing personal data, tunnel tokens, or
+provider account pages. Use synthetic leads and controlled test sends only.

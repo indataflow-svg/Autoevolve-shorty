@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
+import urllib.request
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -13,6 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from fastapi.responses import FileResponse
+from PIL import Image
 
 from core.marketing_store import (
     add_event,
@@ -71,6 +75,7 @@ class ManualPostSessionRequest(BaseModel):
     post_type: str = Field(default="carousel", min_length=3, max_length=20)
     destination_url: str | None = Field(default=None, max_length=500)
     link_label: str | None = Field(default=None, max_length=80)
+    org_id: int | None = Field(default=None, ge=1)
 
     @field_validator("platform", "post_type", mode="before")
     @classmethod
@@ -95,6 +100,51 @@ class AssetPackRequest(BaseModel):
             return None
         text = str(value).strip()
         return text or None
+
+
+class BufferScheduleRequest(BaseModel):
+    mode: str = Field(default="queue", min_length=3, max_length=20)
+    due_at: str | None = Field(default=None, max_length=100)
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _normalize_mode(cls, value: object) -> object:
+        text = str(value or "queue").strip().lower()
+        if text not in {"queue", "next", "timed"}:
+            raise ValueError("mode must be queue, next, or timed")
+        return text
+
+    @field_validator("due_at", mode="before")
+    @classmethod
+    def _clean_due_at(cls, value: object) -> object:
+        text = str(value or "").strip()
+        return text or None
+
+
+BUFFER_ACCOUNT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,30}$")
+MAX_BUFFER_ACCOUNTS = 5
+
+
+def _clean_buffer_accounts(value: object) -> list[str]:
+    raw = str(value or "default").strip().lower() or "default"
+    names: list[str] = []
+    for part in raw.split(","):
+        name = part.strip()
+        if not name:
+            continue
+        if not BUFFER_ACCOUNT_RE.fullmatch(name):
+            raise HTTPException(422, "invalid buffer account name: use lowercase letters, digits, - or _")
+        if name not in names:
+            names.append(name)
+    if not names:
+        names = ["default"]
+    if len(names) > MAX_BUFFER_ACCOUNTS:
+        raise HTTPException(422, f"at most {MAX_BUFFER_ACCOUNTS} buffer accounts per action")
+    return names
+
+
+def _g3_account_args(account: str) -> list[str]:
+    return ["--account", account] if account != "default" else []
 
 
 PROJECTS_ROOT = (ROOT / "projects").resolve()
@@ -639,7 +689,7 @@ def _public_manual_post(post: dict) -> dict:
     value = {
         key: post.get(key)
         for key in (
-            "id", "project_id", "platform", "post_id", "tracked_url", "source_detail", "asset_dir", "created_at", "updated_at",
+            "id", "org_id", "platform", "post_id", "tracked_url", "source_detail", "asset_dir", "created_at", "updated_at",
         )
     }
     value["campaign_id"] = post.get("campaign_id") or metadata.get("generated_campaign_id")
@@ -660,7 +710,7 @@ def _public_manual_post(post: dict) -> dict:
     value["utm_campaign"] = metadata.get("utm_campaign")
     value["workflow_status"] = _manual_post_status(post)
     value["buffer_status"] = _manual_post_buffer_status(post)
-    value["buffer_ready"] = value["workflow_status"] in {"ready", "buffer_draft", "published"}
+    value["buffer_ready"] = value["workflow_status"] in {"ready", "buffer_draft", "scheduled", "published"}
     value["asset_count"] = len(post.get("assets") or [])
     value["assets"] = []
     for index, asset in enumerate(post.get("assets") or []):
@@ -669,6 +719,15 @@ def _public_manual_post(post: dict) -> dict:
         value["assets"].append(item)
     value["metadata"] = metadata
     value["attribution"] = _lead_attribution(post)
+    org_id = post.get("org_id")
+    if org_id:
+        from core.state import get_org
+        org = get_org(org_id)
+        value["org_name"] = org["name"] if org else None
+        value["org_slug"] = org["slug"] if org else None
+    else:
+        value["org_name"] = None
+        value["org_slug"] = None
     return value
 
 
@@ -677,7 +736,7 @@ def _public_campaign(campaign: dict) -> dict:
     value = {
         key: campaign.get(key)
         for key in (
-            "id", "project_id", "task_id", "objective", "buyer", "topic",
+            "id", "org_id", "task_id", "objective", "buyer", "topic",
             "social_platforms", "video_platform", "voice_mode", "voice_transcript", "status", "current_stage",
             "g1_campaign_id", "selected_variant_id", "g3_status", "g3_result", "voice_handoff_path", "voice_recording_path",
             "g1_approved_at", "g1_revision_instruction",
@@ -708,13 +767,13 @@ def _public_campaign(campaign: dict) -> dict:
 
 @router.post("/asset-packs")
 def create_asset_pack(payload: AssetPackRequest):
-    from core.state import get_active_project
+    from core.state import get_active_org
 
-    project = get_active_project()
-    if not project:
-        raise HTTPException(409, "set an active project before creating an asset pack")
+    org = get_active_org()
+    if not org:
+        raise HTTPException(409, "set an active org before creating an asset pack")
     pack_id = f"assets_{now_iso().replace('-', '').replace(':', '').replace('T', '_')[:15]}"
-    root = _asset_pack_root(project["slug"], pack_id)
+    root = _asset_pack_root(org["slug"], pack_id)
     root.mkdir(parents=True, exist_ok=True)
     created_at = now_iso()
     script_path = root / "source_script.txt"
@@ -738,32 +797,32 @@ def create_asset_pack(payload: AssetPackRequest):
         "updated_at": created_at,
         "scenes": [],
     })
-    spawn_asset_pack(project["slug"], pack_id)
+    spawn_asset_pack(org["slug"], pack_id)
     return {
         "ok": True,
         "pack": _public_asset_pack(record),
-        "message": "Asset pack queued. Images will appear in the project folder when ready.",
+        "message": "Asset pack queued. Images will appear in the org folder when ready.",
     }
 
 
 @router.get("/asset-packs")
 def asset_packs(limit: int = 20):
-    from core.state import get_active_project
+    from core.state import get_active_org
 
-    project = get_active_project()
-    project_slug = project["slug"] if project else None
-    packs = list_asset_packs(project_slug=project_slug, limit=limit) if project_slug else []
+    org = get_active_org()
+    org_slug = org["slug"] if org else None
+    packs = list_asset_packs(project_slug=org_slug, limit=limit) if org_slug else []
     return {"packs": [_public_asset_pack(item) for item in packs]}
 
 
 @router.get("/asset-packs/{pack_id}/files/{relative_path:path}")
 def asset_pack_file(pack_id: str, relative_path: str):
-    from core.state import get_active_project
+    from core.state import get_active_org
 
-    project = get_active_project()
-    if not project:
+    org = get_active_org()
+    if not org:
         raise HTTPException(404, "asset pack not found")
-    root = _asset_pack_root(project["slug"], pack_id).resolve()
+    root = _asset_pack_root(org["slug"], pack_id).resolve()
     record = _read_asset_pack(root)
     if not record:
         raise HTTPException(404, "asset pack not found")
@@ -781,11 +840,16 @@ def asset_pack_file(pack_id: str, relative_path: str):
 
 @router.post("/manual-posts/session")
 def create_manual_post_session(payload: ManualPostSessionRequest):
-    from core.state import get_active_project
+    from core.state import get_active_org, get_org
 
-    project = get_active_project()
-    if not project:
-        raise HTTPException(409, "set an active project before saving a manual post")
+    if payload.org_id is not None:
+        org = get_org(payload.org_id)
+        if not org:
+            raise HTTPException(404, "org not found")
+    else:
+        org = get_active_org()
+        if not org:
+            raise HTTPException(409, "set an active org before saving a manual post")
     clean_platform = payload.platform.strip().lower()
     if clean_platform not in {"instagram", "x", "linkedin"}:
         raise HTTPException(422, "unsupported platform")
@@ -807,11 +871,11 @@ def create_manual_post_session(payload: ManualPostSessionRequest):
         source_detail=generated_source_detail,
         post_type=post_type,
     )
-    asset_root = _manual_post_asset_root(project["slug"], clean_post_id)
+    asset_root = _manual_post_asset_root(org["slug"], clean_post_id)
     asset_root.mkdir(parents=True, exist_ok=True)
     try:
         post = create_manual_post(
-            project_id=project["id"],
+            org_id=org["id"],
             campaign_id=None,
             platform=clean_platform,
             post_id=clean_post_id,
@@ -930,6 +994,7 @@ async def create_manual_post_from_ui(
     post_type: str = Form(default="carousel"),
     destination_url: str | None = Form(default=None),
     link_label: str | None = Form(default=None),
+    org_id: int | None = Form(default=None),
     assets: list[UploadFile] = File(default=[]),
 ):
     session = create_manual_post_session(ManualPostSessionRequest(
@@ -937,6 +1002,7 @@ async def create_manual_post_from_ui(
         post_type=post_type,
         destination_url=destination_url,
         link_label=link_label,
+        org_id=org_id,
     ))
     post = session["post"]
     for upload in assets:
@@ -945,8 +1011,57 @@ async def create_manual_post_from_ui(
     return {"ok": True, "post": finalized["post"], "message": "Manual post saved with backend-generated tracking and caption."}
 
 
+@router.get("/buffer-accounts")
+def buffer_accounts():
+    """Named Buffer accounts configured in g3.env (keys never leave the server)."""
+    try:
+        from core.sales_store import connect as _connect
+        with _connect() as connection:
+            try:
+                rows = connection.execute(
+                    "SELECT name, organization_id, instagram_channel_id, x_channel_id FROM buffer_org_accounts ORDER BY name"
+                ).fetchall()
+            except Exception:
+                rows = None
+            if rows:
+                accounts = [
+                    {
+                        "name": row["name"],
+                        "organization_id": row["organization_id"],
+                        "instagram_channel_id": bool(row["instagram_channel_id"]),
+                        "x_channel_id": bool(row["x_channel_id"]),
+                    }
+                    for row in rows
+                ]
+                return {"accounts": accounts}
+    except Exception:
+        pass
+    config = MarketingConfig.load()
+    fallback = {"accounts": [{"name": "default", "organization_id": None,
+                              "instagram_channel_id": False, "x_channel_id": False}]}
+    if not config.g3_bin.is_file():
+        return {**fallback, "error": f"G3 command not found: {config.g3_bin}"}
+    try:
+        log_dir = PROJECTS_ROOT / ".logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        output = _last_json(_run(
+            [str(config.g3_bin), "accounts"],
+            cwd=config.g3_root,
+            env_file=config.g3_env_file,
+            timeout=30,
+            log_path=log_dir / "g3_accounts.log",
+        ))
+    except Exception as exc:
+        return {**fallback, "error": f"{type(exc).__name__}: {exc}"}
+    accounts = output.get("accounts") if isinstance(output, dict) else None
+    if not isinstance(accounts, list) or not accounts:
+        return {**fallback, "error": "G3 reported no Buffer accounts"}
+    return {"accounts": accounts}
+
+
 @router.post("/manual-posts/{post_record_id}/buffer-draft")
-def create_manual_post_buffer_draft(post_record_id: str):
+def create_manual_post_buffer_draft(post_record_id: str, buffer_account: str | None = None):
+    accounts = _clean_buffer_accounts(buffer_account)
     post = get_manual_post(post_record_id)
     if not post:
         raise HTTPException(404, "manual post not found")
@@ -959,41 +1074,397 @@ def create_manual_post_buffer_draft(post_record_id: str):
         raise HTTPException(409, f"G3 command not found: {config.g3_bin}")
     metadata = dict(post.get("metadata") or {})
     metadata["buffer_status"] = "running"
+    metadata["buffer_accounts"] = accounts
+    metadata["buffer_account"] = accounts[0]
     update_manual_post(post_record_id, metadata_json=json.dumps(metadata, ensure_ascii=False))
-    try:
-        handoff_path, asset_root = _manual_post_handoff(post)
-        output = _last_json(_run(
-            [
-                str(config.g3_bin), "draft", str(handoff_path), "--asset-root", str(asset_root),
-                "--ledger", str(asset_root / "g3.sqlite3"),
-            ],
-            cwd=config.g3_root,
-            env_file=config.g3_env_file,
-            timeout=config.stage_timeout,
-            log_path=asset_root / "logs" / "g3_manual.log",
-        ))
-    except Exception as exc:
+    outputs: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    for account in accounts:
+        try:
+            handoff_path, asset_root = _manual_post_handoff(post)
+            outputs[account] = _last_json(_run(
+                [
+                    str(config.g3_bin), *_g3_account_args(account), "draft", str(handoff_path), "--asset-root", str(asset_root),
+                    "--ledger", str(asset_root / "g3.sqlite3"),
+                ],
+                cwd=config.g3_root,
+                env_file=config.g3_env_file,
+                timeout=config.stage_timeout,
+                log_path=asset_root / "logs" / "g3_manual.log",
+            ))
+        except Exception as exc:
+            errors[account] = f"{type(exc).__name__}: {exc}"
+    if len(errors) == len(accounts):
         failed_metadata = dict(post.get("metadata") or {})
         failed_metadata["buffer_status"] = "failed"
-        failed_metadata["buffer_error"] = f"{type(exc).__name__}: {exc}"
+        failed_metadata["buffer_error"] = "; ".join(f"{name}: {error}" for name, error in errors.items())
         update_manual_post(post_record_id, metadata_json=json.dumps(failed_metadata, ensure_ascii=False))
-        raise HTTPException(502, f"manual Buffer draft failed: {exc}") from exc
+        raise HTTPException(502, f"manual Buffer draft failed: {failed_metadata['buffer_error']}")
     completed_metadata = dict((get_manual_post(post_record_id) or post).get("metadata") or {})
     completed_metadata["buffer_status"] = "drafted"
-    completed_metadata["buffer_result"] = output
-    completed_metadata.pop("buffer_error", None)
+    completed_metadata["buffer_accounts"] = accounts
+    completed_metadata["buffer_account"] = accounts[0]
+    completed_metadata["buffer_result"] = outputs
+    if errors:
+        completed_metadata["buffer_error"] = "; ".join(f"{name}: {error}" for name, error in errors.items())
+    else:
+        completed_metadata.pop("buffer_error", None)
     completed_metadata["workflow_status"] = "buffer_draft"
     updated = update_manual_post(post_record_id, metadata_json=json.dumps(completed_metadata, ensure_ascii=False))
-    return {"ok": True, "post": _public_manual_post(updated), "result": output, "message": "Buffer draft created for the manual post."}
+    names = ", ".join(accounts)
+    return {"ok": True, "post": _public_manual_post(updated), "result": outputs, "message": f"Buffer draft created for the manual post (accounts: {names})."}
+
+
+@router.post("/manual-posts/{post_record_id}/buffer-schedule")
+def schedule_manual_post_buffer(post_record_id: str, payload: BufferScheduleRequest, buffer_account: str | None = None):
+    accounts = _clean_buffer_accounts(buffer_account)
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    if _manual_post_status(post) != "ready" and _manual_post_status(post) not in {"buffer_draft", "scheduled"}:
+        raise HTTPException(409, "finalize the manual post before scheduling it in Buffer")
+    if _manual_post_buffer_status(post) in {"queued", "running"}:
+        raise HTTPException(409, "Buffer scheduling is already running for this post")
+    if payload.mode == "timed" and not payload.due_at:
+        raise HTTPException(422, "timed scheduling requires due_at")
+    config = MarketingConfig.load()
+    if not config.g3_bin.is_file():
+        raise HTTPException(409, f"G3 command not found: {config.g3_bin}")
+    metadata = dict(post.get("metadata") or {})
+    metadata["buffer_status"] = "running"
+    metadata["buffer_accounts"] = accounts
+    metadata["buffer_account"] = accounts[0]
+    update_manual_post(post_record_id, metadata_json=json.dumps(metadata, ensure_ascii=False))
+    outputs: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    for account in accounts:
+        try:
+            handoff_path, asset_root = _manual_post_handoff(post)
+            command = [
+                str(config.g3_bin), *_g3_account_args(account), "schedule", str(handoff_path), "--asset-root", str(asset_root),
+                "--ledger", str(asset_root / "g3.sqlite3"),
+                "--mode", payload.mode,
+            ]
+            if payload.mode == "timed":
+                command += ["--due-at", str(payload.due_at)]
+            outputs[account] = _last_json(_run(
+                command,
+                cwd=config.g3_root,
+                env_file=config.g3_env_file,
+                timeout=config.stage_timeout,
+                log_path=asset_root / "logs" / "g3_manual_schedule.log",
+            ))
+        except Exception as exc:
+            errors[account] = f"{type(exc).__name__}: {exc}"
+    if len(errors) == len(accounts):
+        failed_metadata = dict(post.get("metadata") or {})
+        failed_metadata["buffer_status"] = "failed"
+        failed_metadata["buffer_error"] = "; ".join(f"{name}: {error}" for name, error in errors.items())
+        update_manual_post(post_record_id, metadata_json=json.dumps(failed_metadata, ensure_ascii=False))
+        raise HTTPException(502, f"manual Buffer scheduling failed: {failed_metadata['buffer_error']}")
+    scheduled_ids: list[str] = []
+    for output in outputs.values():
+        results = output.get("results") if isinstance(output, dict) else []
+        scheduled_ids.extend(str(item.get("post_id")) for item in results if isinstance(item, dict) and item.get("post_id"))
+    completed_metadata = dict((get_manual_post(post_record_id) or post).get("metadata") or {})
+    completed_metadata["buffer_status"] = "scheduled"
+    completed_metadata["buffer_accounts"] = accounts
+    completed_metadata["buffer_account"] = accounts[0]
+    completed_metadata["buffer_schedule_mode"] = payload.mode
+    completed_metadata["buffer_scheduled_at"] = str(payload.due_at) if payload.mode == "timed" else None
+    completed_metadata["buffer_post_ids"] = scheduled_ids
+    completed_metadata["buffer_result"] = outputs
+    if errors:
+        completed_metadata["buffer_error"] = "; ".join(f"{name}: {error}" for name, error in errors.items())
+    else:
+        completed_metadata.pop("buffer_error", None)
+    completed_metadata["workflow_status"] = "scheduled"
+    updated = update_manual_post(post_record_id, metadata_json=json.dumps(completed_metadata, ensure_ascii=False))
+    when = f" for {payload.due_at}" if payload.mode == "timed" else " in the Buffer queue"
+    names = ", ".join(accounts)
+    return {"ok": True, "post": _public_manual_post(updated), "result": outputs, "message": f"Buffer post scheduled{when} (accounts: {names})."}
+
+
+@router.get("/orgs")
+def marketing_orgs():
+    from core.state import get_org_capabilities, list_orgs
+    from engines.g3.g3_runtime.accounts import list_accounts
+
+    env_accounts = list_accounts()
+    orgs = []
+    for org in list_orgs():
+        prefix = (org.get("env_prefix") or "BUFFER_").upper()
+        accounts = []
+        for acct in env_accounts:
+            acct_name = acct["name"]
+            if acct_name == "default":
+                acct_prefix = "BUFFER_"
+            else:
+                acct_prefix = f"BUFFER_{acct_name.upper().replace('-', '_')}_"
+            if acct_prefix != prefix:
+                continue
+            platforms = sorted(
+                p for p, v in [("instagram", acct.get("instagram_channel_id")), ("x", acct.get("x_channel_id"))]
+                if v
+            )
+            if os.environ.get(f"{acct_prefix}LINKEDIN_CHANNEL_ID", "").strip():
+                platforms.append("linkedin")
+            accounts.append({"name": acct_name, "platforms": platforms})
+        platforms = sorted({p for a in accounts for p in a["platforms"]})
+        orgs.append({
+            **{key: org.get(key) for key in ("id", "name", "slug", "domain", "status")},
+            "capabilities": get_org_capabilities(org["id"]),
+            "platforms": platforms,
+            "accounts": accounts,
+        })
+    return {"orgs": orgs}
+
+
+class MarketingOrgCreateRequest(BaseModel):
+    model_config = {"env_prefix": "BUFFER_"}
+
+    name: str = Field(min_length=1, max_length=120)
+    slug: str | None = Field(default=None, max_length=60)
+    domain: str = Field(default="", max_length=253)
+    capabilities: dict[str, bool] = Field(default_factory=dict)
+
+
+@router.post("/orgs")
+def create_marketing_org(payload: MarketingOrgCreateRequest):
+    import re
+    from core.state import (
+        create_org,
+        set_active_org,
+        get_org_by_slug,
+        set_org_capabilities,
+        get_org_capabilities,
+        VALID_CAPABILITIES,
+    )
+
+    slug = (payload.slug or "").strip().lower()
+    if not slug:
+        slug = re.sub(r"[^a-z0-9]+", "-", payload.name.lower().strip())[:60].strip("-")
+    if not slug:
+        raise HTTPException(422, "slug is required")
+    domain = (payload.domain or "").strip().lower().removeprefix("https://").removeprefix("http://").split("/")[0].lstrip("www.")
+    for capability in payload.capabilities:
+        if capability not in VALID_CAPABILITIES:
+            raise HTTPException(422, f"unknown capability: {capability}")
+    existing = get_org_by_slug(slug)
+    if existing:
+        raise HTTPException(409, f"org '{slug}' already exists")
+    org = create_org(payload.name.strip(), slug, domain=domain)
+    capabilities = set_org_capabilities(org["id"], payload.capabilities) if payload.capabilities else {}
+    from engines.g3.g3_runtime.accounts import list_accounts
+    env_accounts = list_accounts()
+    prefix = (org.get("env_prefix") or "BUFFER_").upper()
+    accounts = []
+    for acct in env_accounts:
+        acct_name = acct["name"]
+        if acct_name == "default":
+            acct_prefix = "BUFFER_"
+        else:
+            acct_prefix = f"BUFFER_{acct_name.upper().replace('-', '_')}_"
+        if acct_prefix == prefix:
+            accounts.append({
+                "name": acct_name,
+                "platforms": sorted(
+                    p for p, v in [("instagram", acct.get("instagram_channel_id")), ("x", acct.get("x_channel_id"))]
+                    if v
+                ),
+            })
+    return {
+        "ok": True,
+        "org": {
+            **{key: org.get(key) for key in ("id", "name", "slug", "domain", "status")},
+            "capabilities": capabilities,
+            "accounts": accounts,
+        },
+    }
+
+
+class OrgCapabilitiesRequest(BaseModel):
+    capabilities: dict[str, bool]
+
+
+@router.get("/orgs/{org_id}/capabilities")
+def get_org_capabilities_route(org_id: int):
+    from core.state import get_org, get_org_capabilities
+
+    if not get_org(org_id):
+        raise HTTPException(404, "org not found")
+    return {"org_id": org_id, "capabilities": get_org_capabilities(org_id)}
+
+
+@router.post("/orgs/{org_id}/capabilities")
+def set_org_capabilities_route(org_id: int, payload: OrgCapabilitiesRequest):
+    from core.state import get_org, set_org_capabilities, VALID_CAPABILITIES
+
+    if not get_org(org_id):
+        raise HTTPException(404, "org not found")
+    try:
+        capabilities = set_org_capabilities(org_id, payload.capabilities)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return {"org_id": org_id, "capabilities": capabilities}
+
+
+@router.post("/orgs/active")
+def set_active(payload: ManualPostOrgRequest):
+    from core.state import get_org, set_active_org
+
+    org = get_org(payload.org_id)
+    if not org:
+        raise HTTPException(404, "org not found")
+    set_active_org(org["id"])
+    return {"ok": True, "org": {key: org.get(key) for key in ("id", "name", "slug", "status")}}
+
+
+class ManualPostOrgRequest(BaseModel):
+    org_id: int = Field(ge=1)
+
+
+@router.post("/manual-posts/{post_record_id}/org")
+def assign_manual_post_org(post_record_id: str, payload: ManualPostOrgRequest):
+    from core.state import get_org
+
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    org = get_org(payload.org_id)
+    if not org:
+        raise HTTPException(404, "org not found")
+    # Logical assignment only: media files stay in their current asset_dir,
+    # which the Buffer handoff resolves by absolute path.
+    updated = update_manual_post(post_record_id, org_id=org["id"])
+    return {"ok": True, "post": _public_manual_post(updated),
+            "message": f"Post assigned to org {org['slug']}."}
+
+
+AI_CAPTION_MAX_SLIDES = 6
+AI_CAPTION_MAX_DIM = 768
+
+
+def _slide_data_uris(post: dict) -> list[str]:
+    metadata = post.get("metadata") or {}
+    if str(metadata.get("post_type") or "carousel") == "video":
+        raise HTTPException(422, "AI title/bio reads slide images; video posts keep their manual caption")
+    assets = [dict(item) for item in (post.get("assets") or [])]
+    if not assets:
+        raise HTTPException(422, "upload slide images before generating AI title/bio")
+    asset_dir = Path(str(post.get("asset_dir") or "")).resolve()
+    try:
+        asset_dir.relative_to(PROJECTS_ROOT)
+    except ValueError as exc:
+        raise HTTPException(403, "asset path is outside the company workspace") from exc
+    uris: list[str] = []
+    for asset in assets[:AI_CAPTION_MAX_SLIDES]:
+        filename = str(asset.get("filename") or "").strip()
+        if Path(filename).suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+            continue
+        path = (asset_dir / filename).resolve()
+        try:
+            path.relative_to(asset_dir)
+        except ValueError:
+            continue
+        if not path.is_file():
+            continue
+        try:
+            with Image.open(path) as image:
+                frame = image.convert("RGB")
+                frame.thumbnail((AI_CAPTION_MAX_DIM, AI_CAPTION_MAX_DIM))
+                buffer = io.BytesIO()
+                frame.save(buffer, "JPEG", quality=70, optimize=True)
+        except Exception as exc:
+            raise HTTPException(422, f"unreadable slide image {filename}: {exc}") from exc
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        uris.append(f"data:image/jpeg;base64,{encoded}")
+    if not uris:
+        raise HTTPException(422, "no readable slide images found for AI title/bio")
+    return uris
+
+
+def _ai_title_bio_from_slides(platform: str, images: list[str], link_label: str, tracked_url: str) -> dict:
+    base_url = os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1").rstrip("/")
+    api_key = os.getenv("OMNIROUTE_API_KEY", "").strip()
+    model = os.getenv("MODEL_VISION", "auto/best-vision").strip() or "auto/best-vision"
+    if not api_key:
+        raise HTTPException(409, "set OMNIROUTE_API_KEY in .env before generating AI title/bio")
+    prompt = (
+        f"You write social copy for a {platform} post. Read the attached carousel slides and return "
+        f"exactly one JSON object with keys 'title' (max 60 chars, plain headline of what the slides show) "
+        f"and 'caption' (3 short lines summarizing the slides plus one final CTA line). "
+        f"CTA line must be 'Link in bio - {link_label}' for instagram or "
+        f"'Get the {link_label}: {tracked_url}' otherwise. "
+        f"Describe only what is visible; never invent brand names, metrics, or claims."
+    )
+    content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+    content.extend({"type": "image_url", "image_url": {"url": uri}} for uri in images)
+    payload = {"model": model, "messages": [{"role": "user", "content": content}],
+               "response_format": {"type": "json_object"}, "temperature": 0.4,
+               "max_tokens": 600, "stream": False}
+    request = urllib.request.Request(
+        base_url + "/chat/completions", data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            body = json.loads(response.read().decode("utf-8", errors="replace"))
+    except Exception as exc:
+        raise HTTPException(502, f"vision model request failed: {type(exc).__name__}: {exc}") from exc
+    choices = body.get("choices") or []
+    text = ((choices[0].get("message") or {}).get("content") or "") if choices else ""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip() == "```":
+            lines.pop()
+        text = "\n".join(lines).strip()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(502, f"vision model returned non-JSON copy: {text[:200]!r}") from exc
+    title = str(data.get("title") or "").strip()[:80]
+    caption = str(data.get("caption") or "").strip()[:2000]
+    if not title or not caption:
+        raise HTTPException(502, "vision model returned an empty title or caption")
+    return {"title": title, "caption": caption}
+
+
+@router.post("/manual-posts/{post_record_id}/ai-caption")
+def generate_manual_post_ai_caption(post_record_id: str):
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    platform = str(post.get("platform") or "instagram").strip().lower() or "instagram"
+    metadata = dict(post.get("metadata") or {})
+    images = _slide_data_uris(post)
+    result = _ai_title_bio_from_slides(
+        platform, images,
+        link_label=str(metadata.get("link_label") or "ops audit"),
+        tracked_url=str(post.get("tracked_url") or ""),
+    )
+    metadata.update({
+        "generated_title": result["title"],
+        "generated_caption": result["caption"],
+        "ai_caption_slides": len(images),
+    })
+    updated = update_manual_post(
+        post_record_id,
+        title=result["title"],
+        metadata_json=json.dumps(metadata, ensure_ascii=False),
+    )
+    return {"ok": True, "post": _public_manual_post(updated), "result": result,
+            "message": f"AI title/bio generated from {len(images)} slides."}
 
 
 @router.get("/manual-posts")
 def manual_posts(limit: int = 50):
-    from core.state import get_active_project
+    from core.state import get_active_org
 
-    project = get_active_project()
-    project_id = project["id"] if project else None
-    return {"posts": [_public_manual_post(item) for item in list_manual_posts(limit=limit, project_id=project_id)]}
+    org = get_active_org()
+    org_id = org["id"] if org else None
+    return {"posts": [_public_manual_post(item) for item in list_manual_posts(limit=limit, org_id=org_id)]}
 
 
 @router.get("/manual-posts/{post_record_id}/assets/{asset_index}")
@@ -1017,12 +1488,12 @@ def manual_post_asset(post_record_id: str, asset_index: int):
 
 @router.post("/campaigns")
 def create_campaign_from_ui(payload: CampaignLaunchRequest):
-    from core.state import create_task, get_active_project
+    from core.state import create_task, get_active_org
     from core.marketing_store import create_campaign
 
-    project = get_active_project()
-    if not project:
-        raise HTTPException(409, "set an active project before launching a campaign")
+    org = get_active_org()
+    if not org:
+        raise HTTPException(409, "set an active org before launching a campaign")
 
     social_platforms = list(dict.fromkeys(item.strip().lower() for item in payload.social_platforms if item.strip()))
     if not social_platforms:
@@ -1036,13 +1507,13 @@ def create_campaign_from_ui(payload: CampaignLaunchRequest):
         f"Prepare {', '.join(social_platforms)} drafts and a {payload.video_platform} video variant using {voice_mode}.{transcript_note}"
     )
     task = create_task(
-        project_id=project["id"],
+        org_id=org["id"],
         agent="growth",
         task_type="campaign",
         input_text=request,
     )
     campaign = create_campaign(
-        project_id=project["id"],
+        org_id=org["id"],
         task_id=task["id"],
         request=request,
         objective=payload.objective.strip(),
@@ -1063,10 +1534,10 @@ def create_campaign_from_ui(payload: CampaignLaunchRequest):
 
 @router.get("/campaigns")
 def campaigns(limit: int = 20):
-    from core.state import get_active_project
+    from core.state import get_active_org
 
-    project = get_active_project()
-    packs = list_asset_packs(project_slug=project["slug"], limit=limit) if project else []
+    org = get_active_org()
+    packs = list_asset_packs(project_slug=org["slug"], limit=limit) if org else []
     return {
         "campaigns": [_public_campaign(item) for item in list_campaigns(limit=limit)],
         "manual_posts": [_public_manual_post(item) for item in list_manual_posts(limit=limit)],

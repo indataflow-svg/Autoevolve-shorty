@@ -34,7 +34,8 @@ Create a remotely managed tunnel in Cloudflare Zero Trust and add a public hostn
 is `http://localhost:8787`. Install one connector service per host; one connector can route several
 hostnames to different local services. Store the tunnel token outside this repository.
 
-Example ingress for a locally managed tunnel:
+Example ingress for a locally managed tunnel (the calendar entry is an external
+example service; only `company-core:8787` ships in `compose.yaml`):
 
 ```yaml
 tunnel: YOUR_TUNNEL_ID

@@ -16,10 +16,14 @@ def configured(name: str) -> bool:
 
 
 def main() -> int:
+    import shutil
+    import sys
+
     required = ("DASHBOARD_PASSWORD", "SALES_ACTION_TOKEN", "SALES_INTAKE_SECRET")
     missing = [name for name in required if not configured(name)]
     providers = {
-        "model router": configured("OMNIROUTE_API_KEY"),
+        "model router (OMNIROUTE_API_KEY)": configured("OMNIROUTE_API_KEY"),
+        "coding gateway (CODING_API_KEY)": configured("CODING_API_KEY"),
         "Prospeo": configured("PROSPEO_API_KEY"),
         "Lusha": configured("LUSHA_API_KEY"),
         "Hunter": configured("HUNTER_API_KEY"),
@@ -38,6 +42,24 @@ def main() -> int:
         raw = os.getenv(name, "").strip()
         path = Path(raw).expanduser() if raw else None
         print(f"  {name}: {'ready' if path and path.is_file() else 'optional / unavailable'}")
+
+    # Local toolchain needed for setup/dev/media. Non-fatal, but explicit.
+    print(f"  python: {sys.version.split()[0]} (need 3.12+)")
+    print(f"  ffmpeg: {'ready' if shutil.which('ffmpeg') else 'missing (install ffmpeg for G2 rendering)'}")
+    print(f"  node: {shutil.which('node') or 'missing (needed only for OmniRoute gateway)'}")
+
+    # Brand-asset placeholders intentionally do not exist; warn early.
+    for name in ("MARKETING_G2_SHOWCASE", "MARKETING_G2_OUTRO"):
+        raw = os.getenv(name, "").strip()
+        if not raw:
+            print(f"  {name}: not set (set to an owned file before publishing)")
+        else:
+            exists = (ROOT / raw).exists() if not Path(raw).is_absolute() else Path(raw).exists()
+            print(f"  {name}: {'ready' if exists else 'placeholder / missing file (see docs/keys.md)'}")
+
+    if not providers["model router (OMNIROUTE_API_KEY)"]:
+        print("  note: dashboard, /health and /docs start without OMNIROUTE_API_KEY;")
+        print("  note: AI actions (drafts, research, briefs) will report 'not configured' until it is set.")
 
     if missing:
         print(f"Missing required values: {', '.join(missing)}")

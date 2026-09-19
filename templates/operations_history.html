@@ -40,7 +40,7 @@
           <div class="kicker">Archive ocean</div>
           <h1>Action history</h1>
         </div>
-        <span class="badge" id="operations-project-chip">{{ active_project.slug if active_project else 'NO PROJECT' }}</span>
+        <span class="badge" id="operations-org-chip">{{ active_org.slug if active_org else 'NO ORG' }}</span>
       </div>
       <p class="muted operations-copy">
         Review completed and failed actions, restore anything back into operations, and inspect the unified timeline without cluttering the live control plane.
@@ -134,6 +134,6 @@
   </section>
 </div>
 
-<script src="/static/operations.js"></script>
+<script src="/static/operations.js?v=20260910-1"></script>
 </body>
 </html>

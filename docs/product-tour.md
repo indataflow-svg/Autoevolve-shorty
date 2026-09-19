@@ -15,7 +15,6 @@ queues.
 | `/operations/history` | Completed, removed, and failed action history |
 | `/docs` | Interactive FastAPI endpoint reference |
 
-For a public demo, record one short walkthrough that shows provider diagnostics, a synthetic lead,
-an edited draft without sending it, a campaign script review, a media preview, and history. Never
-record `.env`, API keys, real contacts, email bodies containing personal data, tunnel tokens, or
-provider account pages.
+A good operator walkthrough covers provider diagnostics, a synthetic lead, an edited draft
+without sending it, a campaign script review, a media preview, and history. See
+[Architecture](architecture.md) for both lifecycle diagrams.

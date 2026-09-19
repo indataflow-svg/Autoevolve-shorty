@@ -61,9 +61,9 @@ class MarketingLiveUiTests(unittest.TestCase):
         marketing_store.DB_PATH = self.database
         state.init_db()
         marketing_store.init_marketing_db()
-        self.project = state.create_project("Example Company", "company-core")
+        self.project = state.create_org("Example Company", "company-core", env_prefix="BUFFER_")
         self.task = state.create_task(
-            project_id=self.project["id"], agent="growth", task_type="campaign", input_text="Create campaign",
+            org_id=self.project["id"], agent="growth", task_type="campaign", input_text="Create campaign",
         )
 
     def tearDown(self):
@@ -73,7 +73,7 @@ class MarketingLiveUiTests(unittest.TestCase):
 
     def campaign(self):
         return marketing_store.create_campaign(
-            project_id=self.project["id"], task_id=self.task["id"], request="Create campaign",
+            org_id=self.project["id"], task_id=self.task["id"], request="Create campaign",
             objective="awareness", buyer="ops_manager", topic="document handoffs",
             social_platforms=["instagram", "x"], video_platform="shorts",
         )

@@ -8,7 +8,7 @@
   const terminalSales = new Set(["contacted", "replied", "won", "lost", "suppressed"]);
   const flash = document.getElementById("operations-flash");
   const operationsHealth = document.getElementById("operations-health");
-  const projectChip = document.getElementById("operations-project-chip");
+  const orgChip = document.getElementById("operations-org-chip");
   const globalRefresh = document.getElementById("global-refresh");
   const tokenInput = document.getElementById("sales-action-token");
   const saveToken = document.getElementById("sales-save-token");
@@ -172,6 +172,37 @@
     setFlash(body.message || body.detail || "Marketing action completed.", "success-copy");
     await refresh(true);
     return body;
+  }
+
+  const bufferAccountCache = { at: 0, accounts: null };
+  async function bufferAccountOptions() {    if (bufferAccountCache.accounts && Date.now() - bufferAccountCache.at < 5 * 60 * 1000) {
+      return bufferAccountCache.accounts;
+    }
+    try {
+      const body = await requestJson("/company/marketing/buffer-accounts", { cache: "no-store" });
+      const accounts = Array.isArray(body.accounts) && body.accounts.length ? body.accounts : [{ name: "default" }];
+      bufferAccountCache.accounts = accounts;
+      bufferAccountCache.at = Date.now();
+      return accounts;
+    } catch (error) {
+      return bufferAccountCache.accounts || [{ name: "default" }];
+    }
+  }
+
+  const orgCache = { at: 0, orgs: null };
+  async function orgOptions() {
+    if (orgCache.orgs && Date.now() - orgCache.at < 5 * 60 * 1000) {
+      return orgCache.orgs;
+    }
+    try {
+      const body = await requestJson("/company/marketing/orgs", { cache: "no-store" });
+      const orgs = Array.isArray(body.orgs) ? body.orgs : [];
+      orgCache.orgs = orgs;
+      orgCache.at = Date.now();
+      return orgs;
+    } catch (error) {
+      return orgCache.orgs || [];
+    }
   }
 
   function fillDatalist(id, options) {
@@ -381,8 +412,7 @@
       .catch(() => window.alert(`Copy failed. ${label}: ${textValue}`));
   }
 
-  function manualPostCard(post) {
-    const card = el("article", "campaign-card");
+  function manualPostCard(post) {    const card = el("article", "campaign-card");
     const header = el("div", "campaign-header");
     const title = el("div", "");
     title.append(el("div", "kicker", post.post_id), el("h3", "", post.title || "Manual social post"));
@@ -393,6 +423,47 @@
     const meta = el("div", "campaign-meta");
     meta.textContent = [post.post_type, post.campaign_id, post.utm_campaign, post.source_detail, `${post.asset_count || 0} assets`].filter(Boolean).join(" · ") || "Tracked manual social post";
     card.append(meta);
+
+    const orgRow = el("div", "lead-latest");
+    orgRow.append(el("div", "sales-health-label", "Org"));
+    const orgSelect = document.createElement("select");
+    orgSelect.className = "mini-action secondary";
+    orgSelect.title = "Assign this post to an org";
+    const currentOption = document.createElement("option");
+    currentOption.value = post.org_id || "";
+    currentOption.textContent = post.org_name ? `${post.org_name}${post.org_slug ? " · " + post.org_slug : ""}` : (post.org_id ? `org #${post.org_id}` : "no org");
+    orgSelect.append(currentOption);
+    orgOptions().then((orgs) => {
+      if (!orgSelect.isConnected) return;
+      orgSelect.replaceChildren();
+      if (!orgs.length) {
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = "no orgs yet";
+        orgSelect.append(empty);
+        return;
+      }
+      orgs.forEach((org) => {
+        const option = document.createElement("option");
+        option.value = org.id;
+        const plat = (org.platforms || []).length ? " · " + org.platforms.map(p => p.toUpperCase()).join("+") : "";
+        option.textContent = `${org.name}${plat}`;
+        if (org.id === post.org_id) option.selected = true;
+        orgSelect.append(option);
+      });
+    });
+    orgSelect.addEventListener("change", () => {
+      const target = orgSelect.value;
+      if (!target || Number(target) === post.org_id) return;
+      const label = orgSelect.selectedOptions[0]?.textContent || target;
+      marketingAction(
+        `/company/marketing/manual-posts/${post.id}/org`,
+        `Move this post to org ${label}? It will leave this registry view on refresh.`,
+        { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ org_id: Number(target) }) }
+      ).catch((error) => window.alert(error.message));
+    });
+    orgRow.append(orgSelect);
+    card.append(orgRow);
 
     const caption = el("div", "lead-draft");
     caption.append(el("div", "sales-health-label", "Generated caption"), el("pre", "lead-draft-body", post.caption || ""));
@@ -410,6 +481,15 @@
     const bufferBox = el("div", "lead-latest");
     bufferBox.append(el("div", "sales-health-label", "Buffer status"), el("p", "lead-message compact", String(post.buffer_status || "not_started").replaceAll("_", " ")));
     if (post.metadata?.buffer_error) bufferBox.append(el("p", "lead-message compact", post.metadata.buffer_error));
+    const scheduledDetail = [];
+    const shownAccounts = Array.isArray(post.metadata?.buffer_accounts) && post.metadata.buffer_accounts.length
+      ? post.metadata.buffer_accounts
+      : (post.metadata?.buffer_account ? [post.metadata.buffer_account] : []);
+    if (shownAccounts.length) scheduledDetail.push(`account${shownAccounts.length > 1 ? "s" : ""}: ${shownAccounts.join(", ")}`);
+    if (post.metadata?.buffer_schedule_mode) scheduledDetail.push(`mode: ${post.metadata.buffer_schedule_mode}`);
+    if (post.metadata?.buffer_scheduled_at) scheduledDetail.push(`at: ${post.metadata.buffer_scheduled_at}`);
+    if (Array.isArray(post.metadata?.buffer_post_ids) && post.metadata.buffer_post_ids.length) scheduledDetail.push(`posts: ${post.metadata.buffer_post_ids.join(", ")}`);
+    if (scheduledDetail.length) bufferBox.append(el("p", "lead-message compact", scheduledDetail.join(" · ")));
     card.append(bufferBox);
 
     const attribution = post.attribution || {};
@@ -454,13 +534,91 @@
     const copyPostId = el("button", "mini-action secondary", "COPY POST ID");
     copyPostId.addEventListener("click", () => copyText(post.post_id, "Post ID"));
     actions.append(copyPostId);
-    if ((post.platform === "instagram" || post.platform === "x") && post.buffer_ready && post.buffer_status !== "drafted") {
+    if (post.post_type !== "video" && (post.asset_count || 0) > 0) {
+      const aiCaption = el("button", "mini-action", "AI TITLE + BIO");
+      aiCaption.addEventListener("click", () => marketingAction(
+        `/company/marketing/manual-posts/${post.id}/ai-caption`,
+        `Read the ${post.asset_count} slide images and generate an AI title + bio? This replaces the current title and caption.`
+      ).catch((error) => window.alert(error.message)));
+      actions.append(aiCaption);
+    }
+    const bufferable = (post.platform === "instagram" || post.platform === "x") && post.buffer_ready;
+    let accountSelect = null;
+    if (bufferable && !["queued", "running"].includes(post.buffer_status)) {
+      accountSelect = document.createElement("select");
+      accountSelect.className = "mini-action secondary";
+      accountSelect.title = "Buffer accounts (Ctrl/Cmd-click for several)";
+      accountSelect.multiple = true;
+      accountSelect.size = 2;
+      const current = Array.isArray(post.metadata?.buffer_accounts) && post.metadata.buffer_accounts.length
+        ? post.metadata.buffer_accounts
+        : [post.metadata?.buffer_account || "default"];
+      const fallback = document.createElement("option");
+      fallback.value = current[0];
+      fallback.textContent = current.join(", ");
+      fallback.selected = true;
+      accountSelect.append(fallback);
+      bufferAccountOptions().then((accounts) => {
+        if (!accountSelect.isConnected) return;
+        accountSelect.replaceChildren();
+        accountSelect.size = Math.max(2, Math.min(accounts.length, 4));
+        accounts.forEach((account) => {
+          const option = document.createElement("option");
+          option.value = account.name;
+          const channels = [
+            account.instagram_channel_id ? "IG" : null,
+            account.x_channel_id ? "X" : null,
+          ].filter(Boolean).join("+");
+          option.textContent = channels ? `${account.name} (${channels})` : account.name;
+          if (current.includes(account.name)) option.selected = true;
+          accountSelect.append(option);
+        });
+        if (![...accountSelect.selectedOptions].length && accountSelect.options.length) {
+          accountSelect.options[0].selected = true;
+        }
+      });
+      actions.append(accountSelect);
+    }
+    const selectedAccounts = () => {
+      const picked = [...(accountSelect?.selectedOptions || [])].map((option) => option.value).filter(Boolean);
+      const fallback = Array.isArray(post.metadata?.buffer_accounts) && post.metadata.buffer_accounts.length
+        ? post.metadata.buffer_accounts
+        : [post.metadata?.buffer_account || "default"];
+      return encodeURIComponent([...new Set(picked.length ? picked : fallback)].join(","));
+    };
+    if (bufferable && post.buffer_status !== "drafted" && !["queued", "running"].includes(post.buffer_status)) {
       const pushBuffer = el("button", "mini-action approve", "PUSH TO BUFFER");
       pushBuffer.addEventListener("click", () => marketingAction(
-        `/company/marketing/manual-posts/${post.id}/buffer-draft`,
+        `/company/marketing/manual-posts/${post.id}/buffer-draft?buffer_account=${selectedAccounts()}`,
         `Create a Buffer draft from this saved ${post.post_type || "post"}?`
       ).catch((error) => window.alert(error.message)));
       actions.append(pushBuffer);
+    }
+    if (bufferable && !["queued", "running"].includes(post.buffer_status)) {
+      const jsonHeaders = { "Content-Type": "application/json" };
+      const queueBuffer = el("button", "mini-action approve", "QUEUE IN BUFFER");
+      queueBuffer.addEventListener("click", () => marketingAction(
+        `/company/marketing/manual-posts/${post.id}/buffer-schedule?buffer_account=${selectedAccounts()}`,
+        `Schedule this ${post.post_type || "post"} in the next Buffer queue slot? It will publish automatically.`,
+        { headers: jsonHeaders, body: JSON.stringify({ mode: "queue" }) }
+      ).catch((error) => window.alert(error.message)));
+      actions.append(queueBuffer);
+      const scheduleTimed = el("button", "mini-action", "SCHEDULE AT…");
+      scheduleTimed.addEventListener("click", () => {
+        const picked = window.prompt("Publish date and time (your local time):", "");
+        if (picked === null) return;
+        const dueAt = new Date(picked);
+        if (Number.isNaN(dueAt.getTime()) || dueAt.getTime() <= Date.now()) {
+          window.alert("Enter a valid future date and time.");
+          return;
+        }
+        marketingAction(
+          `/company/marketing/manual-posts/${post.id}/buffer-schedule?buffer_account=${selectedAccounts()}`,
+          `Schedule this ${post.post_type || "post"} for ${dueAt.toLocaleString()}? It will publish automatically.`,
+          { headers: jsonHeaders, body: JSON.stringify({ mode: "timed", due_at: dueAt.toISOString() }) }
+        ).catch((error) => window.alert(error.message));
+      });
+      actions.append(scheduleTimed);
     }
     card.append(actions);
     return card;
@@ -1194,7 +1352,7 @@
     try {
       const overview = await requestJson(overviewUrl, { cache: "no-store" });
       state.overview = overview;
-      projectChip.textContent = overview.active_project?.slug || "NO PROJECT";
+      if (orgChip) orgChip.textContent = overview.active_org?.slug || "NO ORG";
       renderHealth(overview);
       renderMarketing(overview.marketing_campaigns || []);
       renderSales(overview.sales_leads || [], overview.sales_summary || {});
@@ -1400,11 +1558,36 @@
     focusSection("asset-packs-queue");
   });
 
+  function fillOrgSelects() {
+    document.querySelectorAll("select[data-org-select]").forEach((select) => {
+      orgOptions().then((orgs) => {
+        if (!select.isConnected) return;
+        const current = select.value;
+        select.replaceChildren();
+        const active = document.createElement("option");
+        active.value = "";
+        active.textContent = "Active org";
+        select.append(active);
+        orgs.forEach((org) => {
+          const option = document.createElement("option");
+          option.value = org.id;
+          const plat = (org.platforms || []).length ? " · " + org.platforms.map(p => p.toUpperCase()).join("+") : "";
+          option.textContent = `${org.name}${plat}`;
+          if (String(org.id) === String(current)) option.selected = true;
+          select.append(option);
+        });
+        if (current) select.value = current;
+      });
+    });
+  }
+
   manualPostForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(manualPostForm);
     const platform = String(form.get("platform") || "instagram");
     const postType = String(form.get("post_type") || "carousel");
+    const orgId = String(form.get("org_id") || "").trim();
+    const aiCaption = String(form.get("ai_caption") || "auto");
     const files = form.getAll("assets").filter((item) => item instanceof File && item.size > 0);
     if (!files.length) {
       window.alert(postType === "video" ? "Upload one MP4 video." : "Upload at least one PNG carousel asset.");
@@ -1424,6 +1607,7 @@
           post_type: postType,
           destination_url: String(form.get("destination_url") || ""),
           link_label: String(form.get("link_label") || "ops audit"),
+          org_id: orgId ? Number(orgId) : null,
         }),
       });
       const postId = session.post?.id;
@@ -1442,13 +1626,56 @@
         method: "POST",
       });
       setFlash(finalized.message || "Post saved locally and marked ready for Buffer handoff.", "success-copy");
+      if (aiCaption !== "off" && postType === "carousel") {
+        setFlash("Reading slides for AI title + bio…", "muted");
+        try {
+          const captioned = await requestJson(`/company/marketing/manual-posts/${postId}/ai-caption`, {
+            method: "POST",
+          });
+          setFlash(captioned.message || "AI title + bio ready.", "success-copy");
+        } catch (captionError) {
+          window.alert(`Post saved, but AI title + bio failed: ${captionError.message}`);
+        }
+      }
       await refresh(true);
       manualPostForm.reset();
+      fillOrgSelects();
       closeDrawers();
       focusSection("manual-posts-queue");
     } catch (error) {
       window.alert(error.message);
       setFlash(error.message, "error-copy");
+    }
+  });
+
+  const orgCreateForm = document.getElementById("org-create-form");
+  orgCreateForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(orgCreateForm);
+    const name = String(form.get("name") || "").trim();
+    if (!name) return;
+    try {
+      const result = await requestJson("/company/marketing/orgs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          slug: String(form.get("slug") || "").trim() || undefined,
+        }),
+      });
+      orgCache.orgs = null;
+      fillOrgSelects();
+      const org = result?.org;
+      const accounts = org?.accounts || [];
+      const platforms = accounts.filter(a => a.channel_id || a.profile_url).map(a => a.platform.toUpperCase());
+      const msg = platforms.length
+        ? `Org "${name}" created. Platforms: ${platforms.join(", ")}.`
+        : `Org "${name}" created. Add BUFFER_${(org?.slug || "YOUR_ORG").toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY to .env to enable publishing.`;
+      setFlash(msg, "success-copy");
+      orgCreateForm.reset();
+      closeDrawers();
+    } catch (error) {
+      window.alert(error.message);
     }
   });
 
@@ -1459,5 +1686,6 @@
 
   autosizeAll();
   tickClock();
+  fillOrgSelects();
   refresh();
 })();

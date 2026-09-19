@@ -90,7 +90,7 @@ def _acquire_scene(scene: dict, root: Path, timeout: int) -> tuple[AssetRecord |
     suffix = SUFFIXES[candidate.media_type]
     path = root / f"scene_{int(scene['scene']):02d}_{candidate.provider}{suffix}"
     try:
-        if candidate.provider == "local" and candidate.local_path:
+        if candidate.provider in {"local", "owned"} and candidate.local_path:
             source = Path(candidate.local_path).resolve()
             if not source.is_file():
                 raise ValueError("catalogued local asset no longer exists")
@@ -116,11 +116,12 @@ def _acquire_scene(scene: dict, root: Path, timeout: int) -> tuple[AssetRecord |
             if "<svg" not in path.read_text(encoding="utf-8", errors="ignore")[:4096].lower():
                 raise ValueError("download is not an SVG document")
         clip = scene.get("clip_window") or {}
+        source_type = {"stock": "stock", "owned": "owned"}.get(candidate.source_type, "illustration")
         record = AssetRecord(
             slide_number=int(scene["scene"]), local_path=path.name,
             source_url=candidate.source_url, provider=candidate.provider,
             license=candidate.license, approved=False, candidate_id=candidate.candidate_id,
-            source_type="stock" if candidate.source_type == "stock" else "illustration",
+            source_type=source_type,
             sha256=file_sha256(path), perceptual_hash=phash, width=width, height=height,
             media_type=candidate.media_type, duration_seconds=duration,
             clip_start_seconds=float(clip.get("start_seconds") or 0),

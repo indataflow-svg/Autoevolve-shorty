@@ -19,8 +19,13 @@ Company Core is a self-hosted sales and marketing operations workspace. It combi
 prospect research, contact enrichment, email drafting and delivery, campaign production, media
 assembly, publishing handoff, approval queues, and activity history in one FastAPI application.
 
+> Naming: this repository is `AutoEvolve`; `Company Core` is the application name used in the
+> dashboard, config keys (`COMPANY_CORE_*`, `company-core-g1/g2/g3`), and docs.
+
 The repository includes the complete application and its G1/G2/G3 marketing engines. External
-providers are optional: configure only the integrations you intend to use.
+providers are optional: configure only the integrations you intend to use. The dashboard starts
+without provider keys (`make doctor` shows `optional / disabled`); model-backed actions need an
+AI gateway (see `docs/keys.md`), other features need only their own integration.
 
 ## Product at a glance
 
@@ -67,8 +72,8 @@ brew install python@3.12 make openssl ffmpeg
 ```
 
 ```bash
-git clone https://github.com/indoha-commits/GrowthRail.git
-cd GrowthRail
+git clone https://github.com/indoha-commits/AutoEvolve.git
+cd AutoEvolve
 make setup
 ```
 
@@ -189,23 +194,33 @@ exist by design. This prevents a new installation from publishing another compan
 ## Configuration
 
 Edit `.env` after setup. The dashboard runs without provider keys; a feature reports its missing
-configuration only when invoked. See [configuration](docs/configuration.md) for the provider map,
-[model routing](docs/model-routing.md) for OmniRoute, Ollama, and direct OpenAI-compatible setup,
-[lead intake](docs/lead-intake.md) for form contracts, and [deployment](docs/deployment.md) for
-reverse proxy and Cloudflare Tunnel examples.
+configuration only when invoked. See [API Keys](docs/keys.md) for where to get every key,
+[Configuration](docs/configuration.md) for the provider map,
+[Model Routing](docs/model-routing.md) for OmniRoute, Ollama, and direct OpenAI-compatible setup,
+[Lead Intake](docs/lead-intake.md) for form contracts, and [Deployment](docs/deployment.md) for
+reverse proxy and Cloudflare Tunnel examples. For Docker, copy `.env.example` to `.env` first
+since `compose.yaml` uses `env_file: .env`.
 
 Never commit `.env`, SQLite files, generated media, provider payloads, contact exports, or agent
 conversation history. The supplied `.gitignore` excludes these by default.
 
 ## Tutorials and operations
 
-- [First sales outreach](docs/first-outreach.md): installation check through approved Resend delivery.
-- [First marketing campaign](docs/first-campaign.md): brief through media review and Buffer draft.
-- [Provider setup](docs/providers.md): minimum keys, feature mapping, and credit-saving behavior.
-- [Product tour](docs/product-tour.md): what each operator page is responsible for.
+Start with the [Documentation Index](docs/index.md), then:
+
+- [First Sales Outreach](docs/first-outreach.md): installation check through approved Resend delivery.
+- [First Marketing Campaign](docs/first-campaign.md): brief through media review and Buffer draft.
+- [API Keys](docs/keys.md): where to get each key and how to verify it.
+- [Provider Setup](docs/providers.md): minimum keys, feature mapping, and credit-saving behavior.
+- [Product Tour](docs/product-tour.md): what each operator page is responsible for.
+- [Configuration](docs/configuration.md): provider map and required settings.
+- [Model Routing](docs/model-routing.md): OmniRoute, Ollama, and direct gateway summary.
+- [Lead Intake](docs/lead-intake.md): form and webhook contracts.
+- [Deployment](docs/deployment.md): reverse proxy and Cloudflare Tunnel examples.
 - [Troubleshooting](docs/troubleshooting.md): common HTTP, model, media, and tunnel failures.
-- [Production checklist](docs/production-checklist.md): security and deliverability checks before launch.
-- [Upgrading and backups](docs/upgrading.md): safe update, validation, backup, and rollback process.
+- [Architecture](docs/architecture.md): sales and publishing lifecycles with code references.
+- [Production Checklist](docs/production-checklist.md): security and deliverability checks before launch.
+- [Upgrading and Backups](docs/upgrading.md): safe update, validation, backup, and rollback process.
 
 ## Project layout
 

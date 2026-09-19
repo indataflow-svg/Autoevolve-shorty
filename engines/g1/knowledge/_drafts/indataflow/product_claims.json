@@ -1,0 +1,26 @@
+{
+  "approved": [
+    {"id": "product.control_layer", "text": "InDataFlow provides one operational control layer for cargo, documents, milestones and client visibility.", "source": "https://indataflow.com/"},
+    {"id": "product.internal_dashboard", "text": "InDataFlow includes an internal operations dashboard.", "source": "https://indataflow.com/"},
+    {"id": "product.client_dashboard", "text": "InDataFlow includes a client dashboard for shipment visibility.", "source": "https://indataflow.com/"},
+    {"id": "product.document_upload", "text": "Documents can be uploaded and linked to cargo records.", "source": "https://indataflow.com/product"},
+    {"id": "product.document_validation", "text": "The workflow supports document validation and verification states.", "source": "https://indataflow.com/product"},
+    {"id": "product.milestones", "text": "Cargo milestones can be tracked with timestamps.", "source": "https://indataflow.com/"},
+    {"id": "product.audit_trail", "text": "InDataFlow maintains cargo activity and audit history.", "source": "https://indataflow.com/"},
+    {"id": "product.digital_archive", "text": "Plans include a digital document archive.", "source": "https://indataflow.com/pricing"},
+    {"id": "product.web_based", "text": "InDataFlow is web-based.", "source": "https://indataflow.com/how-it-works"},
+    {"id": "product.volume_pricing", "text": "InDataFlow uses volume pricing instead of per-seat pricing, with no long-term contract.", "source": "founder-confirmed"},
+    {"id": "offer.walkthrough", "text": "Prospects can book a walkthrough.", "source": "founder-confirmed"},
+    {"id": "offer.trial_14_day", "text": "Qualified high-intent prospects can start a 14-day trial.", "source": "founder-confirmed"},
+    {"id": "offer.starter_250", "text": "Starter plan is $250/month.", "source": "founder-confirmed"},
+    {"id": "offer.growth_500", "text": "Growth plan is $500/month.", "source": "founder-confirmed"},
+    {"id": "offer.enterprise_custom", "text": "Enterprise plans are custom-priced.", "source": "founder-confirmed"}
+  ],
+  "restricted": [
+    {"id": "restricted.realtime", "text": "Real-time claims require technical confirmation for the specific feature."},
+    {"id": "restricted.ai", "text": "AI-assisted workflow claims must describe the actual function and cannot imply customs replacement."},
+    {"id": "restricted.go_live_week", "text": "Going live within a week requires operational evidence."},
+    {"id": "restricted.paying_clients", "text": "Paying-client and live-usage claims require current Founder approval."},
+    {"id": "restricted.outcomes", "text": "Percentage reductions and measurable savings require source evidence and Founder approval."}
+  ]
+}

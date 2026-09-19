@@ -17,9 +17,9 @@ class MarketingStoreTests(unittest.TestCase):
         marketing_store.DB_PATH = self.database
         state.init_db()
         marketing_store.init_marketing_db()
-        self.project = state.create_project("Example Company", "company-core")
+        self.project = state.create_org("Example Company", "company-core", env_prefix="BUFFER_")
         self.task = state.create_task(
-            project_id=self.project["id"],
+            org_id=self.project["id"],
             agent="growth",
             task_type="campaign",
             input_text="Create campaign",
@@ -32,7 +32,7 @@ class MarketingStoreTests(unittest.TestCase):
 
     def test_campaign_variant_selection_state_is_persistent(self):
         campaign = marketing_store.create_campaign(
-            project_id=self.project["id"],
+            org_id=self.project["id"],
             task_id=self.task["id"],
             request="Create an awareness campaign",
             objective="awareness",
@@ -64,7 +64,7 @@ class MarketingStoreTests(unittest.TestCase):
 
     def test_events_are_append_only_and_decode_payloads(self):
         campaign = marketing_store.create_campaign(
-            project_id=self.project["id"],
+            org_id=self.project["id"],
             task_id=self.task["id"],
             request="Create campaign",
             objective="awareness",

@@ -1,7 +1,9 @@
 # Configuration
 
 Run `make setup`, then edit the generated `.env`. Empty provider values disable only the related
-feature. Run `make doctor` after any change.
+feature; the dashboard, `/health`, and `/docs` still start. Run `make doctor` after any change.
+AI actions are the exception: they need `OMNIROUTE_API_KEY` and report `not configured` until it
+is set. See [API keys](keys.md) for where to get every key.
 
 ## Required local settings
 
@@ -15,7 +17,8 @@ Set `OMNIROUTE_BASE_URL` and `OMNIROUTE_API_KEY` to an OpenAI-compatible endpoin
 names are controlled by `MODEL_FAST`, `MODEL_REASONING`, `MODEL_FREE`, `MODEL_CODING`, and
 `MODEL_VISION`. Coding operations additionally use the `CODING_*` values. Despite the environment
 variable name, the endpoint does not have to be OmniRoute; Ollama, LiteLLM, and hosted
-OpenAI-compatible APIs can be used. See [model routing](model-routing.md) for complete examples.
+OpenAI-compatible APIs can be used. See [Model Routing](model-routing.md) for the option summary
+and [API Keys](keys.md) for canonical values.
 
 ## Optional providers
 
@@ -29,7 +32,8 @@ OpenAI-compatible APIs can be used. See [model routing](model-routing.md) for co
 | Social publishing | Buffer and R2 values in `engines/g3/config/g3.env` |
 | Calendar | `SALES_CALENDAR_BASE_URL`, `SALES_CALENDAR_EVENT_PATH` |
 
-The bundled engine paths in `.env.example` work from the repository root. The showcase and outro
+The bundled engine paths in `.env.example` work from the repository root
+(e.g. `MARKETING_G1_BIN=engines/g1/.venv/bin/company-core-g1`). The showcase and outro
 placeholder files intentionally do not exist. Set both paths to your own licensed files before
 publishing media. Set `COMPANY_BRAND_LOGO_URL` to a publicly reachable HTTPS PNG before sending
 email; a localhost URL cannot be loaded by recipients.

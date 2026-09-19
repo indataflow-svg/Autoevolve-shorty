@@ -1,0 +1,28 @@
+{
+  "brand": "InDataFlow",
+  "domain": "indataflow.com",
+  "positioning": "One traceable cargo record connecting shipment documents, validation, events, approvals and client updates for freight forwarders, clearing agents and logistics teams in East Africa.",
+  "voice": ["professional", "operator-respectful", "Rwanda-grounded", "concise", "specific"],
+  "language": "English",
+  "primary_region": ["Rwanda", "Kenya", "Tanzania", "Uganda", "EAC corridors"],
+  "avoid_voice": ["revolutionary", "game-changing", "10x", "seamless", "effortless", "AI-powered magic"],
+  "writing_rules": {
+    "one_buyer_per_campaign": true,
+    "one_operational_problem_per_campaign": true,
+    "headline_style": "short condensed uppercase statement",
+    "product_arrives_after_problem": true,
+    "prefer_operational_language": true
+  },
+  "offer": {
+    "plans": [
+      {"id": "starter", "label": "Starter", "price": "$250/month"},
+      {"id": "growth", "label": "Growth", "price": "$500/month"},
+      {"id": "enterprise", "label": "Enterprise", "price": "custom"}
+    ],
+    "trial": "14-day trial",
+    "contract": "no long-term contract",
+    "pricing_model": "volume pricing instead of per-seat pricing"
+  },
+  "sales_trigger": "Are your shipment documents, updates and approvals still spread across WhatsApp, email and spreadsheets?",
+  "public_customer_names_allowed": false
+}

@@ -56,10 +56,16 @@ class SalesApiTests(unittest.TestCase):
         sales_store.DB_PATH = self.database
         state.init_db()
         sales_store.init_sales_db()
+        self.env = patch.dict(os.environ, {
+            "DASHBOARD_USER": "founder",
+            "DASHBOARD_PASSWORD": "dashboard-secret",
+        }, clear=False)
+        self.env.start()
         self.client = TestClient(app)
         self.auth = ("founder", "dashboard-secret")
 
     def tearDown(self):
+        self.env.stop()
         state.DB_PATH = self.old_state_path
         sales_store.DB_PATH = self.old_sales_path
         self.temporary.cleanup()

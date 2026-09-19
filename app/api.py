@@ -17,9 +17,24 @@ from core.branding import company_logo_url, company_name
 from core.dashboard import get_dashboard_state, get_operations_page_state
 
 
+def _on_startup():
+    from dotenv import load_dotenv
+    g3_env = os.path.join(os.path.dirname(os.path.dirname(__file__)), "engines", "g3", "config", "g3.env")
+    if os.path.exists(g3_env):
+        load_dotenv(g3_env, override=False)
+    from core.state import init_db, _seed_orgs_from_env
+    init_db()
+    _seed_orgs_from_env()
+
+
 app = FastAPI(
     title="Company Cockpit",
 )
+
+
+@app.on_event("startup")
+def _startup():
+    _on_startup()
 
 app.mount(
     "/static",
@@ -325,11 +340,13 @@ from app.marketing_api import router as marketing_router
 from app.sales_api import action_router as sales_action_router
 from app.sales_api import intake_router as sales_intake_router
 from app.sales_api import router as sales_router
+from app.setup_api import router as setup_router
 
 app.include_router(company_ops_router, dependencies=[Depends(authenticate)])
 app.include_router(marketing_router, dependencies=[Depends(authenticate)])
 app.include_router(sales_router, dependencies=[Depends(authenticate)])
 app.include_router(sales_action_router, dependencies=[Depends(authenticate)])
+app.include_router(setup_router, dependencies=[Depends(authenticate)])
 # Tunnel-facing integrations stay outside dashboard auth and enforce their own
 # shared-secret checks in app.sales_api.
 app.include_router(sales_intake_router)

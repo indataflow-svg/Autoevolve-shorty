@@ -18,7 +18,7 @@ SALES_REPLY_TO_EMAIL=sales@your-verified-domain.example
 SALES_AUTO_CONTACT_ENABLED=false
 ```
 
-Optional `PDL_API_KEY` or `CE_API_KEY` adds company context. Run:
+Where to get each key: [API keys](keys.md). Optional `PDL_API_KEY` or `CE_API_KEY` adds company context. Run:
 
 ```bash
 make doctor

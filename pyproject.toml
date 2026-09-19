@@ -21,6 +21,7 @@ dependencies = [
   "pydantic-ai==2.31.1",
   "python-dotenv>=1,<2",
   "python-multipart>=0.0.18,<1",
+  "trafilatura>=2,<3",
   "uvicorn[standard]>=0.32,<1",
 ]
 

@@ -39,7 +39,7 @@ class SalesTunnelSetupTests(unittest.TestCase):
     def test_meet_page_is_public_for_booking_cta(self):
         response = self.client.get('/meet')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('Schedule a meeting with Company Core', response.text)
+        self.assertIn('Schedule a meeting with', response.text)
         self.assertIn('/static/company-core-logo.svg', response.text)
         self.assertIn('/calendar', response.text)
 

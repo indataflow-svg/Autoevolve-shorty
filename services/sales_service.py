@@ -1148,6 +1148,111 @@ async def build_draft(lead_id: str) -> dict:
     )
 
 
+LINKEDIN_PIECES = ("invite", "dm1", "dm2")
+LINKEDIN_KINDS = {
+    "invite": "linkedin_invite",
+    "dm1": "linkedin_dm1",
+    "dm2": "linkedin_dm2",
+}
+
+
+def _fallback_linkedin_from_context(context: dict[str, Any], piece: str):
+    from agents.linkedin import LinkedInDM, LinkedInInvite
+
+    name = (context.get("full_name") or "there").split()[0]
+    company = context.get("company") or "your team"
+    company_context = context.get("company_context") if isinstance(context.get("company_context"), dict) else {}
+    pain_points = company_context.get("suggested_pain_points") if isinstance(company_context.get("suggested_pain_points"), list) else []
+    observation = pain_points[0] if pain_points else "keeping outreach and operations in one controlled workflow"
+    rationale = "Fallback LinkedIn copy generated from saved company context because the live drafting model is unavailable."
+    if piece == "invite":
+        note = (
+            f"Hi {name} — I work with teams like {company} on {observation}. "
+            f"Would value connecting here."
+        )
+        return LinkedInInvite(note=note[:300], rationale=rationale)
+    opener = f"Hi {name}, thanks for connecting."
+    body = (
+        f"{opener} I work with teams like {company} where {observation} "
+        f"tends to get expensive as they grow. "
+        f"Curious how you handle that today?"
+    )
+    if piece == "dm2":
+        body = (
+            f"Hi {name}, floating this back up — one more thought on {observation} "
+            f"for {company}. Worth a short look from your side?"
+        )
+    return LinkedInDM(text=body[:1000], rationale=rationale)
+
+
+async def preview_linkedin_draft(lead_id: str, piece: str) -> dict[str, Any]:
+    from core.sales_store import linkedin_url_for_lead
+
+    if piece not in LINKEDIN_PIECES:
+        raise ValueError("linkedin piece must be invite, dm1, or dm2")
+    lead = get_lead(lead_id)
+    if not lead:
+        raise ValueError("lead not found")
+    if lead["stage"] == "suppressed":
+        raise ValueError("suppressed leads cannot receive outreach")
+    profile_url = linkedin_url_for_lead(lead)
+    if not profile_url:
+        raise ValueError("lead has no LinkedIn profile — run discover-linkedin first")
+
+    context = _draft_lead_context(lead)
+    try:
+        from agents.linkedin import draft_linkedin_outreach
+        draft = await draft_linkedin_outreach(context, piece)
+        provider = "model"
+    except Exception:
+        draft = _fallback_linkedin_from_context(context, piece)
+        provider = "fallback"
+    text = draft.note if piece == "invite" else draft.text
+    return {
+        "ok": True,
+        "provider": provider,
+        "piece": piece,
+        "kind": LINKEDIN_KINDS[piece],
+        "channel": "linkedin",
+        "profile_url": profile_url,
+        "lead": get_lead(lead_id) or lead,
+        "context": context,
+        "preview": {"text": text, "rationale": draft.rationale},
+    }
+
+
+async def build_linkedin_draft(lead_id: str, piece: str) -> dict:
+    from core.sales_store import linkedin_url_for_lead
+
+    if piece not in LINKEDIN_PIECES:
+        raise ValueError("linkedin piece must be invite, dm1, or dm2")
+    lead = get_lead(lead_id)
+    if not lead:
+        raise ValueError("lead not found")
+    if lead["stage"] == "suppressed":
+        raise ValueError("suppressed leads cannot receive outreach")
+    profile_url = linkedin_url_for_lead(lead)
+    if not profile_url:
+        raise ValueError("lead has no LinkedIn profile — run discover-linkedin first")
+
+    context = _draft_lead_context(lead)
+    try:
+        from agents.linkedin import draft_linkedin_outreach
+        draft = await draft_linkedin_outreach(context, piece)
+    except Exception:
+        draft = _fallback_linkedin_from_context(context, piece)
+    text = draft.note if piece == "invite" else draft.text
+    name = lead.get("full_name") or lead.get("company") or lead_id
+    subject = f"LinkedIn invite — {name}" if piece == "invite" else f"LinkedIn {piece} — {name}"
+    return create_draft(
+        lead_id,
+        subject,
+        f"Profile: {profile_url}\n\n{text}",
+        channel="linkedin",
+        kind=LINKEDIN_KINDS[piece],
+    )
+
+
 def _resolved_resend_sender() -> str:
     from_email = os.getenv("SALES_FROM_EMAIL", "").strip()
     if not from_email:

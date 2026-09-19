@@ -71,14 +71,36 @@ async def draft_outreach(lead: dict) -> OutreachDraft:
             "subject": latest.get("subject"),
             "body": (latest.get("body") or "")[:3000],
         }
+    memory_note = _brand_memory_note(lead)
     result = await sales_writer.run(
         "Draft an email for this lead. If latest_reply is present, answer it directly and preserve "
         "the conversation context. Otherwise, if the lead is inbound, acknowledge their "
         "request directly. If company_context is present, ground one observation in its operational focus, "
         "specialties, or pain points. If sourced through Hunter, open with a relevant operational hypothesis "
-        "and make it clear this is an introduction. Lead facts:\n" + repr(safe)
+        "and make it clear this is an introduction."
+        + memory_note +
+        " Lead facts:\n" + repr(safe)
     )
     return result.output
+
+
+def _brand_memory_note(lead: dict) -> str:
+    """Best-effort brand lessons/wins for grounding. Empty when untagged."""
+    try:
+        from core.memory import brand_for_lead, recall
+
+        brand = brand_for_lead(lead if isinstance(lead, dict) else None)
+        if not brand:
+            return ""
+        company = (lead.get("company") or lead.get("company_domain") or "").strip()
+        query = f"{company} {(lead.get('job_title') or '')}".strip() or "outreach"
+        hits = recall(brand, query, limit=3)
+        if not hits:
+            return ""
+        lines = [f"- {(h.get('title') or h.get('kind'))}: {(h.get('text') or '')[:280]}" for h in hits]
+        return "\nBrand memory (same brand, past outcomes — use only what fits this lead):\n" + "\n".join(lines) + "\n"
+    except Exception:
+        return ""
 
 
 async def prepare_sales_command(request: str) -> SalesCommand:

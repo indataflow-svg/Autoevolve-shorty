@@ -1,10 +1,12 @@
 from pathlib import Path
 
+import asyncio
+
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
 from core.models import cloud_model
-from tools.research import search_web, fetch_page
+from tools.research import search_web, fetch_page, unwrap_search_url
 
 
 PROMPT = (
@@ -49,6 +51,81 @@ research_agent = Agent(
     instructions=PROMPT,
     output_type=ResearchReport,
 )
+
+
+class SearchPlan(BaseModel):
+    """Planner output: bounded fan-out of focused queries (cheap fast model)."""
+
+    queries: list[str] = Field(min_length=1, max_length=8)
+
+
+planner_agent = Agent(
+    cloud_model("fast"),
+    instructions=(
+        "You plan web research. Given a question, produce 3 to 6 focused search "
+        "queries covering: the core claim, counter-evidence that could invalidate it, "
+        "and authoritative sources (regulators, official docs, standards bodies). "
+        "Prefer specific queries over broad ones. No tools, output queries only."
+    ),
+    output_type=SearchPlan,
+)
+
+
+synthesis_agent = Agent(
+    cloud_model("reasoning"),
+    instructions=PROMPT,
+    output_type=ResearchReport,
+)
+
+
+async def plan_queries(question: str) -> list[str]:
+    """Stage 1 (planner): cheap fast-model query fan-out."""
+    result = await planner_agent.run(f"Plan search queries for:\n\n{question}")
+    queries = [q.strip() for q in result.output.queries if q.strip()]
+    return queries[:8] or [question]
+
+
+async def gather_evidence(queries: list[str], max_pages: int = 8) -> list[dict]:
+    """Stage 2 (reader/verifier): no-LLM fetch + verify. Latency tail lives here."""
+    semaphore = asyncio.Semaphore(4)
+    seen_urls: set[str] = set()
+    evidence: list[dict] = []
+
+    async def _search(query: str) -> list[dict]:
+        try:
+            return await search_web(query)
+        except Exception:
+            return []
+    search_results = await asyncio.gather(*[_search(q) for q in queries[:8]])
+
+    candidates: list[str] = []
+    for results in search_results:
+        for item in results or []:
+            url = unwrap_search_url((item.get("url") or "").strip())
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                candidates.append(url)
+            if len(candidates) >= max_pages * 2:
+                break
+
+    async def _read(url: str) -> dict:
+        async with semaphore:
+            try:
+                return await read_web_page(url)
+            except Exception as exc:
+                return {"ok": False, "url": url, "text": "", "error": f"{type(exc).__name__}: {exc}"}
+
+    pages = await asyncio.gather(*[_read(url) for url in candidates[: max_pages * 2]])
+    for page in pages:
+        if page.get("ok") and (page.get("text") or "").strip():
+            evidence.append({
+                "url": page.get("url"),
+                "title": page.get("title", ""),
+                "text": (page.get("text") or "")[:6000],
+            })
+        if len(evidence) >= max_pages:
+            break
+    return evidence
 
 
 @research_agent.tool_plain
@@ -118,22 +195,47 @@ async def read_web_page(url: str) -> dict:
 
 
 async def run_research(question: str) -> ResearchReport:
+    """Orchestrates planner -> reader/verifier -> synthesizer.
+
+    Contract preserved: web evidence required, snippets are not evidence,
+    failures continue with alternatives, uncertainties go under unknowns.
+    """
+    queries = await plan_queries(question)
+    evidence = await gather_evidence(queries)
+    return await synthesize_report(question, evidence)
+
+
+async def synthesize_report(question: str, evidence: list[dict]) -> ResearchReport:
+    """Stage 3 (synthesizer): reasoning model over gathered evidence, no tools."""
+    if evidence:
+        evidence_block = "\n\n".join(
+            f"SOURCE: {item.get('url')}\nTITLE: {item.get('title', '')}\n"
+            f"{(item.get('text') or '')[:5000]}"
+            for item in evidence
+        )[:22000]
+    else:
+        evidence_block = ("No source could be read successfully. Treat every material "
+                          "claim as unverified and record the gaps under unknowns.")
     prompt = f"""
 Research this question:
 
 {question}
 
-You MUST use web_search before producing the final report.
+Evidence was already gathered by the reader stage (below). Do NOT call web tools;
+use only what each listed source supports.
+
+Gathered evidence (already read, use only what each source supports):
+
+{evidence_block}
 
 For important claims:
 
-1. Search for relevant sources.
+1. Rely on the gathered evidence block above.
 2. Prefer primary and authoritative sources.
-3. Open relevant sources with read_web_page.
-4. Only treat claims as verified when the underlying source was successfully read.
-5. Distinguish verified findings from inference.
-6. Include successfully inspected source URLs in sources.
-7. Explain what each source supports.
+3. Only treat claims as verified when the underlying source was successfully read.
+4. Distinguish verified findings from inference.
+5. Include successfully inspected source URLs in sources.
+6. Explain what each source supports.
 
 Prefer:
 
@@ -170,6 +272,11 @@ Do not proceed
 Need more research
 """
 
-    result = await research_agent.run(prompt)
+    result = await synthesis_agent.run(prompt)
 
     return result.output
+
+
+# Legacy combined agent (planner + tools + synthesis in one loop). Kept for
+# backwards compatibility; run_research() now uses the split pipeline above.
+legacy_research_agent = research_agent

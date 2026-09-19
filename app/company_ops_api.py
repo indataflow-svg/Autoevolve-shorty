@@ -5,7 +5,7 @@ from app.marketing_api import _public_asset_pack, _public_campaign, _public_manu
 from app.sales_api import doctor as sales_doctor
 from core.marketing_store import list_campaigns, list_events as list_marketing_events, list_manual_posts
 from core.sales_store import list_events as list_sales_events, list_interactions, list_leads, summary
-from core.state import get_active_project
+from core.state import get_active_org
 from pydantic import BaseModel
 
 from agents.coding_orchestrator import execute_task, apply_task
@@ -114,14 +114,14 @@ def _operations_history(campaigns: list[dict], leads: list[dict]) -> list[dict]:
 
 @router.get("/operations/overview")
 def operations_overview():
-    active_project = get_active_project()
-    project_id = active_project["id"] if active_project else None
-    campaigns = list_campaigns(limit=12, project_id=project_id)
-    manual_posts = list_manual_posts(limit=24, project_id=project_id)
-    asset_packs = list_asset_packs(project_slug=active_project["slug"], limit=24) if active_project else []
+    active_org = get_active_org()
+    org_id = active_org["id"] if active_org else None
+    campaigns = list_campaigns(limit=12, org_id=org_id)
+    manual_posts = list_manual_posts(limit=24, org_id=org_id)
+    asset_packs = list_asset_packs(project_slug=active_org["slug"], limit=24) if active_org else []
     leads = list_leads(limit=24)
     return {
-        "active_project": active_project,
+        "active_org": active_org,
         "marketing_doctor": marketing_doctor(),
         "sales_doctor": sales_doctor(),
         "marketing_campaigns": [_public_campaign(item) for item in campaigns],

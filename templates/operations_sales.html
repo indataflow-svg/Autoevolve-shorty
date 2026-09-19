@@ -53,7 +53,7 @@
           <div class="kicker">{% if sales_view == 'email' %}Outreach desk{% else %}Discovery ocean{% endif %}</div>
           <h1>{% if sales_view == 'email' %}Email agent control{% else %}Lead discovery control{% endif %}</h1>
         </div>
-        <span class="badge" id="operations-project-chip">{{ active_project.slug if active_project else 'NO PROJECT' }}</span>
+        <span class="badge" id="operations-org-chip">{{ active_org.slug if active_org else 'NO ORG' }}</span>
       </div>
       <p class="muted operations-copy">
         {% if sales_view == 'email' %}
@@ -245,6 +245,6 @@
   </section>
 </div>
 
-<script src="/static/operations.js?v=20260905-2"></script>
+<script src="/static/operations.js?v=20260910-1"></script>
 </body>
 </html>

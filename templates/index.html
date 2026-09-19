@@ -35,8 +35,8 @@
       <div class="panel-inner">
         <div class="kicker">Research cockpit</div>
 
-        {% if active_project %}
-          <h1>{{ active_project.name }}</h1>
+        {% if active_org %}
+          <h1>{{ active_org.name }}</h1>
           <div class="muted">
             Key insights, project memory, and decision framing stay here. Direct sales and marketing actions now live in Operations.
           </div>
@@ -44,10 +44,10 @@
           <div class="op-meta">
             <span class="chip">
               <span class="dot online"></span>
-              {{ active_project.status|upper }}
-            </span>
-            <span class="chip">PROJECT {{ active_project.id }}</span>
-            <span class="chip">{{ active_project.slug }}</span>
+              {{ active_org.status|upper }}
+            </div>
+            <span class="chip">ORG {{ active_org.id }}</span>
+            <span class="chip">{{ active_org.slug }}</span>
           </div>
 
           <div class="row-actions">

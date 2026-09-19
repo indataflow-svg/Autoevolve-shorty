@@ -1,7 +1,8 @@
 # Provider setup
 
 All external providers are optional. Add credentials only for the workflow you use, restart Company
-Core, and inspect `/company/sales/doctor` or `/company/marketing/doctor`.
+Core, and inspect `/company/sales/doctor` or `/company/marketing/doctor`. For exact acquisition
+steps and verify commands, start with [API Keys](keys.md).
 
 | Provider | Purpose | Configuration | Credit-sensitive action |
 | --- | --- | --- | --- |
@@ -20,7 +21,8 @@ Core, and inspect `/company/sales/doctor` or `/company/marketing/doctor`.
 
 ## Sales providers
 
-Provider keys are created in each provider's account dashboard. Put them only in `.env`. Company
+Provider keys are created in each provider's account dashboard; see [API keys](keys.md) for
+per-provider locations, plan notes, and verify commands. Put them only in `.env`. Company
 Core's company-first workflow saves search results before contact resolution, caches resolved
 contacts, and caches company profiles. Avoid `force=true` unless you intentionally want another
 billable lookup.
@@ -31,20 +33,11 @@ your account plan permits; a configured key does not guarantee access to restric
 
 ## Resend
 
-Verify your sending domain with Resend, then set:
-
-```dotenv
-SALES_RESEND_API_KEY=replace-with-your-key
-SALES_RESEND_DOMAIN=your-verified-domain.example
-SALES_FROM_NAME=Your Company
-SALES_FROM_EMAIL=sales@your-verified-domain.example
-SALES_REPLY_TO_EMAIL=sales@your-verified-domain.example
-SALES_RESEND_WEBHOOK_SECRET=replace-with-your-webhook-secret
-```
-
-The `SALES_FROM_EMAIL` domain must match a domain authorized in your Resend account. Configure the
-Resend webhook to send events to `/integrations/resend/sales` on your public Company Core URL. Keep
-automatic contact disabled until a controlled test email succeeds.
+Canonical values and webhook setup live in [API keys](keys.md#outbound-email-tier-3).
+Summary: verify your sending domain with Resend, set `SALES_RESEND_*` so that
+`SALES_FROM_EMAIL` uses the verified domain, point the webhook at
+`/integrations/resend/sales`, and keep automatic contact disabled until a
+controlled test email succeeds.
 
 ## Media providers
 
@@ -55,22 +48,10 @@ optional and uses `LORDICON_API_TOKEN`.
 
 ## Buffer and R2
 
-Run `make init`, then edit the ignored file `engines/g3/config/g3.env`:
-
-```dotenv
-BUFFER_API_KEY=replace-with-your-key
-BUFFER_ORGANIZATION_ID=replace-with-your-organization-id
-BUFFER_INSTAGRAM_CHANNEL_ID=replace-with-your-channel-id
-BUFFER_X_CHANNEL_ID=replace-with-your-channel-id
-R2_ACCOUNT_ID=replace-with-your-account-id
-R2_ACCESS_KEY_ID=replace-with-your-access-key
-R2_SECRET_ACCESS_KEY=replace-with-your-secret-key
-R2_BUCKET=company-core-social-media
-R2_PUBLIC_BASE_URL=https://media.your-domain.example
-```
-
-The R2 public URL must use HTTPS and allow anonymous reads of published media. Validate before a
-campaign:
+Canonical values live in [API keys](keys.md#media--publishing-tier-4). Summary: run `make setup`
+(or `make init` for env files only on an existing install), then edit the ignored file
+`engines/g3/config/g3.env` with per-account `BUFFER_*` and `R2_*` values. The R2 public URL must
+use HTTPS and allow anonymous reads of published media. Validate before a campaign:
 
 ```bash
 engines/g3/.venv/bin/company-core-g3 account

@@ -155,13 +155,13 @@ class MarketingWorkerContractTests(unittest.TestCase):
             try:
                 state.init_db()
                 marketing_store.init_marketing_db()
-                project = state.create_project("Example Company", "company-core")
+                project = state.create_org("Example Company", "company-core", env_prefix="BUFFER_")
                 task = state.create_task(
-                    project_id=project["id"], agent="growth", task_type="campaign",
+                    org_id=project["id"], agent="growth", task_type="campaign",
                     input_text="Create campaign",
                 )
                 campaign = marketing_store.create_campaign(
-                    project_id=project["id"], task_id=task["id"], request="Create campaign",
+                    org_id=project["id"], task_id=task["id"], request="Create campaign",
                     objective="awareness", buyer="ops_manager", topic="document handoffs",
                     social_platforms=["instagram", "x"], video_platform="shorts",
                 )
@@ -239,13 +239,13 @@ class MarketingWorkerContractTests(unittest.TestCase):
             try:
                 state.init_db()
                 marketing_store.init_marketing_db()
-                project = state.create_project("Example Company", "company-core")
+                project = state.create_org("Example Company", "company-core", env_prefix="BUFFER_")
                 task = state.create_task(
-                    project_id=project["id"], agent="growth", task_type="campaign",
+                    org_id=project["id"], agent="growth", task_type="campaign",
                     input_text="Create campaign",
                 )
                 campaign = marketing_store.create_campaign(
-                    project_id=project["id"], task_id=task["id"], request="Create campaign",
+                    org_id=project["id"], task_id=task["id"], request="Create campaign",
                     objective="awareness", buyer="ops_manager", topic="document handoffs",
                     social_platforms=["instagram", "x"], video_platform="shorts",
                     voice_mode="real_voice", voice_transcript="Line one.\n\nLine two.",
@@ -323,13 +323,13 @@ class MarketingWorkerContractTests(unittest.TestCase):
             try:
                 state.init_db()
                 marketing_store.init_marketing_db()
-                project = state.create_project("Example Company", "company-core")
+                project = state.create_org("Example Company", "company-core", env_prefix="BUFFER_")
                 task = state.create_task(
-                    project_id=project["id"], agent="growth", task_type="campaign",
+                    org_id=project["id"], agent="growth", task_type="campaign",
                     input_text="Create campaign",
                 )
                 campaign = marketing_store.create_campaign(
-                    project_id=project["id"], task_id=task["id"], request="Create campaign",
+                    org_id=project["id"], task_id=task["id"], request="Create campaign",
                     objective="awareness", buyer="ops_manager", topic="document handoffs",
                     social_platforms=["instagram", "x"], video_platform="shorts",
                     voice_mode="real_voice", voice_transcript="Line one.\n\nLine two.",

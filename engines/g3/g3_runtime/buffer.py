@@ -93,3 +93,36 @@ class BufferClient:
         if not post.get("id"):
             raise G3Error("Buffer returned a draft without an ID")
         return post
+
+    def create_scheduled(self, post_input: dict[str, Any]) -> dict[str, Any]:
+        # Scheduling boundary: drafts stay drafts, scheduled posts are explicit.
+        if post_input.get("saveToDraft") is True:
+            raise G3Error("Buffer request denied: scheduled posts must not set saveToDraft")
+        mode = post_input.get("mode")
+        if mode not in {"addToQueue", "shareNext", "customScheduled"}:
+            raise G3Error("Buffer request denied: scheduling mode must be addToQueue, shareNext, or customScheduled")
+        if mode == "customScheduled":
+            if not post_input.get("dueAt"):
+                raise G3Error("Buffer request denied: customScheduled requires dueAt")
+        elif "dueAt" in post_input:
+            raise G3Error("Buffer request denied: dueAt is only valid with customScheduled")
+        data = self._request("""
+            mutation G3SchedulePost($input: CreatePostInput!) {
+              createPost(input: $input) {
+                __typename
+                ... on PostActionSuccess { post { id text status dueAt } }
+                ... on MutationError { message }
+              }
+            }
+        """, {"input": post_input})
+        result = data.get("createPost")
+        if not isinstance(result, dict):
+            raise G3Error("Buffer returned no createPost result")
+        if result.get("__typename") != "PostActionSuccess":
+            raise G3Error(f"Buffer rejected scheduled post: {result.get('message', result)}")
+        post = result.get("post") or {}
+        if str(post.get("status", "")).lower() == "draft":
+            raise G3Error("Buffer kept the post as a draft instead of scheduling it")
+        if not post.get("id"):
+            raise G3Error("Buffer returned a scheduled post without an ID")
+        return post

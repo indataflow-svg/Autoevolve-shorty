@@ -15,10 +15,12 @@ from core.sales_store import (
 )
 from services.company_enrich import CompanyEnrichError
 from services.hunter import HunterClient
+from services.linkedin_discovery import discover_linkedin
 from services.prospeo import ProspeoError
 from services.lusha import LushaError
 from services.sales_service import (
-    build_draft, enrich_lead, import_domain, ingest_inbound_email, ingest_resend_event, maybe_auto_contact_lead,
+    build_draft, build_linkedin_draft, enrich_lead, import_domain, ingest_inbound_email, ingest_resend_event, maybe_auto_contact_lead,
+    preview_linkedin_draft,
     research_lusha_suggestions,
     research_market_leads, research_prospeo_suggestions, resolve_company_profile, resolve_contact, preview_draft, send_approved, verify_resend_webhook,
 )
@@ -494,6 +496,34 @@ async def draft_preview(lead_id: str):
 async def draft(lead_id: str):
     try:
         return await build_draft(lead_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@action_router.post("/leads/{lead_id}/discover-linkedin", dependencies=[Depends(verify_founder_action)])
+def discover_lead_linkedin(lead_id: str, provider: str = "auto", force: bool = False):
+    try:
+        return discover_linkedin(lead_id, provider=provider, force=force)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"linkedin discovery failed: {exc}") from exc
+
+
+@action_router.post("/leads/{lead_id}/linkedin-preview", dependencies=[Depends(verify_founder_action)])
+async def linkedin_draft_preview(lead_id: str, piece: str = "invite"):
+    try:
+        return await preview_linkedin_draft(lead_id, piece)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"linkedin preview failed: {exc}") from exc
+
+
+@action_router.post("/leads/{lead_id}/linkedin-draft", dependencies=[Depends(verify_founder_action)])
+async def linkedin_draft(lead_id: str, piece: str = "invite"):
+    try:
+        return await build_linkedin_draft(lead_id, piece)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 

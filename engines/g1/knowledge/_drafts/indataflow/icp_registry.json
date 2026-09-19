@@ -1,0 +1,17 @@
+{
+  "primary": [
+    {"id": "freight_md", "title": "Managing Director", "company": "Rwanda freight forwarder or customs broker", "pains": ["operational visibility", "client disputes", "accountability", "scaling without more coordination overhead"]},
+    {"id": "ops_director", "title": "Operations Director", "company": "Rwanda freight forwarder, clearing agent or logistics company", "pains": ["rebuilding cargo status from chat threads", "approval delays", "handoff failures"]},
+    {"id": "head_of_ops", "title": "Head of Operations", "company": "Import/export operator in the EAC", "pains": ["status chasing", "missing documents", "unclear milestones"]},
+    {"id": "clearing_manager", "title": "Clearing Manager", "company": "EAC clearing and forwarding operation", "pains": ["outdated PDFs", "document requirements", "duplicate entry", "approval delays"]},
+    {"id": "freight_manager", "title": "Freight Manager", "company": "Forwarder running Mombasa into Rwanda corridors", "pains": ["corridor handoffs", "client status calls", "version control"]},
+    {"id": "documentation_officer", "title": "Documentation Officer", "company": "Document-heavy logistics operation", "pains": ["B/L invoice and packing-list fragmentation", "version control", "verification workload"]}
+  ],
+  "secondary": [
+    {"id": "procurement_logistics", "title": "Procurement Logistics", "company": "Energy or infrastructure importer"},
+    {"id": "digital_transformation", "title": "Digital Transformation Lead", "company": "Logistics or trade organization"}
+  ],
+  "geography_order": ["Rwanda", "Kenya", "Tanzania", "Uganda", "broader EAC"],
+  "influence_only": ["government", "sector association", "development institution"],
+  "disqualify": ["generic SaaS buyer", "solo driver", "government as sole H1 paying customer"]
+}

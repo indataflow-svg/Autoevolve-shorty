@@ -20,7 +20,7 @@ from core.marketing_store import (
     update_campaign,
     update_variant,
 )
-from core.state import complete_task, fail_task, get_project, update_task_status
+from core.state import complete_task, fail_task, get_org, update_task_status
 from services.caption_variants import enrich_platform_copy
 
 
@@ -295,10 +295,10 @@ def _approved_media_package(campaign: dict, package: dict, root: Path) -> tuple[
 
 
 def _work_root(campaign: dict) -> Path:
-    project = get_project(int(campaign["project_id"]))
-    if not project:
-        raise RuntimeError("campaign project no longer exists")
-    root = ROOT / "projects" / project["slug"] / "marketing" / "campaigns" / campaign["id"]
+    org = get_org(int(campaign["org_id"]))
+    if not org:
+        raise RuntimeError("campaign org no longer exists")
+    root = ROOT / "projects" / org["slug"] / "marketing" / "campaigns" / campaign["id"]
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -722,6 +722,24 @@ def run_g3(campaign_id: str) -> None:
         g3_status="drafted", g3_result_json=json.dumps(output), error=None,
     )
     add_event(campaign_id, "g3.drafted", output)
+    try:
+        from core.memory import record_outcome
+        from core.state import get_org
+
+        brand = None
+        if campaign.get("org_id"):
+            org = get_org(campaign["org_id"])
+            brand = (org or {}).get("slug")
+        record_outcome(
+            brand,
+            "publish_draft",
+            f"Buffer draft: {campaign.get('topic') or campaign_id}",
+            f"objective={campaign.get('objective')} buyer={campaign.get('buyer')} "
+            f"platforms={campaign.get('social_platforms')}",
+            source_ref=f"campaign:{campaign_id}",
+        )
+    except Exception:
+        pass
 
 
 def _fail(campaign_id: str, stage: str, exc: Exception) -> None:

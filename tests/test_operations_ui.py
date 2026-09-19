@@ -25,12 +25,18 @@ class OperationsUiTests(unittest.TestCase):
         state.init_db()
         marketing_store.init_marketing_db()
         sales_store.init_sales_db()
-        self.project = state.create_project("Example Company", "company-core")
-        state.set_active_project(self.project["id"])
+        self.project = state.create_org("Example Company", "company-core", env_prefix="BUFFER_")
+        state.set_active_org(self.project["id"])
+        self.env = patch.dict(os.environ, {
+            "DASHBOARD_USER": "founder",
+            "DASHBOARD_PASSWORD": "dashboard-secret",
+        }, clear=False)
+        self.env.start()
         self.client = TestClient(app)
         self.auth = ("founder", "dashboard-secret")
 
     def tearDown(self):
+        self.env.stop()
         state.DB_PATH = self.old_state_path
         marketing_store.DB_PATH = self.old_marketing_path
         sales_store.DB_PATH = self.old_sales_path
@@ -132,9 +138,9 @@ class OperationsUiTests(unittest.TestCase):
         self.assertIn('data-sales-source-filter="popup"', response.text)
 
     def test_operations_overview_returns_unified_history(self):
-        task = state.create_task(project_id=self.project["id"], agent="growth", task_type="campaign", input_text="Create campaign")
+        task = state.create_task(org_id=self.project["id"], agent="growth", task_type="campaign", input_text="Create campaign")
         campaign = marketing_store.create_campaign(
-            project_id=self.project["id"],
+            org_id=self.project["id"],
             task_id=task["id"],
             request="Create campaign",
             objective="awareness",
@@ -152,7 +158,7 @@ class OperationsUiTests(unittest.TestCase):
                 response = self.client.get("/company/operations/overview", auth=self.auth)
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["active_project"]["slug"], "company-core")
+        self.assertEqual(body["active_org"]["slug"], "company-core")
         self.assertEqual(len(body["marketing_campaigns"]), 1)
         self.assertEqual(len(body["sales_leads"]), 1)
         domains = {item["domain"] for item in body["history"]}
@@ -178,7 +184,7 @@ class OperationsUiTests(unittest.TestCase):
         self.assertEqual(body["campaign"]["voice_mode"], "tts")
         self.assertEqual(body["campaign"]["buyer"], "logistics operators")
         spawn.assert_called_once()
-        campaigns = marketing_store.list_campaigns(limit=5, project_id=self.project["id"])
+        campaigns = marketing_store.list_campaigns(limit=5, org_id=self.project["id"])
         self.assertEqual(len(campaigns), 1)
 
     def test_manual_carousel_post_creation_and_attribution(self):
@@ -276,7 +282,8 @@ class OperationsUiTests(unittest.TestCase):
         self.assertTrue(body["ok"])
         self.assertEqual(body["post"]["buffer_status"], "drafted")
         self.assertEqual(body["post"]["workflow_status"], "buffer_draft")
-        self.assertEqual(body["result"]["results"][0]["post_id"], "buf_123")
+        default_result = body["result"].get("default", {})
+        self.assertEqual(default_result.get("results", [{}])[0].get("post_id"), "buf_123")
 
     def test_manual_video_uses_controlled_link_and_creates_buffer_handoff(self):
         project_root = Path(self.temporary.name) / "projects"

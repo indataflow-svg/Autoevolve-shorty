@@ -66,7 +66,7 @@
           <h1>Marketing campaign control</h1>
           {% endif %}
         </div>
-        <span class="badge" id="operations-project-chip">{{ active_project.slug if active_project else 'NO PROJECT' }}</span>
+        <span class="badge" id="operations-org-chip">{{ active_org.slug if active_org else 'NO ORG' }}</span>
       </div>
       <p class="muted operations-copy">
         {% if view == 'assets' %}
@@ -141,11 +141,13 @@
             </div>
             <form id="manual-post-form" class="drawer-form" enctype="multipart/form-data">
               <p class="muted">Upload a PNG carousel or one MP4 video. Company Core generates attribution, platform copy, and a controlled CTA link.</p>
+              <label><span>Org</span><select name="org_id" data-org-select><option value="">Active org</option></select></label>
               <label><span>Post type</span><select name="post_type"><option value="carousel">Carousel</option><option value="video">Video</option></select></label>
               <label><span>Platform</span><select name="platform"><option value="instagram">Instagram</option><option value="x">X</option><option value="linkedin">LinkedIn</option></select></label>
               <label><span>Destination URL</span><input name="destination_url" type="text" placeholder="forms.example.com"></label>
               <label><span>CTA label</span><input name="link_label" type="text" value="ops audit" maxlength="80"></label>
               <label><span>Media</span><input name="assets" type="file" accept="image/png,video/mp4" multiple required></label>
+              <label><span>AI title + bio</span><select name="ai_caption"><option value="auto">Generate from slides (carousel)</option><option value="off">Off — keep generated copy</option></select></label>
               <div class="row-actions"><button class="mini-action" type="submit">SAVE POST</button></div>
             </form>
           </section>
@@ -187,8 +189,22 @@
       <section class="panel queue-panel" id="manual-posts-queue">
         <div class="panel-inner">
           <div class="section-title"><div><div class="kicker">Manual social posts</div><h2>Publishing and attribution</h2></div><span class="badge" id="manual-post-count">SYNCING</span></div>
+          <div class="filter-row">
+            <button class="launcher-button subtle" type="button" data-drawer="org-creator">+ New Org</button>
+          </div>
           <div id="manual-post-list" class="campaign-list" aria-live="polite"><div class="muted">Loading manual post state…</div></div>
         </div>
+      </section>
+      <section class="drawer-card hidden" id="org-creator">
+        <div class="drawer-head">
+          <strong>New org</strong>
+          <button class="drawer-close" type="button" data-close-drawer="org-creator">×</button>
+        </div>
+        <form id="org-create-form" class="drawer-form">
+          <label><span>Org name</span><input name="name" type="text" required placeholder="Company Core"></label>
+          <label><span>Slug (optional)</span><input name="slug" type="text" placeholder="company-core"></label>
+          <div class="row-actions"><button class="mini-action" type="submit">CREATE ORG</button></div>
+        </form>
       </section>
       {% else %}
       <section class="panel queue-panel" id="marketing-queue">
@@ -223,6 +239,6 @@
   </section>
 </div>
 
-<script src="/static/operations.js?v=20260905-3"></script>
+<script src="/static/operations.js?v=20260910-1"></script>
 </body>
 </html>

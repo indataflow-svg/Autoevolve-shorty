@@ -22,6 +22,7 @@ from .storyboard import compile_storyboard
 from .mixed_video import load_asset_records, render_video
 from .platform_script import load_platform_script
 from .catalog import LocalCatalogProvider, index_approved_media
+from .pool import OwnedPoolProvider, clip_to_candidate, ingest_pool, load_pool, match_for_scene, tag_clips
 from .lordicon import LordiconProvider
 from .media_acquisition import acquire_selected_media
 from .media_intelligence import FederatedMediaSearch, build_media_search_plan, write_search_result
@@ -104,7 +105,29 @@ def main() -> int:
     media_search.add_argument("--deadline", type=float, default=15.0)
     media_search.add_argument("--limit", type=int, default=6)
     media_search.add_argument("--catalog", default="data/media_catalog.json")
+    media_search.add_argument("--pool", default="assets/owned/pool.json")
+    media_search.add_argument("--no-pool", action="store_true")
     media_search.add_argument("--images-only", action="store_true")
+    pool_ingest = sub.add_parser("pool-ingest")
+    pool_ingest.add_argument("--pool-root", default="assets/owned")
+    pool_ingest.add_argument("--pool", default="assets/owned/pool.json")
+    pool_tag = sub.add_parser("pool-tag")
+    pool_tag.add_argument("--pool", default="assets/owned/pool.json")
+    pool_tag.add_argument("--campaign")
+    pool_tag.add_argument("--force", action="store_true")
+    pool_tag.add_argument("--limit", type=int, default=25)
+    pool_search = sub.add_parser("pool-search")
+    pool_search.add_argument("query")
+    pool_search.add_argument("--pool", default="assets/owned/pool.json")
+    pool_search.add_argument("--limit", type=int, default=5)
+    pool_match = sub.add_parser("pool-match")
+    pool_match.add_argument("campaign")
+    pool_match.add_argument("--pool", default="assets/owned/pool.json")
+    pool_match.add_argument("--scene", type=int, default=0)
+    pool_match.add_argument("--duration", type=int)
+    pool_match.add_argument("--platform", choices=["youtube", "shorts", "tiktok"], default="shorts")
+    pool_match.add_argument("--platform-script")
+    pool_match.add_argument("--limit", type=int, default=3)
     acquire = sub.add_parser("acquire-media")
     acquire.add_argument("search_result")
     acquire.add_argument("--output", required=True)
@@ -156,6 +179,19 @@ def main() -> int:
         ffprobe = shutil.which("ffprobe")
         image_provider = OmniRouteImageProvider()
         try:
+            pool = load_pool("assets/owned/pool.json")
+            pool_clips = pool["clips"]
+            pool_check = {
+                "configured": True,
+                "clips": len(pool_clips),
+                "tagged": sum(1 for item in pool_clips if item.get("topics")),
+                "consented": sum(1 for item in pool_clips if item.get("consent")),
+                "required_for": "owned product-demo and face footage preferred over stock",
+            }
+        except Exception as exc:
+            pool_check = {"configured": False, "error": f"{type(exc).__name__}: {exc}",
+                          "required_for": "run pool-ingest after dropping footage in assets/owned"}
+        try:
             import kokoro  # noqa: F401
             kokoro_available = True
         except ImportError:
@@ -183,6 +219,7 @@ def main() -> int:
             "wikimedia": {"configured": True, "required_for": "open-license image and video discovery"},
             "lordicon": {"configured": bool(os.getenv("LORDICON_API_TOKEN")), "required_for": "optional free vector animation discovery"},
             "media_intelligence": {"configured": True, "policy": "deadline-bound federated retrieval"},
+            "owned_pool": pool_check,
             "omniroute_image": {"configured": image_provider.configured, "model": image_provider.model or None},
         }}
         _dump(result)
@@ -224,6 +261,57 @@ def main() -> int:
         )
         write_scene_search_result(value, args.output)
         _dump(value)
+        return 0
+    if args.command == "pool-ingest":
+        _dump(ingest_pool(args.pool_root, args.pool))
+        return 0
+    if args.command == "pool-tag":
+        claim_ids = None
+        if args.campaign:
+            claim_ids = load_campaign(args.campaign).claim_ids
+        _dump(tag_clips(args.pool, claim_ids=claim_ids, force=args.force,
+                        limit=max(1, min(args.limit, 100))))
+        return 0
+    if args.command == "pool-search":
+        provider = OwnedPoolProvider(args.pool)
+        _dump({"provider": "owned", "pool": str(args.pool), "results": [
+            item.model_dump(mode="json")
+            for item in provider.search(args.query, max(1, min(args.limit, 20)), "video")
+        ]})
+        return 0
+    if args.command == "pool-match":
+        campaign = load_campaign(args.campaign)
+        script = load_platform_script(args.platform_script, campaign.campaign_id, args.platform) if args.platform_script else None
+        storyboard = compile_storyboard(campaign, args.duration, args.platform, script)
+        search_plan = build_media_search_plan(campaign, storyboard)
+        slides = {slide.number: slide for slide in campaign.slides}
+        provider = OwnedPoolProvider(args.pool)
+        clips = provider.clips()
+        by_id = {clip.clip_id: clip for clip in clips}
+        scenes = []
+        for requirement in search_plan.requirements:
+            if args.scene and requirement.scene_number != args.scene:
+                continue
+            slide = slides[requirement.scene_number]
+            width, height = (int(value) for value in search_plan.resolution.split("x"))
+            matches = match_for_scene(
+                clips, purpose=requirement.purpose, queries=requirement.queries,
+                narration=requirement.visual_concept, goal=campaign.objective,
+                claim_ids=slide.claim_ids, duration_seconds=requirement.duration_seconds,
+                orientation="portrait" if height >= width else "landscape",
+                minimum_width=width, minimum_height=height,
+                limit=max(1, min(args.limit, 10)),
+            )
+            for match in matches:
+                found = by_id.get(match["clip_id"])
+                match["candidate"] = (
+                    clip_to_candidate(found, provider.pool_root).model_dump(mode="json")
+                    if found and match["score"] > 0 else None
+                )
+            scenes.append({"scene": requirement.scene_number, "purpose": requirement.purpose,
+                           "claim_ids": slide.claim_ids, "matches": matches})
+        _dump({"campaign_id": campaign.campaign_id, "goal": campaign.objective,
+               "pool": str(args.pool), "scenes": scenes})
         return 0
     campaign = load_campaign(args.campaign)
     if args.command == "voice-bakeoff":
@@ -288,6 +376,8 @@ def main() -> int:
                 PixabayProvider(timeout=max(2, min(int(args.deadline), 10))),
                 CoverrProvider(timeout=max(2, min(int(args.deadline), 10))),
             ]
+            if not getattr(args, "no_pool", False) and not getattr(args, "images_only", False):
+                providers.insert(0, OwnedPoolProvider(args.pool))
             if not getattr(args, "images_only", False):
                 providers.extend([
                     WikimediaProvider(timeout=max(2, min(int(args.deadline), 10))),

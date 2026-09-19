@@ -6,17 +6,19 @@ import os
 import sys
 
 from . import __version__
+from .accounts import list_accounts, load_account
 from .buffer import BufferClient
 from .errors import G3Error
 from .handoff import load_handoff
 from .ledger import Ledger
 from .r2 import R2Uploader
-from .service import submit_handoff
+from .service import SCHEDULE_MODES, submit_handoff, submit_schedule
 
 
-def client_from_env() -> BufferClient:
+def client_from_env(account_name: str | None = None) -> BufferClient:
+    account = load_account(account_name)
     return BufferClient(
-        os.environ.get("BUFFER_API_KEY", ""),
+        account.api_key,
         os.environ.get("BUFFER_API_ENDPOINT", "https://api.buffer.com"),
     )
 
@@ -24,8 +26,11 @@ def client_from_env() -> BufferClient:
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="company-core-g3")
     root.add_argument("--version", action="version", version=__version__)
+    root.add_argument("--account", default=None,
+                      help="named Buffer account from g3.env (default: the unprefixed BUFFER_* variables)")
     commands = root.add_subparsers(dest="command", required=True)
     commands.add_parser("account", help="show Buffer organizations")
+    commands.add_parser("accounts", help="list configured Buffer accounts (keys never shown)")
     channels = commands.add_parser("channels", help="list connected Buffer channels")
     channels.add_argument("--organization-id")
     doctor = commands.add_parser("doctor", help="verify Buffer, R2 configuration, and channel IDs")
@@ -38,6 +43,15 @@ def parser() -> argparse.ArgumentParser:
     draft.add_argument("--asset-root")
     draft.add_argument("--ledger", default="state/g3.sqlite3")
     draft.add_argument("--dry-run", action="store_true")
+    schedule = commands.add_parser("schedule", help="upload media to R2 and schedule Buffer posts (queue or timed)")
+    schedule.add_argument("handoff")
+    schedule.add_argument("--asset-root")
+    schedule.add_argument("--ledger", default="state/g3.sqlite3")
+    schedule.add_argument("--mode", choices=sorted(SCHEDULE_MODES), default="queue",
+                          help="queue: next queue slot, next: share next, timed: exact due-at time")
+    schedule.add_argument("--due-at", default=None,
+                          help="ISO-8601 future timestamp, required for --mode timed")
+    schedule.add_argument("--dry-run", action="store_true")
     return root
 
 
@@ -59,26 +73,33 @@ def main(argv: list[str] | None = None) -> int:
             handoff = load_handoff(args.handoff, args.asset_root)
             result = {"ok": True, "campaign_id": handoff.campaign_id,
                       "drafts": len(handoff.entries), "draft_only": True}
+        elif args.command == "accounts":
+            result = {"ok": True, "accounts": list_accounts()}
         elif args.command == "account":
-            result = client_from_env().account()
+            account = load_account(args.account)
+            result = {**client_from_env(args.account).account(), "buffer_account": account.name}
         elif args.command == "channels":
-            client = client_from_env()
-            _, organization_id = _organization(client, args.organization_id)
-            result = {"organization_id": organization_id, "channels": client.channels(organization_id)}
+            account = load_account(args.account)
+            client = client_from_env(args.account)
+            _, organization_id = _organization(client, args.organization_id or account.organization_id or None)
+            result = {"organization_id": organization_id, "buffer_account": account.name,
+                      "channels": client.channels(organization_id)}
         elif args.command == "doctor":
-            client = client_from_env()
-            account, organization_id = _organization(client, None)
+            account = load_account(args.account)
+            client = client_from_env(args.account)
+            profile, organization_id = _organization(client, account.organization_id or None)
             channels = client.channels(organization_id)
             usable = [item for item in channels if not item.get("isDisconnected") and not item.get("isLocked")]
             by_service = {str(item.get("service")): item for item in usable}
             requested_service = {"x": "twitter", "instagram": "instagram"}
             missing = [service for service in args.require if requested_service[service] not in by_service]
             configured = {
-                "x": bool(os.environ.get("BUFFER_X_CHANNEL_ID", "").strip()),
-                "instagram": bool(os.environ.get("BUFFER_INSTAGRAM_CHANNEL_ID", "").strip()),
+                "x": bool(account.x_channel_id),
+                "instagram": bool(account.instagram_channel_id),
             }
             R2Uploader()
-            result = {"ok": not missing, "account": account.get("email"),
+            result = {"ok": not missing, "account": profile.get("email"),
+                      "buffer_account": account.name,
                       "organization_id": organization_id, "usable_channels": usable,
                       "channel_ids_configured": configured, "missing": missing,
                       "r2": "configured", "draft_only": True}
@@ -86,10 +107,15 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(result, indent=2))
                 return 2
         else:
+            account = load_account(args.account)
             handoff = load_handoff(args.handoff, args.asset_root)
-            client = BufferClient("DRY_RUN") if args.dry_run else client_from_env()
+            client = BufferClient("DRY_RUN") if args.dry_run else client_from_env(args.account)
             uploader = None if args.dry_run else R2Uploader()
-            result = submit_handoff(client, uploader, Ledger(args.ledger), handoff, args.dry_run)
+            if args.command == "schedule":
+                result = submit_schedule(client, uploader, Ledger(args.ledger), handoff,
+                                         args.mode, args.due_at, args.dry_run, account)
+            else:
+                result = submit_handoff(client, uploader, Ledger(args.ledger), handoff, args.dry_run, account)
         print(json.dumps(result, indent=2))
         return 0
     except G3Error as exc:

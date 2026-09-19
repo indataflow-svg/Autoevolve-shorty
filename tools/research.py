@@ -1,6 +1,6 @@
 import httpx
 from bs4 import BeautifulSoup
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, parse_qs, urlparse, unquote
 
 
 HEADERS = {
@@ -89,7 +89,7 @@ async def search_web(
                         " ",
                         strip=True,
                     ),
-                    "url": result_url,
+                    "url": unwrap_search_url(result_url),
                     "snippet": (
                         snippet_el.get_text(
                             " ",
@@ -118,6 +118,22 @@ async def search_web(
                 ),
             }
         ]
+
+
+def unwrap_search_url(url: str) -> str:
+    """Unwrap DuckDuckGo redirect links (//duckduckgo.com/l/?uddg=<target>)."""
+    if not url:
+        return ""
+    if "duckduckgo.com/l/" not in url:
+        if url.startswith("http"):
+            return url
+        return "https:" + url if url.startswith("//") else url
+    try:
+        query = parse_qs(urlparse(url if "://" in url else "https:" + url).query)
+        target = (query.get("uddg") or [""])[0]
+        return unquote(target).strip()
+    except Exception:
+        return ""
 
 
 async def fetch_page(

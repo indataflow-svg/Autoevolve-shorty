@@ -50,6 +50,7 @@ def init_sales_db() -> None:
                 lead_score INTEGER NOT NULL DEFAULT 0,
                 stage TEXT NOT NULL DEFAULT 'new',
                 suppression_reason TEXT,
+                org_id INTEGER,
                 metadata_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -111,6 +112,13 @@ def init_sales_db() -> None:
             WHERE provider_message_id IS NOT NULL;
             """
         )
+        _migrate_sales_org_id(connection)
+
+
+def _migrate_sales_org_id(connection: sqlite3.Connection) -> None:
+    cols = {row["name"] for row in connection.execute("PRAGMA table_info(sales_leads)").fetchall()}
+    if "org_id" not in cols:
+        connection.execute("ALTER TABLE sales_leads ADD COLUMN org_id INTEGER")
 
 
 def _id(prefix: str) -> str:
@@ -180,6 +188,26 @@ def _attach_lead_relations(connection: sqlite3.Connection, lead: dict, *, drafts
     return lead
 
 
+def linkedin_url_for_lead(lead: dict | None) -> str | None:
+    lead = lead or {}
+    metadata = lead.get("metadata") if isinstance(lead.get("metadata"), dict) else {}
+    resolution = metadata.get("contact_resolution") if isinstance(metadata.get("contact_resolution"), dict) else {}
+    details = resolution.get("details") if isinstance(resolution.get("details"), dict) else {}
+    return _clean(details.get("linkedin_url"))
+
+
+def linkedin_profile_for_lead_org(lead: dict | None) -> str | None:
+    lead = lead or {}
+    org_id = lead.get("org_id")
+    if not org_id:
+        return None
+    try:
+        from core.state import linkedin_profile_for_org
+        return linkedin_profile_for_org(int(org_id))
+    except Exception:
+        return None
+
+
 def contact_profile_for_lead(lead: dict | None) -> dict[str, Any]:
     lead = lead or {}
     metadata = lead.get("metadata") if isinstance(lead.get("metadata"), dict) else {}
@@ -190,7 +218,9 @@ def contact_profile_for_lead(lead: dict | None) -> dict[str, Any]:
     verification_status = _clean(lead.get("verification_status")) or _clean((resolution.get("details") or {}).get("verification_status"))
     email_ready = bool(email)
     whatsapp_ready = bool(whatsapp_candidate)
-    ready_for_outreach = email_ready or whatsapp_ready
+    linkedin_url = linkedin_url_for_lead(lead)
+    linkedin_ready = bool(linkedin_url)
+    ready_for_outreach = email_ready or whatsapp_ready or linkedin_ready
     return {
         "provider": _clean(resolution.get("provider")),
         "status": _clean(resolution.get("status")) or ("resolved" if ready_for_outreach else "missing"),
@@ -198,10 +228,12 @@ def contact_profile_for_lead(lead: dict | None) -> dict[str, Any]:
         "email": email,
         "phone": phone,
         "whatsapp_candidate": whatsapp_candidate,
+        "linkedin_url": linkedin_url,
         "email_found": bool(email),
         "phone_found": bool(phone),
         "email_ready": email_ready,
         "whatsapp_ready": whatsapp_ready,
+        "linkedin_ready": linkedin_ready,
         "ready_for_outreach": ready_for_outreach,
         "needs_generic_fallback": not ready_for_outreach,
         "verification_status": verification_status,
@@ -544,7 +576,7 @@ def record_contact_resolution(
 def update_lead(lead_id: str, **fields: Any) -> None:
     allowed = {
         "email", "full_name", "job_title", "company", "company_domain", "phone", "country",
-        "verification_status", "hunter_score", "lead_score", "stage", "suppression_reason",
+        "verification_status", "hunter_score", "lead_score", "stage", "suppression_reason", "org_id",
     }
     unknown = set(fields) - allowed
     if unknown:
@@ -699,6 +731,19 @@ def mark_sent(draft_id: str, provider_message_id: str, metadata: dict | None = N
     interaction_metadata.setdefault("sent_at", timestamp)
     add_interaction(draft["lead_id"], "outbound", "email", "outreach", draft["subject"], draft["body"], provider_message_id, metadata=interaction_metadata)
     add_event(draft["lead_id"], "outreach.sent", {"draft_id": draft_id, "provider_message_id": provider_message_id, **interaction_metadata})
+    try:
+        from core.memory import brand_for_lead, record_outcome
+
+        lead = get_lead(draft["lead_id"])
+        record_outcome(
+            brand_for_lead(lead),
+            "send",
+            f"Sent: {(draft.get('subject') or '')[:120]}",
+            (draft.get("body") or "")[:2000],
+            source_ref=f"lead:{draft['lead_id']}",
+        )
+    except Exception:
+        pass
 
 
 def add_interaction(lead_id: str, direction: str, channel: str, kind: str, subject: str | None, body: str | None, provider_message_id: str | None = None, metadata: dict | None = None) -> bool:
@@ -717,6 +762,19 @@ def mark_replied(lead_id: str, subject: str, body: str, provider_message_id: str
     if add_interaction(lead_id, "inbound", "email", "reply", subject, body, provider_message_id, metadata=metadata):
         update_lead(lead_id, stage="replied")
         add_event(lead_id, "lead.replied", {"subject": subject})
+        try:
+            from core.memory import brand_for_lead, record_outcome
+
+            lead = get_lead(lead_id)
+            record_outcome(
+                brand_for_lead(lead),
+                "reply",
+                f"Reply: {(subject or '')[:120]}",
+                (body or "")[:2000],
+                source_ref=f"lead:{lead_id}",
+            )
+        except Exception:
+            pass
 
 
 def mark_meeting_scheduled(lead_id: str, scheduled_for: str | None = None, note: str | None = None) -> dict:

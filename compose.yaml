@@ -1,6 +1,7 @@
 services:
   company-core:
     build: .
+    # Requires .env (cp .env.example .env, then make setup or ./scripts/init_env.sh).
     env_file: .env
     ports:
       - "8787:8787"

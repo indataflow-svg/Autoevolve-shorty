@@ -1,0 +1,10 @@
+{
+  "awareness": {"label": "Book a walkthrough", "copy": "See how InDataFlow fits your operation. Book a walkthrough."},
+  "education": {"label": "Book a walkthrough", "copy": "See how InDataFlow fits your operation. Book a walkthrough."},
+  "walkthrough": {"label": "Book a walkthrough", "copy": "Book a walkthrough."},
+  "trial": {"label": "Start your 14-day trial", "copy": "Ready to use it with real cargo? Start your 14-day trial."},
+  "starter": {"label": "Start with Starter", "copy": "Starter is $250/month with volume pricing. Start your 14-day trial."},
+  "growth": {"label": "Talk about Growth", "copy": "Growth is $500/month. Book a walkthrough."},
+  "forbidden_offers": ["7-day trial", "30-day pilot"],
+  "unconfirmed_trial_claims": ["full access", "no credit card required"]
+}

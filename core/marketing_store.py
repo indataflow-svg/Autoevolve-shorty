@@ -26,7 +26,7 @@ def init_marketing_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS marketing_campaigns (
                 id TEXT PRIMARY KEY,
-                project_id INTEGER NOT NULL,
+                org_id INTEGER NOT NULL,
                 task_id INTEGER NOT NULL,
                 request TEXT NOT NULL,
                 objective TEXT NOT NULL,
@@ -53,7 +53,7 @@ def init_marketing_db() -> None:
                 error TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                FOREIGN KEY(project_id) REFERENCES projects(id),
+                FOREIGN KEY(org_id) REFERENCES buffer_orgs(id),
                 FOREIGN KEY(task_id) REFERENCES tasks(id)
             );
 
@@ -85,7 +85,7 @@ def init_marketing_db() -> None:
 
             CREATE TABLE IF NOT EXISTS marketing_manual_posts (
                 id TEXT PRIMARY KEY,
-                project_id INTEGER NOT NULL,
+                org_id INTEGER NOT NULL,
                 campaign_id TEXT,
                 platform TEXT NOT NULL,
                 post_id TEXT NOT NULL UNIQUE,
@@ -102,27 +102,66 @@ def init_marketing_db() -> None:
                 metadata_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                FOREIGN KEY(project_id) REFERENCES projects(id),
+                FOREIGN KEY(org_id) REFERENCES buffer_orgs(id),
                 FOREIGN KEY(campaign_id) REFERENCES marketing_campaigns(id)
             );
             """
         )
-        columns = {
-            row["name"]
-            for row in connection.execute("PRAGMA table_info(marketing_campaigns)").fetchall()
-        }
-        if "g1_approved_at" not in columns:
-            connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN g1_approved_at TEXT")
-        if "g1_revision_instruction" not in columns:
-            connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN g1_revision_instruction TEXT")
-        if "voice_mode" not in columns:
-            connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN voice_mode TEXT NOT NULL DEFAULT 'tts'")
-        if "voice_transcript" not in columns:
-            connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN voice_transcript TEXT")
-        if "voice_handoff_path" not in columns:
-            connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN voice_handoff_path TEXT")
-        if "voice_recording_path" not in columns:
-            connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN voice_recording_path TEXT")
+        _migrate_project_id_to_org_id(connection)
+
+
+def _fix_stale_fks(connection: sqlite3.Connection) -> None:
+    for table_name in ("marketing_campaigns", "marketing_manual_posts"):
+        sql_row = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table_name,)
+        ).fetchone()
+        if not sql_row or not sql_row[0]:
+            continue
+        create_sql = sql_row[0]
+        needs_rebuild = "REFERENCES projects" in create_sql or "project_id INTEGER NOT NULL" in create_sql
+        if not needs_rebuild:
+            continue
+        rows = connection.execute(f"SELECT * FROM {table_name}").fetchall()
+        columns = [desc[1] for desc in connection.execute(f"PRAGMA table_info({table_name})").fetchall()]
+        connection.execute(f"DROP TABLE {table_name}")
+        new_sql = create_sql
+        new_sql = new_sql.replace("REFERENCES projects(id)", "REFERENCES buffer_orgs(id)")
+        new_sql = new_sql.replace("project_id INTEGER NOT NULL", "project_id INTEGER")
+        connection.execute(new_sql)
+        if rows:
+            placeholders = ", ".join("?" for _ in columns)
+            col_names = ", ".join(columns)
+            for row in rows:
+                connection.execute(
+                    f"INSERT INTO {table_name} ({col_names}) VALUES ({placeholders})",
+                    tuple(row[c] for c in columns),
+                )
+
+
+def _migrate_project_id_to_org_id(connection: sqlite3.Connection) -> None:
+    _fix_stale_fks(connection)
+
+    campaigns_cols = {row["name"] for row in connection.execute("PRAGMA table_info(marketing_campaigns)").fetchall()}
+    if "project_id" in campaigns_cols and "org_id" not in campaigns_cols:
+        connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN org_id INTEGER NOT NULL DEFAULT 0")
+        connection.execute("UPDATE marketing_campaigns SET org_id = 0 WHERE org_id = 0")
+
+    posts_cols = {row["name"] for row in connection.execute("PRAGMA table_info(marketing_manual_posts)").fetchall()}
+    if "project_id" in posts_cols and "org_id" not in posts_cols:
+        connection.execute("ALTER TABLE marketing_manual_posts ADD COLUMN org_id INTEGER NOT NULL DEFAULT 0")
+
+    if "g1_approved_at" not in campaigns_cols:
+        connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN g1_approved_at TEXT")
+    if "g1_revision_instruction" not in campaigns_cols:
+        connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN g1_revision_instruction TEXT")
+    if "voice_mode" not in campaigns_cols:
+        connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN voice_mode TEXT NOT NULL DEFAULT 'tts'")
+    if "voice_transcript" not in campaigns_cols:
+        connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN voice_transcript TEXT")
+    if "voice_handoff_path" not in campaigns_cols:
+        connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN voice_handoff_path TEXT")
+    if "voice_recording_path" not in campaigns_cols:
+        connection.execute("ALTER TABLE marketing_campaigns ADD COLUMN voice_recording_path TEXT")
 
 
 def _id(prefix: str) -> str:
@@ -155,7 +194,7 @@ def _decode_manual_post(row: sqlite3.Row | None) -> dict | None:
 
 def create_campaign(
     *,
-    project_id: int,
+    org_id: int,
     task_id: int,
     request: str,
     objective: str,
@@ -172,13 +211,13 @@ def create_campaign(
         connection.execute(
             """
             INSERT INTO marketing_campaigns (
-                id, project_id, task_id, request, objective, buyer, topic,
+                id, org_id, task_id, request, objective, buyer, topic,
                 social_platforms_json, video_platform, voice_mode, voice_transcript, status, current_stage,
                 created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 'growth_intake', ?, ?)
             """,
             (
-                campaign_id, project_id, task_id, request, objective, buyer, topic,
+                campaign_id, org_id, task_id, request, objective, buyer, topic,
                 json.dumps(social_platforms), video_platform, voice_mode, _clean(voice_transcript), timestamp, timestamp,
             ),
         )
@@ -221,12 +260,12 @@ def get_campaign(campaign_id: str, *, include_variants: bool = True) -> dict | N
         return value
 
 
-def list_campaigns(limit: int = 20, project_id: int | None = None) -> list[dict]:
+def list_campaigns(limit: int = 20, org_id: int | None = None) -> list[dict]:
     query = "SELECT * FROM marketing_campaigns"
     parameters: list[Any] = []
-    if project_id is not None:
-        query += " WHERE project_id = ?"
-        parameters.append(project_id)
+    if org_id is not None:
+        query += " WHERE org_id = ?"
+        parameters.append(org_id)
     query += " ORDER BY created_at DESC LIMIT ?"
     parameters.append(max(1, min(limit, 100)))
     with connect() as connection:
@@ -328,7 +367,7 @@ init_marketing_db()
 
 def create_manual_post(
     *,
-    project_id: int,
+    org_id: int,
     platform: str,
     post_id: str,
     destination_url: str,
@@ -350,12 +389,12 @@ def create_manual_post(
         connection.execute(
             """
             INSERT INTO marketing_manual_posts (
-                id, project_id, campaign_id, platform, post_id, title, creative, hook, offer, cta,
+                id, org_id, campaign_id, platform, post_id, title, creative, hook, offer, cta,
                 destination_url, tracked_url, source_detail, asset_dir, assets_json, metadata_json, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                manual_id, project_id, _clean(campaign_id), platform, post_id, _clean(title), _clean(creative), _clean(hook), _clean(offer), _clean(cta),
+                manual_id, org_id, _clean(campaign_id), platform, post_id, _clean(title), _clean(creative), _clean(hook), _clean(offer), _clean(cta),
                 destination_url, tracked_url, _clean(source_detail), _clean(asset_dir),
                 json.dumps(assets or [], ensure_ascii=False), json.dumps(metadata or {}, ensure_ascii=False), timestamp, timestamp,
             ),
@@ -372,12 +411,12 @@ def get_manual_post(post_record_id: str) -> dict | None:
     return _decode_manual_post(row)
 
 
-def list_manual_posts(limit: int = 50, project_id: int | None = None) -> list[dict]:
+def list_manual_posts(limit: int = 50, org_id: int | None = None) -> list[dict]:
     query = "SELECT * FROM marketing_manual_posts"
     params: list[Any] = []
-    if project_id is not None:
-        query += " WHERE project_id = ?"
-        params.append(project_id)
+    if org_id is not None:
+        query += " WHERE org_id = ?"
+        params.append(org_id)
     query += " ORDER BY created_at DESC LIMIT ?"
     params.append(max(1, min(limit, 200)))
     with connect() as connection:
@@ -387,7 +426,7 @@ def list_manual_posts(limit: int = 50, project_id: int | None = None) -> list[di
 
 def update_manual_post(post_record_id: str, **fields: Any) -> dict:
     allowed = {
-        "campaign_id", "platform", "post_id", "title", "creative", "hook", "offer", "cta",
+        "campaign_id", "org_id", "platform", "post_id", "title", "creative", "hook", "offer", "cta",
         "destination_url", "tracked_url", "source_detail", "asset_dir", "assets_json", "metadata_json",
     }
     unknown = set(fields) - allowed

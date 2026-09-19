@@ -16,11 +16,12 @@ curl http://localhost:8787/company/marketing/doctor -u "$DASHBOARD_USER:$DASHBOA
 | `401` | Missing dashboard/action/webhook secret | Check the required header and matching `.env` value |
 | `403` from provider | Plan restriction, blocked request, or unverified domain | Read the provider response; verify account access instead of retrying repeatedly |
 | `409` | Action does not match the current lifecycle state | Complete the preceding review, approval, or selection step |
-| `422` | Payload validation failed | Compare field names and types with `/docs` and `docs/lead-intake.md` |
+| `422` | Payload validation failed | Compare field names and types with `/docs` and `lead-intake.md` |
 | `502` | Upstream provider or model gateway failed | Read the nested method, URL, status, and body; test that provider directly |
 | Cloudflare `524` | A synchronous operation exceeded proxy timeout | Confirm background workers are used and inspect origin logs |
 | Empty search results | Filters are too narrow or provider has no match | Broaden industry/location once; do not repeatedly force the same lookup |
-| Model connection failure | Wrong base URL, key, alias, or router is stopped | Query `/v1/models`; use real model IDs with Ollama |
+| Model connection failure | Wrong base URL, key, alias, or router is stopped | Query `/v1/models`; use real model IDs with Ollama; see `keys.md` |
+| `openai.OpenAIError: Missing credentials` at startup | Empty `OMNIROUTE_API_KEY` on an old install | Update to a build with the `not-configured` fallback in `core/models.py`, or set any non-empty `OMNIROUTE_API_KEY`; dashboard starts keyless, AI actions fail only when invoked |
 | Media doctor unavailable | G1/G2/G3 environment was not installed | Run `make setup-engines` |
 | Showcase/outro unavailable | Placeholder paths were not replaced | Point both variables to owned files that exist locally |
 | FFmpeg error | FFmpeg is absent or source media is invalid | Run `ffmpeg -version` and validate the input file |

@@ -40,7 +40,7 @@
           <div class="kicker">Action ocean</div>
           <h1>Agent operations</h1>
         </div>
-        <span class="badge" id="operations-project-chip">{{ active_project.slug if active_project else 'NO PROJECT' }}</span>
+        <span class="badge" id="operations-org-chip">{{ active_org.slug if active_org else 'NO ORG' }}</span>
       </div>
       <p class="muted operations-copy">
         Launch new marketing campaigns, intake and qualify leads, review queue state, and audit everything from one control plane.
@@ -62,6 +62,59 @@
       </div>
 
       <div class="operations-flash muted" id="operations-flash">No action running.</div>
+    </div>
+  </section>
+
+  <section class="panel setup-panel" id="setup">
+    <div class="panel-inner">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Account setup</div>
+          <h2>Setup wizard</h2>
+        </div>
+        <span class="badge" id="setup-step-badge">STEP 1/4</span>
+      </div>
+      <p class="muted">Add your first company, choose capabilities, connect provider keys, then verify. Keys are validated before saving; values are never displayed back.</p>
+      <div class="operations-grid setup-grid">
+        <article class="drawer-card" id="setup-company-card">
+          <div class="drawer-head"><strong>1 · Company</strong></div>
+          <form id="setup-company-form" class="drawer-form">
+            <label><span>Company name</span><input name="name" type="text" placeholder="InDataFlow" required></label>
+            <label><span>Website domain</span><input name="domain" type="text" placeholder="indataflow.com" required></label>
+            <label><span>Brand slug</span><input name="slug" type="text" placeholder="indataflow"></label>
+            <div class="row-actions"><button class="mini-action" type="submit">SAVE COMPANY</button></div>
+          </form>
+        </article>
+        <article class="drawer-card" id="setup-capabilities-card">
+          <div class="drawer-head"><strong>2 · Capabilities</strong></div>
+          <form id="setup-capabilities-form" class="drawer-form">
+            <fieldset class="check-grid">
+              <label><input type="checkbox" name="capability" value="sales_prospecting" checked> Sales prospecting</label>
+              <label><input type="checkbox" name="capability" value="ai_drafts" checked> AI drafts + approval</label>
+              <label><input type="checkbox" name="capability" value="marketing_campaigns" checked> Marketing campaigns</label>
+              <label><input type="checkbox" name="capability" value="buffer_publishing" checked> Buffer publishing</label>
+              <label><input type="checkbox" name="capability" value="inbound_intake" checked> Inbound / Tally intake</label>
+              <label><input type="checkbox" name="capability" value="coding"> Coding agent</label>
+              <label><input type="checkbox" name="capability" value="monitoring"> Monitoring</label>
+            </fieldset>
+            <div class="row-actions"><button class="mini-action" type="submit">SAVE CAPABILITIES</button></div>
+          </form>
+        </article>
+        <article class="drawer-card" id="setup-keys-card">
+          <div class="drawer-head"><strong>3 · Provider keys</strong></div>
+          <div class="muted">Needs the founder sales action token (paste it in the hero bar above, SAVE TOKEN).</div>
+          <div id="setup-keys-groups"><div class="muted">Loading provider status…</div></div>
+          <div class="row-actions">
+            <a class="mini-action secondary" href="/docs" target="_blank" rel="noopener">API DOCS</a>
+          </div>
+        </article>
+        <article class="drawer-card" id="setup-verify-card">
+          <div class="drawer-head"><strong>4 · Verify</strong></div>
+          <div class="muted" id="setup-verify-status">Not verified yet.</div>
+          <div class="row-actions"><button class="mini-action" type="button" id="setup-verify-btn">RUN CHECKS</button></div>
+        </article>
+      </div>
+      <div class="operations-flash muted" id="setup-flash">Setup has not started.</div>
     </div>
   </section>
 
@@ -109,6 +162,7 @@
             </div>
             <form id="manual-post-form" class="drawer-form" enctype="multipart/form-data">
               <p class="muted">Upload a PNG carousel or one MP4 video. Company Core generates attribution, platform copy, and a controlled CTA link.</p>
+              <label><span>Org</span><select name="org_id" data-org-select><option value="">Active org</option></select></label>
               <label><span>Post type</span>
                 <select name="post_type">
                   <option value="carousel">Carousel</option>
@@ -125,6 +179,12 @@
               <label><span>Destination URL</span><input name="destination_url" type="text" placeholder="forms.example.com"></label>
               <label><span>CTA label</span><input name="link_label" type="text" value="ops audit" maxlength="80"></label>
               <label><span>Media</span><input name="assets" type="file" accept="image/png,video/mp4" multiple required></label>
+              <label><span>AI title + bio</span>
+                <select name="ai_caption">
+                  <option value="auto">Generate from slides (carousel)</option>
+                  <option value="off">Off — keep generated copy</option>
+                </select>
+              </label>
               <div class="row-actions">
                 <button class="mini-action" type="submit">SAVE POST</button>
               </div>
@@ -302,6 +362,146 @@
   </section>
 </div>
 
-<script src="/static/operations.js"></script>
+<script src="/static/operations.js?v=20260910-1"></script>
+<script>
+(function setupWizard() {
+  var companyForm = document.getElementById("setup-company-form");
+  var capsForm = document.getElementById("setup-capabilities-form");
+  var flash = document.getElementById("setup-flash");
+  var badge = document.getElementById("setup-step-badge");
+  var keysStatus = document.getElementById("setup-keys-status");
+  var verifyStatus = document.getElementById("setup-verify-status");
+  var verifyBtn = document.getElementById("setup-verify-btn");
+  if (!companyForm || !capsForm) return;
+  var orgId = null;
+  function say(msg) { if (flash) flash.textContent = msg; }
+  function step(n) { if (badge) badge.textContent = "STEP " + n + "/4"; }
+  companyForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var data = new FormData(companyForm);
+    fetch("/company/marketing/orgs", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        name: data.get("name") || "",
+        slug: data.get("slug") || "",
+        domain: data.get("domain") || ""
+      })
+    }).then(function (r) { return r.json().then(function (b) { return {ok: r.ok, body: b}; }); })
+    .then(function (res) {
+      if (!res.ok) throw new Error(res.body.detail || "Company save failed");
+      orgId = res.body.org.id;
+      return fetch("/company/marketing/orgs/active", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({org_id: orgId})
+      }).then(function () {
+        say("Company saved: " + res.body.org.slug + ". Choose capabilities next.");
+        step(2);
+      });
+    }).catch(function (err) { say(String(err.message || err)); });
+  });
+  capsForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    if (!orgId) { say("Save the company card first."); return; }
+    var caps = {};
+    capsForm.querySelectorAll("input[name=capability]").forEach(function (box) { caps[box.value] = box.checked; });
+    fetch("/company/marketing/orgs/" + orgId + "/capabilities", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({capabilities: caps})
+    }).then(function (r) { return r.json().then(function (b) { return {ok: r.ok, body: b}; }); })
+    .then(function (res) {
+      if (!res.ok) throw new Error(res.body.detail || "Capabilities save failed");
+      say("Capabilities saved. Connect provider keys next.");
+      step(3);
+    }).catch(function (err) { say(String(err.message || err)); });
+  });
+  var keysGroups = document.getElementById("setup-keys-groups");
+  function founderHeaders(extra) {
+    var h = extra || {};
+    h["Content-Type"] = "application/json";
+    var t = window.localStorage.getItem("company-sales-action-token") || "";
+    if (t) h["X-Founder-Action-Token"] = t;
+    return h;
+  }
+  function refresh() {
+    fetch("/company/operations/overview").then(function (r) { return r.json(); }).then(function (data) {
+      if (verifyStatus) verifyStatus.textContent = "Sales ok: " + !!(data && data.sales_doctor && data.sales_doctor.ok) + " · Marketing ok: " + !!(data && data.marketing_doctor && data.marketing_doctor.ok);
+    }).catch(function () {});
+    fetch("/company/setup/providers").then(function (r) { return r.json(); }).then(function (data) {
+      if (!keysGroups) return;
+      keysGroups.innerHTML = "";
+      (data.groups || []).forEach(function (g) {
+        var wrap = document.createElement("details");
+        wrap.className = "setup-key-group";
+        var sum = document.createElement("summary");
+        sum.textContent = g.label + " — " + g.configured.length + " set, " + g.missing.length + " missing";
+        wrap.appendChild(sum);
+        var missing = document.createElement("div");
+        missing.className = "muted";
+        missing.textContent = g.missing.length ? ("Missing: " + g.missing.join(", ")) : "All known keys present.";
+        wrap.appendChild(missing);
+        var form = document.createElement("div");
+        form.className = "drawer-form";
+        var inputs = {};
+        g.missing.concat(g.configured).forEach(function (key) {
+          var label = document.createElement("label");
+          var span = document.createElement("span");
+          span.textContent = key;
+          var input = document.createElement("input");
+          input.type = "password";
+          input.placeholder = g.configured.indexOf(key) >= 0 ? "(configured — leave blank to keep)" : "paste value";
+          input.autocomplete = "off";
+          label.appendChild(span);
+          label.appendChild(input);
+          form.appendChild(label);
+          inputs[key] = input;
+        });
+        var row = document.createElement("div");
+        row.className = "row-actions";
+        var testBtn = document.createElement("button");
+        testBtn.className = "mini-action secondary";
+        testBtn.type = "button";
+        testBtn.textContent = "TEST";
+        var saveBtn = document.createElement("button");
+        saveBtn.className = "mini-action";
+        saveBtn.type = "button";
+        saveBtn.textContent = "SAVE";
+        function collect() {
+          var vals = {};
+          Object.keys(inputs).forEach(function (k) { if (inputs[k].value) vals[k] = inputs[k].value; });
+          return vals;
+        }
+        testBtn.addEventListener("click", function () {
+          fetch("/company/setup/keys/test", {
+            method: "POST", headers: founderHeaders(),
+            body: JSON.stringify({group: g.id, values: collect()})
+          }).then(function (r) { return r.json().then(function (b) { return {ok: r.ok, body: b}; }); })
+          .then(function (res) { say(res.ok ? (g.label + ": test passed.") : (g.label + " test: " + JSON.stringify(res.body.detail || res.body))); })
+          .catch(function (err) { say(String(err.message || err)); });
+        });
+        saveBtn.addEventListener("click", function () {
+          fetch("/company/setup/keys", {
+            method: "POST", headers: founderHeaders(),
+            body: JSON.stringify({group: g.id, values: collect()})
+          }).then(function (r) { return r.json().then(function (b) { return {ok: r.ok, body: b}; }); })
+          .then(function (res) {
+            if (!res.ok) throw new Error(JSON.stringify(res.body.detail || res.body));
+            say(g.label + ": saved (" + res.body.saved.join(", ") + "). Restart required for gateway changes.");
+            Object.keys(inputs).forEach(function (k) { inputs[k].value = ""; });
+            refresh();
+          }).catch(function (err) { say(String(err.message || err)); });
+        });
+        row.appendChild(testBtn);
+        row.appendChild(saveBtn);
+        form.appendChild(row);
+        wrap.appendChild(form);
+        keysGroups.appendChild(wrap);
+      });
+    }).catch(function () { if (keysGroups) keysGroups.innerHTML = "<div class='muted'>Status unavailable.</div>"; });
+  }
+  if (verifyBtn) verifyBtn.addEventListener("click", function () { refresh(); step(4); say("Checks refreshed."); });
+  refresh();
+})();
+</script>
 </body>
 </html>
