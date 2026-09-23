@@ -3,7 +3,7 @@ PYTHON ?= python3
 VPY := $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo $(PYTHON); fi)
 ARCHIVE ?=
 
-.PHONY: setup setup-core setup-engines init doctor dev test lint check email-worker-install backup restore verify-backup
+.PHONY: setup setup-core setup-engines init doctor dev test lint check smoke email-worker-install backup restore verify-backup
 
 setup: setup-core setup-engines init doctor
 
@@ -32,6 +32,9 @@ lint:
 	.venv/bin/python -m ruff check app core services agents tools tests
 
 check: lint test doctor
+
+smoke:
+	$(VPY) scripts/smoke_actions.py
 
 backup:
 	./scripts/backup.sh

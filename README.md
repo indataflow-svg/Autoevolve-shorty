@@ -246,6 +246,7 @@ docs/assets/                    GitHub product illustrations
 make test
 make lint
 make check
+make smoke   # HTTP smoke suite against a live server (auto-starts one)
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and the MIT [LICENSE](LICENSE).

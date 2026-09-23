@@ -9,6 +9,29 @@ curl http://localhost:8787/company/sales/doctor -u "$DASHBOARD_USER:$DASHBOARD_P
 curl http://localhost:8787/company/marketing/doctor -u "$DASHBOARD_USER:$DASHBOARD_PASSWORD"
 ```
 
+## Smoke-test a change
+
+After touching routes, action gates, or send handling, run the HTTP smoke suite. It uses the server at `http://127.0.0.1:8787` if one is running and starts a temporary uvicorn child otherwise (killed on exit):
+
+```bash
+make smoke
+.venv/bin/python scripts/smoke_actions.py --only gate            # one block only
+.venv/bin/python scripts/smoke_actions.py --report logs/smoke-report.md
+```
+
+What one run proves, over real HTTP:
+
+- `health` / `auth-required` — the server answers and dashboard routes demand Basic auth (`401`).
+- `gate-no-token:*` — all `P0-2` gated routes return `403` without `X-Founder-Action-Token`.
+- `gate-with-token:*` — with the token the gate falls through: `setup/step` re-writes the current value (state unchanged), the six marketing routes `404` on dummy ids before any side effect.
+- `reconcile-*` — the `P0-1` `send_unknown` flow: seeded draft appears in `GET reconcile`, token gate `403`, `delivered=false` re-parks it as `approved`, `delivered=true` marks it `sent` with the provider message id.
+- `resume-park-*` — a draft stranded *outside* the Resend idempotency window gets `409` with the window message and parks; it never reaches the provider.
+- `backup-roundtrip` — the `P0-4` `backup.sh → verify_backup.py → restore.sh --verify` round trip exits `0`.
+- `webhook-budget-separate` / `intake-burst-429` / `sign-in-burst-429` — the `P0-3` limiter buckets are separate; bursts end in `429` with `Retry-After`, invalid intake bodies create no leads, and a valid sign-in still works after the failure burst. These run last because they fill the `RATE_LIMIT_*` buckets for up to a minute.
+- `startup-reconcile*` — a stranded in-window draft is released at boot. Skipped when the server was already running (no startup log) or when `SALES_RESEND_API_KEY` is set (the child is then spawned with `SALES_SEND_RECONCILE_ON_STARTUP=false` so a restart can never fire a real email).
+
+Seeded rows use `smoke-<tag>@example.com` and are deleted at the end; a run never sends email. Exit code is `0` unless a check `FAIL`s (`WARN`/`SKIP` are allowed). Unit-level detail (SQLite connection reuse, idempotency-key bytes, limiter internals) stays in `make test`.
+
 ## Common failures
 
 | Symptom | Likely cause | Action |
