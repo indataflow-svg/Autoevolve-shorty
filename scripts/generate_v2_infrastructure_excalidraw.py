@@ -233,8 +233,9 @@ y2 = lane(
 
         [(440, ["Sales service",
                 "Intake upsert with attribution passthrough, cached company and contact resolution, enrichment, qualification, model-backed editable draft, human edit then "
-                "approve then send, Resend delivery and reply ingest, meeting, suppression. NEW follow-up state: next_follow_up_at and follow_up_count, cleared by reply, "
-                "bounce, meeting or suppression."],
+                "approve then send, Resend delivery and reply ingest, meeting, suppression. Idempotency key cc-draft + draft id; ambiguous sends past the provider's 24 h "
+                "window park in send_unknown for operator reconciliation. NEW follow-up state: next_follow_up_at and follow_up_count, cleared by reply, bounce, meeting "
+                "or suppression."],
           {"key": "sales"}),
          (440, ["Marketing orchestration",
                 "Campaign and manual-post APIs, per-org capabilities and accounts, G1 content package and claim validation, G2 asset search, voice and FFmpeg render, "
@@ -245,9 +246,10 @@ y2 = lane(
                 "Access model: private operator routes; production guidance adds IAP or reverse proxy, TLS, service-account file permissions and log rotation or disk limits."],
           {"key": "ops"})],
 
-        [(760, ["NEW scheduler service - jobs table, advisory-only batches",
+        [(760, ["NEW scheduler service - jobs and job_runs tables, advisory-only batches",
                 "Deep research, scoring, enrichment batches for qualified accounts only, draft generation, follow-up generation, daily priority-card build, provider health "
-                "via check_all, cost digest. Jobs may write drafts, tasks and suggestions - they never send, publish, execute LinkedIn actions or change suppression state."],
+                "via check_all, cost digest, with one job_runs row per execution. Jobs may write drafts, tasks and suggestions - they never send, publish, execute LinkedIn "
+                "actions or change suppression state."],
           {"key": "sched", "bg": GREEN_BG, "stroke": GREEN_STROKE}),
          (370, ["NEW priority card: GET /company/operations/priority",
                 "TODAY: drafts awaiting approval, follow-ups due, LinkedIn actions suggested, positive replies, meeting requests, campaigns in review, critical incidents. "
@@ -289,7 +291,8 @@ y4 = lane(
           {"key": "prog", "bg": GREEN_BG, "stroke": GREEN_STROKE}),
          (370, ["SQLite data/company.db - one writer",
                 "Leads, companies, contacts, enrichment, drafts, delivery and reply events, suppression, campaigns, posts, assets, attribution, tasks, orgs, settings and "
-                "history. V2 columns: program_id, next_follow_up_at, follow_up_count, last_outbound_at."],
+                "history. V2 columns: program_id, next_follow_up_at, follow_up_count, last_outbound_at. Every connection path uses WAL, foreign_keys=ON and "
+                "busy_timeout=30s (P0-5) so the scheduler can write safely."],
           {"key": "db"}),
          (350, ["SQLite data/company_ops.db",
                 "Coding tasks and incidents with evidence and resolution JSON."],
@@ -313,7 +316,7 @@ y4 = lane(
           {"key": "knowledge"}),
          (290, ["STOP - backup and restore",
                 "Back up with scripts/backup.sh using sqlite3 .backup, never cp a live database. Restore only with scripts/restore.sh --verify. A suppressed lead cannot "
-                "move on any path, including scheduler jobs."],
+                "move on any path, including scheduler jobs. Never auto-retry a send older than the provider's 24 h idempotency window."],
           {"key": "stop", "bg": RED_BG, "stroke": RED_STROKE})],
     ],
 )

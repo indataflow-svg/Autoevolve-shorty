@@ -45,10 +45,11 @@ require no change.
 
 | Priority | Gap | Direction reference |
 | --- | --- | --- |
-| P0 | Send idempotency key is random per attempt; crash strands drafts in `sending` | Doc 12 Day 1, DoD |
+| P0 | Send idempotency key is random per attempt; recovery must split Resend's two 409 cases and respect its 24 h key window | Doc 12 Day 1, DoD |
 | P0 | Action-gate holes: setup step write, coding/apply, monitor run, marketing approvals | Excalidraw gates 2 and 7, doc 3.3 |
 | P0 | No rate limiting on public intake and webhook routes | Excalidraw public-entry limits, production checklist |
 | P0 | Backup/restore documented only; live SQLite copied with `cp` | Doc 12 Day 1, DoD |
+| P0 | SQLite connections configured inconsistently; the scheduler becomes a second writer | Doc 3, DoD |
 | P1 | No programs/ICP model for AutoEvolve and Foundry | Doc 6, 12 Day 2, DoD |
 | P1 | No scheduler: no research, scoring, enrichment, follow-up or digest batches | Doc 4 |
 | P1 | No follow-up state machine or due-today follow-ups | Doc 5.1, 9 |
@@ -56,12 +57,18 @@ require no change.
 | P1 | No reply/meeting notifications | Doc 12 Day 2 |
 | P1 | No provider cost accounting or unit economics | Doc 7 step 10, 10, DoD |
 | P1 | LinkedIn drafts exist, no action queue or execution policy | Doc 8 |
-| P1 | Media worker is a local subprocess, cannot move to its own node | Doc 3.2 |
+| P1 | Media worker is a local subprocess, cannot move to its own node (deferred until contention) | Doc 3.2 |
 | P2 | Compose has no healthcheck, log rotation or init | Doc 3.1 |
 | P2 | Doctor does not check webhook secrets | Doc 3.3 |
 | P2 | `.env.example` lacks scheduler, worker, notification, program keys | Doc 4, 6 |
 | P2 | Doc 15 lists artifacts that are missing or misnamed in the repository | Doc 15 |
 | P2 | Non-goals not written down, so future changes can drift | Doc 14 |
+
+Review status: the V2 architecture is validated as written - no redesign. Two corrections are
+folded into the plan below: P0-1 now uses Resend's real 409 semantics and 24 h key window, and
+P0-5 normalizes every SQLite connection before the scheduler becomes a second writer. Two smaller
+review points are included: `job_runs` execution history in P1-2, and explicit deferral of the
+remote media worker (P1-9).
 
 ## 3. Target architecture
 
@@ -83,7 +90,7 @@ flowchart TB
     SALES["Sales service<br/>intake upsert, resolve, enrich, draft, approve, send,<br/>reply ingest, follow-up, suppression, meeting"]
     MKT["Marketing orchestration<br/>G1 package, G2 media, G3 draft-only handoff, attribution"]
     OPS["Operations, coding, monitoring<br/>task queue, incidents, unified queues, history"]
-    SCH["NEW scheduler service<br/>jobs table, advisory-only batches"]
+    SCH["NEW scheduler service<br/>jobs + job_runs tables, advisory-only batches"]
     PRIORITY["NEW priority card endpoint<br/>TODAY / YESTERDAY aggregates"]
     NOTIFY["NEW notifier<br/>replies, meetings, incidents, daily digest"]
   end
@@ -93,7 +100,7 @@ flowchart TB
   end
 
   subgraph DATA["Private persistence: mounted volumes"]
-    DB1[("data/company.db<br/>leads, drafts, events, campaigns, tasks, orgs, settings")]
+    DB1[("data/company.db<br/>leads, drafts, events, campaigns, tasks, orgs, settings<br/>WAL + busy_timeout on every connection path")]
     DB2[("data/company_ops.db<br/>coding tasks, incidents")]
     DB3[("NEW provider_calls: provider, operation, lead, program, cost")]
     PROJ["projects/: G1 package, G2 assets and renders, G3 handoff"]
@@ -143,8 +150,12 @@ stateDiagram-v2
   qualified --> enriched: company profile, then one contact
   enriched --> draft_ready: model draft, advisory only
   draft_ready --> approved: human edit, then approve
-  approved --> sending: send action, idempotency key cc-draft-id
-  sending --> sent: provider accepted, follow-up scheduled
+  approved --> sending: send action, stable key cc-draft + draft id
+  sending --> sent: provider accepted, message id stored, follow-up scheduled
+  sending --> sending: 409 concurrent_idempotent_requests, retry later, same key
+  sending --> send_unknown: attempt older than the 24 h idempotency window
+  send_unknown --> sent: operator confirms the provider delivered it
+  send_unknown --> approved: operator confirms nothing was delivered, window expired
   sent --> replied: positive reply notification
   sent --> bounced: delivery failure stops follow-up
   replied --> meeting_scheduled: schedule action
@@ -162,6 +173,8 @@ Rules that must survive implementation:
 2. Suppressed state blocks enrichment and outreach on every path, including scheduler jobs.
 3. `next_follow_up_at` is cleared by reply, bounce, meeting, and suppression.
 4. Scheduler jobs may only create drafts, tasks, and suggestions. They never send.
+5. A send older than the provider's 24 h idempotency window is never retried automatically. It
+   becomes `send_unknown` and waits for operator reconciliation.
 
 ## 5. 24/7 operating model
 
@@ -299,15 +312,37 @@ Foundry.
 
 ## 8. P0 changes
 
-### P0-1 Send idempotency
+### P0-1 Send idempotency and safe recovery
 
 | Item | Detail |
 | --- | --- |
 | Problem | `services/sales_service.py` `_resend_request` sets `idempotency_key=str(uuid.uuid4())`, so a retry after a timeout sends a duplicate email |
-| Change | Derive the key from the draft: `idempotency_key=f"cc-{draft_id}"`, passed from `send_approved` through `_send_resend_draft` |
-| Change | Treat Resend HTTP 409 as success: the message already exists, read back the provider message id and `mark_sent` |
-| Change | Crash recovery: `core/sales_store.py` gains `reconcile_sending_drafts()` called from `_on_startup` in `app/api.py`; drafts in `sending` older than a configurable window return to `approved` |
-| Test | `tests/test_sales_contracts.py`: stable key across attempts, 409 path marks sent, restart reconciliation releases a stranded claim |
+| Key | Derive it from the draft: `idempotency_key=f"cc-draft-{draft_id}"`, passed from `send_approved` through `_send_resend_draft`, so every retry carries an identical key and payload |
+| 409 handling | Never treat 409 as success. Resend separates `concurrent_idempotent_requests` (identical request still executing: retry later, same key) from `invalid_idempotent_request` (same key, different payload: a bug - fail loudly and alert the operator) |
+| Success | Persist the provider message id first, then `mark_sent`; never mark sent without the id |
+| Window | Resend retains idempotency keys for 24 h, so duplicate protection only exists inside that window |
+| Recovery | `core/sales_store.py` gains `reconcile_sending_drafts()` called from `_on_startup` in `app/api.py`: a stranded `sending` draft **inside** the window is retried with the same key; one **older** than the window moves to `send_unknown` and stops - it is never re-queued as `approved`, because after the window expires the old key no longer prevents duplicates |
+| Release | `send_unknown` clears only after an operator checks the provider: delivered, then `mark_sent`; not delivered, then release to `approved` (the window has expired, so the next send starts clean) |
+| Surface | `send_unknown` drafts appear at the top of the priority card TODAY block: "check provider, then mark sent or release" |
+| Test | `tests/test_sales_contracts.py`: stable key across attempts; 409 `concurrent` schedules a retry; 409 `invalid` raises; startup reconciliation retries inside the window and parks outside it |
+
+```mermaid
+flowchart TD
+  A["send action"] --> B["claim draft, key = cc-draft + draft id"]
+  B --> C{"provider response"}
+  C -->|"accepted"| D["store provider message id"] --> E["mark sent, schedule follow-up"]
+  C -->|"timeout or network ambiguity"| F["retry, same key, bounded attempts"]
+  F --> C
+  C -->|"409 concurrent_idempotent_requests"| G["retry later, same key"]
+  G --> C
+  C -->|"409 invalid_idempotent_request"| H["fail plus operator alert, key reuse bug"]
+  C -->|"crash or restart"| I{"inside 24 h key window"}
+  I -->|"yes"| F
+  I -->|"no"| J["send_unknown, hold for operator"]
+  J --> K{"operator checks provider"}
+  K -->|"delivered"| E
+  K -->|"not delivered"| L["release to approved, window expired"]
+```
 
 ### P0-2 Close the action-gate holes
 
@@ -343,6 +378,33 @@ Keep dashboard auth for reads so the cockpit and docs stay available when a key 
 | Docs | Rewrite `docs/upgrading.md` to stop recommending `cp -a` on a live database; add a cron example |
 | DoD | "Backup and restore are tested, not merely configured" becomes a command, not a manual procedure |
 
+### P0-5 Normalize SQLite connections before the scheduler
+
+V2 adds a second writer: the scheduler process claims jobs and writes drafts/tasks while
+FastAPI is serving. SQLite permits one writer at a time even in WAL mode, and a connection
+without a busy timeout fails immediately with `SQLITE_BUSY` instead of waiting. Today only two
+connection paths are configured.
+
+| Call site | Today | Change |
+| --- | --- | --- |
+| `core/state.py:26` `connect()` | no timeout, no pragmas | use the shared helper |
+| `core/ops_store.py:16` `connect()` | no timeout, no pragmas | use the shared helper |
+| `core/sales_store.py:19` | `timeout=30`, WAL, `foreign_keys=ON` | use the shared helper |
+| `core/marketing_store.py:16` | `timeout=30`, WAL, `foreign_keys=ON` | use the shared helper |
+| `engines/g1/g1_runtime/store.py:21` | WAL only, no timeout, no foreign keys | use the shared helper |
+| `engines/g3/g3_runtime/ledger.py:11,23,28` | bare `sqlite3.connect(path)` | use the shared helper |
+| `engines/g1/tests/test_runtime.py:138` | test-only | leave as is |
+
+| Item | Detail |
+| --- | --- |
+| New | `core/db.py::open_db(path)`: `sqlite3.connect(path, timeout=30)`, then `PRAGMA journal_mode=WAL`, `PRAGMA foreign_keys=ON`, `PRAGMA busy_timeout=30000`, optional `row_factory = sqlite3.Row` |
+| Semantics | `timeout=30` and `busy_timeout=30000` are the same setting (Python's connect timeout is the busy timeout); set both so bare connections behave identically. `foreign_keys` is per-connection and must run on every connect. `journal_mode=WAL` is persistent per file and idempotent |
+| Engines | `engines/*` do not import `core` today; either import `core.db` (same repo, same process) or copy the four lines into a local `_open()`. Pick one and keep them byte-identical |
+| Discipline | Keep write transactions short: one logical unit per commit, and no model calls or provider HTTP inside a `BEGIN` |
+| Test | Two connections, hold a write on the first, assert the second waits instead of raising `SQLITE_BUSY`; assert `PRAGMA foreign_keys` returns 1 on a fresh connection |
+| Gate | Do not document or ship `SCHEDULER_ENABLED=true` with `SCHEDULER_MODE=separate` until this lands |
+| Non-goal | No Redis, no Postgres, no Celery. Revisit only when contention shows up in `job_runs` timings |
+
 ## 9. P1 changes
 
 ### P1-1 Programs and ICP
@@ -360,8 +422,11 @@ Keep dashboard auth for reads so the cockpit and docs stay available when a key 
 
 | Item | Detail |
 | --- | --- |
+| Prereq | P0-5 must land first: two processes on the same files need WAL, `foreign_keys=ON` and `busy_timeout=30000` on every connection |
 | New | `services/scheduler.py`: `python -m services.scheduler`, reads `jobs` table (`name`, `interval_seconds`, `last_run_at`, `state`, `last_error`) |
 | Schema | `core/state.py`: `jobs` table plus `upsert_job`, `claim_job` guard so two runners cannot overlap |
+| History | `core/state.py`: `job_runs` table (`job_name`, `started_at`, `finished_at`, `status`, `items_processed`, `error`), one row per execution, retained for the last 500 runs or 30 days |
+| API | `GET /company/operations/jobs/runs`: the last 20 executions per job, so a failure can be explained from history rather than from a single `last_error` |
 | Jobs | Market research, scoring, enrichment batches (qualified only), draft generation, follow-up generation, daily priority card build, provider health (`services/monitor.check_all`), cost digest |
 | Constraint | Every job is advisory: writes drafts, tasks, suggestions. No send, no publish, no LinkedIn execution, no suppression changes |
 | Config | `SCHEDULER_ENABLED`, `SCHEDULER_JOBS` allowlist in `.env.example` |
@@ -423,6 +488,9 @@ counts from `campaign_id`/`post_id`/UTM on leads. This is doc section 10 in code
 
 ### P1-9 Worker split for media
 
+Deferred per architecture review: keep `WORKER_MODE=local` until FFmpeg actually contends with
+API latency or memory. Do not spend the Day 1-2 window on remote SSH execution.
+
 | Item | Detail |
 | --- | --- |
 | Change | `services/marketing_worker.py::spawn` and `services/asset_pack_worker.py` choose a backend from `WORKER_MODE`: `local` keeps `subprocess.Popen`, `remote` enqueues or runs a configured command such as SSH |
@@ -446,10 +514,11 @@ counts from `campaign_id`/`post_id`/UTM on leads. This is doc section 10 in code
 ```mermaid
 flowchart LR
   subgraph DAY1["Day 1: deployment hardening"]
-    A1["P0-1 idempotency"]
+    A1["P0-1 idempotency and recovery"]
     A2["P0-2 action gates"]
     A3["P0-3 rate limits"]
     A4["P0-4 backup and restore"]
+    A6["P0-5 SQLite connection normalization"]
     A5["Deploy internal VPS instance, verify restart and restore"]
   end
   subgraph DAY2["Day 2: commercial operating loop"]
@@ -474,14 +543,14 @@ flowchart LR
 | Doc 13 criterion | Covered by |
 | --- | --- |
 | Fresh deployment from documentation on a clean VPS | Existing docs plus P2 compose and doctor changes |
-| Survives restart without losing critical state | P0-1 send reconciliation, existing mounted volumes |
+| Survives restart without losing critical state | P0-1 send reconciliation, P0-5 SQLite concurrency, existing mounted volumes |
 | Backup and restore tested | P0-4 |
 | One lead provider and one AI provider end to end | Existing, verified by `make doctor` |
 | Sales loop research through reply and meeting | Existing loop plus P1-3 follow-ups |
 | Marketing loop brief through publish handoff and attribution | Existing G1 to G3 chain |
 | Forms and inbound events become prioritized leads | Existing intake plus P1-4 priority card |
 | High-impact actions cannot bypass approvals | P0-2 gate closure |
-| Provider failures visible and isolated | Existing `services/monitor.py` plus scheduled health job |
+| Provider failures visible and isolated | Existing `services/monitor.py` plus scheduled health job and `job_runs` execution history |
 | Usable daily priority queue | P1-4 |
 | AutoEvolve and Foundry as separate programs | P1-1 |
 | Cost per qualified opportunity measurable | P1-6, P1-7 |
