@@ -167,8 +167,12 @@
   }
 
   async function marketingAction(url, confirmation, options = {}) {
+    const token = ensureToken();
+    if (!token) return;
     if (confirmation && !window.confirm(confirmation)) return;
-    const body = await requestJson(url, { method: "POST", ...options });
+    const headers = new Headers(options.headers || {});
+    headers.set("X-Founder-Action-Token", token);
+    const body = await requestJson(url, { method: "POST", ...options, headers });
     setFlash(body.message || body.detail || "Marketing action completed.", "success-copy");
     await refresh(true);
     return body;

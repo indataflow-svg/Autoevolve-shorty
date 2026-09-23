@@ -1,8 +1,8 @@
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.marketing_api import _public_asset_pack, _public_campaign, _public_manual_post, doctor as marketing_doctor, list_asset_packs
-from app.sales_api import doctor as sales_doctor
+from app.sales_api import doctor as sales_doctor, verify_founder_action
 from core.marketing_store import list_campaigns, list_events as list_marketing_events, list_manual_posts
 from core.sales_store import list_events as list_sales_events, list_interactions, list_leads, summary
 from core.state import get_active_org
@@ -19,7 +19,7 @@ class CodingTaskRequest(BaseModel):
     request: str
     model: str | None = None
 
-@router.post("/coding/tasks")
+@router.post("/coding/tasks", dependencies=[Depends(verify_founder_action)])
 def create_coding_task(body: CodingTaskRequest):
     return execute_task(body.workspace, body.request, source="founder", model_override=body.model)
 
@@ -34,7 +34,7 @@ def coding_task(task_id: str):
         raise HTTPException(404, "task not found")
     return task
 
-@router.post("/coding/tasks/{task_id}/apply")
+@router.post("/coding/tasks/{task_id}/apply", dependencies=[Depends(verify_founder_action)])
 def coding_apply(task_id: str):
     try:
         return apply_task(task_id)
@@ -52,11 +52,11 @@ def incident(incident_id: str):
         raise HTTPException(404, "incident not found")
     return item
 
-@router.post("/monitor/run")
+@router.post("/monitor/run", dependencies=[Depends(verify_founder_action)])
 def monitor_all():
     return {"results": check_all()}
 
-@router.post("/monitor/run/{service}")
+@router.post("/monitor/run/{service}", dependencies=[Depends(verify_founder_action)])
 def monitor_service(service: str):
     try:
         return check_service(service)

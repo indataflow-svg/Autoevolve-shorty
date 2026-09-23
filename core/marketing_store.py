@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 from typing import Any
 
+from core.db import open_db
 from core.state import DB_PATH, now_iso
 
 
@@ -13,11 +14,7 @@ TERMINAL_CAMPAIGN_STATES = {"variants_ready", "drafted", "failed", "needs_campai
 
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH, timeout=30)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.execute("PRAGMA foreign_keys=ON")
-    return connection
+    return open_db(DB_PATH, row_factory=sqlite3.Row)
 
 
 def init_marketing_db() -> None:

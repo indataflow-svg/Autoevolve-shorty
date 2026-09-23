@@ -14,6 +14,7 @@ projects/*
 !projects/.gitkeep
 logs/
 outputs/
+backups/
 **/outputs/
 **/proofs/
 **/config/g3.env

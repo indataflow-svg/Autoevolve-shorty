@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from core.sales_store import (
-    approve_draft, get_lead, list_leads, mark_meeting_scheduled, summary, suppress_lead,
-    update_draft, upsert_lead,
+    approve_draft, get_lead, list_leads, list_send_unknown_drafts, mark_meeting_scheduled, resolve_send_unknown,
+    summary, suppress_lead, update_draft, upsert_lead,
 )
 from services.company_enrich import CompanyEnrichError
 from services.hunter import HunterClient
@@ -552,6 +552,33 @@ def send(draft_id: str):
         raise HTTPException(409, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(502, f"email send failed: {exc}") from exc
+
+
+class SendReconcilePayload(BaseModel):
+    delivered: bool
+    provider_message_id: str | None = None
+    note: str | None = None
+
+
+@router.get("/drafts/reconcile")
+def list_reconcile_drafts():
+    """Drafts whose send outcome is unknown and need an operator decision."""
+    return {"drafts": list_send_unknown_drafts()}
+
+
+@action_router.post("/drafts/{draft_id}/reconcile", dependencies=[Depends(verify_founder_action)])
+def reconcile_draft(draft_id: str, payload: SendReconcilePayload):
+    try:
+        draft = resolve_send_unknown(
+            draft_id,
+            delivered=payload.delivered,
+            provider_message_id=payload.provider_message_id,
+            note=payload.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    action = "marked sent" if payload.delivered else "released for another send"
+    return {"ok": True, "draft": draft, "status": draft["status"], "message": f"Draft {action}."}
 
 
 @action_router.post("/leads/{lead_id}/schedule-meeting", dependencies=[Depends(verify_founder_action)])

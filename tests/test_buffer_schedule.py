@@ -41,8 +41,10 @@ class BufferScheduleTests(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "DASHBOARD_USER": "founder",
             "DASHBOARD_PASSWORD": "dashboard-secret",
+            "SALES_ACTION_TOKEN": "action-secret",
         }, clear=False)
         self.env.start()
+        self.headers = {"X-Founder-Action-Token": "action-secret"}
 
     def tearDown(self):
         self.env.stop()
@@ -60,7 +62,7 @@ class BufferScheduleTests(unittest.TestCase):
 
     def _schedule(self, post_id, payload):
         return self.client.post(f"/company/marketing/manual-posts/{post_id}/buffer-schedule",
-                                auth=self.auth, json=payload)
+                                auth=self.auth, headers=self.headers, json=payload)
 
     def test_queue_schedule_marks_post_scheduled(self):
         post = self._post()
@@ -135,7 +137,7 @@ class BufferScheduleTests(unittest.TestCase):
                 patch("app.marketing_api._run", return_value=SCHEDULED_OUTPUT) as run_mock:
             response = self.client.post(
                 f"/company/marketing/manual-posts/{post['id']}/buffer-schedule?buffer_account=beta",
-                auth=self.auth, json={"mode": "queue"})
+                auth=self.auth, headers=self.headers, json={"mode": "queue"})
         self.assertEqual(response.status_code, 200, response.text)
         command = run_mock.call_args[0][0]
         self.assertIn("--account", command)
@@ -147,7 +149,7 @@ class BufferScheduleTests(unittest.TestCase):
         post = self._post()
         response = self.client.post(
             f"/company/marketing/manual-posts/{post['id']}/buffer-schedule?buffer_account=BAD+NAME!",
-            auth=self.auth, json={"mode": "queue"})
+            auth=self.auth, headers=self.headers, json={"mode": "queue"})
         self.assertEqual(response.status_code, 422)
 
     def test_draft_fans_out_to_two_accounts(self):
@@ -183,7 +185,7 @@ class BufferScheduleTests(unittest.TestCase):
                 patch("app.marketing_api._run", side_effect=flaky):
             multi = self.client.post(
                 f"/company/marketing/manual-posts/{post['id']}/buffer-schedule?buffer_account=beta,default",
-                auth=self.auth, json={"mode": "queue"})
+                auth=self.auth, headers=self.headers, json={"mode": "queue"})
         self.assertEqual(multi.status_code, 200, multi.text)
         stored = marketing_store.get_manual_post(post["id"])
         self.assertEqual(stored["metadata"]["buffer_status"], "scheduled")

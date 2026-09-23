@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from fastapi.responses import FileResponse
 from PIL import Image
@@ -34,6 +34,7 @@ from core.marketing_store import (
 from core.marketing_config import MarketingConfig
 from core.branding import company_forms_url
 from core.state import now_iso, update_task_status
+from app.sales_api import verify_founder_action
 from services.caption_variants import build_short_caption_variants, enrich_platform_copy, _buyer_label
 from services.marketing_worker import _last_json, _run, spawn
 from services.asset_pack_builder import build_pack_title
@@ -1115,7 +1116,7 @@ def create_manual_post_buffer_draft(post_record_id: str, buffer_account: str | N
     return {"ok": True, "post": _public_manual_post(updated), "result": outputs, "message": f"Buffer draft created for the manual post (accounts: {names})."}
 
 
-@router.post("/manual-posts/{post_record_id}/buffer-schedule")
+@router.post("/manual-posts/{post_record_id}/buffer-schedule", dependencies=[Depends(verify_founder_action)])
 def schedule_manual_post_buffer(post_record_id: str, payload: BufferScheduleRequest, buffer_account: str | None = None):
     accounts = _clean_buffer_accounts(buffer_account)
     post = get_manual_post(post_record_id)
@@ -1624,7 +1625,7 @@ def variant_video(campaign_id: str, variant_id: str):
     return FileResponse(path, media_type="video/mp4")
 
 
-@router.post("/campaigns/{campaign_id}/variants/{variant_id}/select")
+@router.post("/campaigns/{campaign_id}/variants/{variant_id}/select", dependencies=[Depends(verify_founder_action)])
 def select_variant(campaign_id: str, variant_id: str):
     campaign = get_campaign(campaign_id)
     variant = get_variant(variant_id)
@@ -1645,7 +1646,7 @@ def select_variant(campaign_id: str, variant_id: str):
     return {"ok": True, "campaign_id": campaign_id, "selected_variant_id": variant_id}
 
 
-@router.post("/campaigns/{campaign_id}/drafts")
+@router.post("/campaigns/{campaign_id}/drafts", dependencies=[Depends(verify_founder_action)])
 def create_drafts(campaign_id: str):
     campaign = get_campaign(campaign_id)
     if not campaign:
@@ -1666,7 +1667,7 @@ def create_drafts(campaign_id: str):
     return {"ok": True, "campaign_id": campaign_id, "g3_status": "queued", "publish_allowed": False}
 
 
-@router.post("/campaigns/{campaign_id}/approve-script")
+@router.post("/campaigns/{campaign_id}/approve-script", dependencies=[Depends(verify_founder_action)])
 def approve_script(campaign_id: str):
     campaign = get_campaign(campaign_id)
     if not campaign:
@@ -1687,7 +1688,7 @@ def approve_script(campaign_id: str):
     return {"ok": True, "campaign_id": campaign_id, "status": "queued", "next_stage": "media_search"}
 
 
-@router.post("/campaigns/{campaign_id}/regenerate-script")
+@router.post("/campaigns/{campaign_id}/regenerate-script", dependencies=[Depends(verify_founder_action)])
 def regenerate_script(campaign_id: str, payload: dict = Body(default={})):
     campaign = get_campaign(campaign_id)
     if not campaign:
@@ -1722,7 +1723,7 @@ def regenerate_script(campaign_id: str, payload: dict = Body(default={})):
     return {"ok": True, "campaign_id": campaign_id, "status": "queued", "next_stage": "g1_campaign"}
 
 
-@router.post("/campaigns/{campaign_id}/retry")
+@router.post("/campaigns/{campaign_id}/retry", dependencies=[Depends(verify_founder_action)])
 def retry_campaign(campaign_id: str):
     campaign = get_campaign(campaign_id)
     if not campaign:

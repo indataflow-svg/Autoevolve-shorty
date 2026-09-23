@@ -1,6 +1,9 @@
 PYTHON ?= python3
+# Prefer the project venv for script targets: the repo requires Python 3.12+.
+VPY := $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo $(PYTHON); fi)
+ARCHIVE ?=
 
-.PHONY: setup setup-core setup-engines init doctor dev test lint check email-worker-install
+.PHONY: setup setup-core setup-engines init doctor dev test lint check email-worker-install backup restore verify-backup
 
 setup: setup-core setup-engines init doctor
 
@@ -29,6 +32,15 @@ lint:
 	.venv/bin/python -m ruff check app core services agents tools tests
 
 check: lint test doctor
+
+backup:
+	./scripts/backup.sh
+
+restore:
+	./scripts/restore.sh --verify --archive $(ARCHIVE)
+
+verify-backup:
+	$(VPY) scripts/verify_backup.py --archive $(ARCHIVE)
 
 email-worker-install:
 	npm --prefix company-sales-email-ingress ci

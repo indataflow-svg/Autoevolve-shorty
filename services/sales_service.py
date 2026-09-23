@@ -9,14 +9,15 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
+from datetime import datetime, timezone
 from email.utils import parseaddr
 from html import escape, unescape
 from typing import Any
 
 from core.sales_store import (
     add_event, claim_draft_for_send, contact_profile_for_lead, count_company_profile_attempts, create_draft, get_company_profile,
-    get_draft, get_draft_by_provider_message_id, get_lead, get_lead_by_email, list_leads, merge_lead_metadata, normalize_company_domain, mark_replied, mark_sent,
+    get_draft, get_draft_by_provider_message_id, get_lead, get_lead_by_email, list_leads, list_sending_drafts,
+    mark_send_unknown, merge_lead_metadata, normalize_company_domain, mark_replied, mark_sent,
     record_contact_resolution, release_send_claim, score_lead, suppress_lead,
     update_lead, upsert_company_profile, upsert_lead,
 )
@@ -30,6 +31,14 @@ from services.lusha import LushaClient, LushaError
 
 
 RESEND_SEND_URL = "https://api.resend.com/emails"
+
+# Resend retains idempotency keys for 24 hours. Outside that window the same
+# key no longer deduplicates, so an ambiguous attempt must not be retried
+# automatically: it is parked in send_unknown for an operator instead.
+RESEND_IDEMPOTENCY_WINDOW_SECONDS = 24 * 60 * 60
+# Bounded backoff for concurrent_idempotent_requests and network ambiguity;
+# every attempt reuses the identical key and payload.
+RESEND_CONCURRENT_RETRY_DELAYS = (0.5, 1.0, 2.0)
 RESEND_RECEIVING_URL = "https://api.resend.com/emails/receiving"
 RESEND_USER_AGENT = "company-sales/0.8"
 RESEND_WEBHOOK_TOLERANCE_SECONDS = 300
@@ -1577,21 +1586,93 @@ def ingest_resend_event(payload: dict) -> dict:
     }
 
 
-def _resend_request(payload: dict) -> dict:
-    request = urllib.request.Request(
-        RESEND_SEND_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers=_resend_headers(idempotency_key=str(uuid.uuid4())),
-        method="POST",
-    )
+class ResendAmbiguousError(RuntimeError):
+    """The provider may or may not have accepted the message.
+
+    Raised for network ambiguity, an in-flight concurrent idempotent request
+    or a success response without a message id. The draft keeps its sending
+    claim so a later retry carries the same idempotency key.
+    """
+
+
+class ResendIdempotencyConflictError(RuntimeError):
+    """The idempotency key was already used with a different payload."""
+
+
+def _draft_idempotency_key(draft_id: str) -> str:
+    return f"cc-draft-{draft_id}"
+
+
+def _send_window_seconds() -> int:
+    raw = os.getenv("SALES_SEND_RECONCILE_WINDOW_SECONDS", "").strip()
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", "replace")
-        raise RuntimeError(f"Resend send failed: HTTP {exc.code} {body[:500]}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Resend send failed: {exc}") from exc
+        seconds = int(raw) if raw else RESEND_IDEMPOTENCY_WINDOW_SECONDS
+    except ValueError:
+        seconds = RESEND_IDEMPOTENCY_WINDOW_SECONDS
+    return max(60, seconds)
+
+
+def _attempt_started_at(draft: dict) -> datetime | None:
+    raw = str(draft.get("send_started_at") or draft.get("updated_at") or "").strip()
+    if not raw:
+        return None
+    try:
+        started = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    return started
+
+
+def _resend_request(payload: dict, *, idempotency_key: str) -> dict:
+    data = json.dumps(payload).encode("utf-8")
+    concurrent_attempts = 0
+    while True:
+        request = urllib.request.Request(
+            RESEND_SEND_URL,
+            data=data,
+            headers=_resend_headers(idempotency_key=idempotency_key),
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", "replace")
+            if exc.code == 409 and "concurrent_idempotent_requests" in body:
+                # An identical request is still executing: retry later with the
+                # same key. Never treat this as success.
+                if concurrent_attempts < len(RESEND_CONCURRENT_RETRY_DELAYS):
+                    time.sleep(RESEND_CONCURRENT_RETRY_DELAYS[concurrent_attempts])
+                    concurrent_attempts += 1
+                    continue
+                raise ResendAmbiguousError(
+                    "Resend still reports an in-flight identical request after retries; "
+                    "the draft stays in sending and will be retried with the same key"
+                ) from exc
+            if exc.code == 409 and "invalid_idempotent_request" in body:
+                raise ResendIdempotencyConflictError(
+                    "Resend rejected the idempotency key: it was already used with a different "
+                    f"payload. Investigate before resending (key={idempotency_key}). Body: {body[:300]}"
+                ) from exc
+            if exc.code == 409:
+                # Unknown 409 subtype: outcome unknown, not success.
+                raise ResendAmbiguousError(
+                    f"Resend returned an unrecognised 409 for key {idempotency_key}: {body[:300]}"
+                ) from exc
+            raise RuntimeError(f"Resend send failed: HTTP {exc.code} {body[:500]}") from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            # Timeout or network failure: the request may or may not have gone
+            # out. Retry with the same key, then leave the claim for recovery.
+            if concurrent_attempts < len(RESEND_CONCURRENT_RETRY_DELAYS):
+                time.sleep(RESEND_CONCURRENT_RETRY_DELAYS[concurrent_attempts])
+                concurrent_attempts += 1
+                continue
+            raise ResendAmbiguousError(
+                f"Resend send outcome unknown after retries ({exc}); "
+                "the draft stays in sending and will be retried with the same key"
+            ) from exc
 
 
 def _sales_public_base_url() -> str:
@@ -1678,43 +1759,128 @@ def _resend_payload_for_draft(draft: dict, lead: dict, *, sender: str, reply_to:
 
 def _send_resend_draft(draft: dict, lead: dict, *, sender: str, reply_to: str | None, metadata: dict[str, Any] | None = None) -> str:
     payload = _resend_payload_for_draft(draft, lead, sender=sender, reply_to=reply_to)
-    result = _resend_request(payload)
-    provider_message_id = result.get("id") or f"resend-{draft['id']}"
+    result = _resend_request(payload, idempotency_key=_draft_idempotency_key(draft["id"]))
+    provider_message_id = str(result.get("id") or "").strip()
+    if not provider_message_id:
+        raise ResendAmbiguousError(
+            "Resend accepted the request without a message id; the draft stays in sending "
+            "so the same key can confirm it later"
+        )
+    # mark_sent persists the provider message id and the sent status together.
     mark_sent(draft["id"], provider_message_id, metadata=metadata)
     return provider_message_id
 
 
-def send_approved(draft_id: str) -> dict:
-    draft = claim_draft_for_send(draft_id)
+def _attempt_send(draft: dict) -> str:
+    """Dispatch a draft already in status 'sending'. Owns the claim policy:
+    definite failures release the claim back to approved, ambiguous outcomes
+    keep it so the next attempt reuses the same idempotency key."""
     lead = get_lead(draft["lead_id"])
     if not lead or lead["stage"] == "suppressed" or not lead.get("email"):
-        release_send_claim(draft_id)
+        release_send_claim(draft["id"])
         raise ValueError("lead is unavailable or suppressed")
     try:
         sender = _resolved_resend_sender()
     except ValueError:
-        release_send_claim(draft_id)
+        release_send_claim(draft["id"])
         raise
     reply_to = os.getenv("SALES_REPLY_TO_EMAIL", "").strip() or None
+    metadata = {
+        "provider": "resend",
+        "source": "resend_api",
+        "from_email": sender,
+        "to_email": lead["email"],
+        "reply_to": reply_to,
+        "draft_id": draft["id"],
+    }
     try:
-        provider_message_id = _send_resend_draft(
-            draft,
-            lead,
-            sender=sender,
-            reply_to=reply_to,
-            metadata={
-                "provider": "resend",
-                "source": "resend_api",
-                "from_email": sender,
-                "to_email": lead["email"],
-                "reply_to": reply_to,
-                "draft_id": draft_id,
-            },
-        )
-    except Exception:
-        release_send_claim(draft_id)
+        return _send_resend_draft(draft, lead, sender=sender, reply_to=reply_to, metadata=metadata)
+    except ResendAmbiguousError:
+        raise  # outcome unknown: keep the claim, same key on the next attempt
+    except Exception as exc:
+        release_send_claim(draft["id"])
+        if isinstance(exc, ResendIdempotencyConflictError):
+            add_event(
+                draft["lead_id"],
+                "outreach.idempotency_conflict",
+                {"draft_id": draft["id"], "error": str(exc)},
+            )
         raise
-    return {"ok": True, "draft_id": draft_id, "message_id": provider_message_id, "sent": True}
+
+
+def send_approved(draft_id: str) -> dict:
+    draft = get_draft(draft_id)
+    if not draft:
+        raise ValueError("draft not found")
+    if draft["status"] == "send_unknown":
+        raise ValueError(
+            "send outcome is unknown; reconcile this draft (mark sent or release) before sending again"
+        )
+    resumed = draft["status"] == "sending"
+    if resumed:
+        started = _attempt_started_at(draft)
+        if started is None or (datetime.now(timezone.utc) - started).total_seconds() > _send_window_seconds():
+            mark_send_unknown(
+                draft_id, reason="send attempt is older than the provider idempotency window"
+            )
+            raise ValueError(
+                "send outcome unknown: this attempt is outside the provider idempotency window; "
+                "check the provider and reconcile the draft"
+            )
+        # Inside the window: same key, same payload, safe to retry.
+    else:
+        draft = claim_draft_for_send(draft_id)
+    provider_message_id = _attempt_send(draft)
+    return {
+        "ok": True,
+        "draft_id": draft_id,
+        "message_id": provider_message_id,
+        "sent": True,
+        "resumed": resumed,
+    }
+
+
+def reconcile_sending_drafts() -> dict:
+    """Recover drafts stranded in 'sending' after a crash or restart.
+
+    Inside the provider idempotency window the same key is retried, so the
+    provider can deduplicate against an attempt that actually went out. Older
+    attempts lose that protection and are parked in send_unknown for an
+    operator; they are never re-queued as approved automatically.
+    """
+    window = _send_window_seconds()
+    now = datetime.now(timezone.utc)
+    report: dict[str, Any] = {
+        "scanned": 0,
+        "sent": 0,
+        "kept_sending": 0,
+        "parked": 0,
+        "released": 0,
+        "errors": [],
+    }
+    for draft in list_sending_drafts():
+        report["scanned"] += 1
+        started = _attempt_started_at(draft)
+        age = (now - started).total_seconds() if started else None
+        if age is None or age > window:
+            try:
+                mark_send_unknown(
+                    draft["id"], reason="send attempt is older than the provider idempotency window"
+                )
+                report["parked"] += 1
+            except ValueError as exc:
+                report["errors"].append(f"{draft['id']}: {exc}")
+            continue
+        try:
+            _attempt_send(draft)
+            report["sent"] += 1
+        except ResendAmbiguousError:
+            report["kept_sending"] += 1
+        except Exception as exc:
+            # _attempt_send already released a definite failure back to approved.
+            report["released"] += 1
+            report["errors"].append(f"{draft['id']}: {exc}")
+    return report
 
 
 def _clean_inbound_text(value: str | None) -> str:

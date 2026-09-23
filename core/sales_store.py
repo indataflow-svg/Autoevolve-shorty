@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 from typing import Any
 
+from core.db import open_db
 from core.state import DB_PATH, now_iso
 
 
@@ -16,11 +17,7 @@ PIPELINE_STAGES = {
 
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH, timeout=30)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.execute("PRAGMA foreign_keys=ON")
-    return connection
+    return open_db(DB_PATH, row_factory=sqlite3.Row)
 
 
 def init_sales_db() -> None:
@@ -68,6 +65,7 @@ def init_sales_db() -> None:
                 approved_at TEXT,
                 sent_at TEXT,
                 provider_message_id TEXT,
+                send_started_at TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(lead_id) REFERENCES sales_leads(id)
@@ -113,12 +111,21 @@ def init_sales_db() -> None:
             """
         )
         _migrate_sales_org_id(connection)
+        _migrate_sales_draft_send_state(connection)
 
 
 def _migrate_sales_org_id(connection: sqlite3.Connection) -> None:
     cols = {row["name"] for row in connection.execute("PRAGMA table_info(sales_leads)").fetchall()}
     if "org_id" not in cols:
         connection.execute("ALTER TABLE sales_leads ADD COLUMN org_id INTEGER")
+
+
+def _migrate_sales_draft_send_state(connection: sqlite3.Connection) -> None:
+    """send_started_at records the first send attempt so the provider's
+    idempotency window is measured from first use of the key, not the last."""
+    cols = {row["name"] for row in connection.execute("PRAGMA table_info(sales_drafts)").fetchall()}
+    if "send_started_at" not in cols:
+        connection.execute("ALTER TABLE sales_drafts ADD COLUMN send_started_at TEXT")
 
 
 def _id(prefix: str) -> str:
@@ -696,8 +703,9 @@ def claim_draft_for_send(draft_id: str) -> dict:
     timestamp = now_iso()
     with connect() as connection:
         cursor = connection.execute(
-            "UPDATE sales_drafts SET status = 'sending', updated_at = ? WHERE id = ? AND status = 'approved'",
-            (timestamp, draft_id),
+            "UPDATE sales_drafts SET status = 'sending', send_started_at = ?, updated_at = ?"
+            " WHERE id = ? AND status = 'approved'",
+            (timestamp, timestamp, draft_id),
         )
         if cursor.rowcount != 1:
             raise ValueError("founder approval is required or this draft is already sending")
@@ -711,6 +719,76 @@ def release_send_claim(draft_id: str) -> None:
             "UPDATE sales_drafts SET status = 'approved', updated_at = ? WHERE id = ? AND status = 'sending'",
             (now_iso(), draft_id),
         )
+
+
+def list_sending_drafts() -> list[dict]:
+    with connect() as connection:
+        rows = connection.execute(
+            "SELECT * FROM sales_drafts WHERE status = 'sending' ORDER BY updated_at"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def mark_send_unknown(draft_id: str, *, reason: str) -> dict:
+    """Park a draft whose send outcome cannot be proven either way.
+
+    Used when a stranded attempt is older than the provider idempotency
+    window: retrying could duplicate, so only an operator may resolve it.
+    """
+    draft = get_draft(draft_id)
+    if not draft:
+        raise ValueError("draft not found")
+    timestamp = now_iso()
+    with connect() as connection:
+        cursor = connection.execute(
+            "UPDATE sales_drafts SET status = 'send_unknown', updated_at = ? WHERE id = ? AND status = 'sending'",
+            (timestamp, draft_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("draft is not in sending")
+    add_event(draft["lead_id"], "outreach.send_unknown", {"draft_id": draft_id, "reason": reason})
+    return get_draft(draft_id)  # type: ignore[return-value]
+
+
+def list_send_unknown_drafts() -> list[dict]:
+    with connect() as connection:
+        rows = connection.execute(
+            "SELECT * FROM sales_drafts WHERE status = 'send_unknown' ORDER BY updated_at DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def resolve_send_unknown(
+    draft_id: str,
+    *,
+    delivered: bool,
+    provider_message_id: str | None = None,
+    note: str | None = None,
+) -> dict:
+    """Operator decision for a parked draft: it went out, or it did not."""
+    draft = get_draft(draft_id)
+    if not draft:
+        raise ValueError("draft not found")
+    if draft["status"] != "send_unknown":
+        raise ValueError("draft is not awaiting send reconciliation")
+    if delivered:
+        mark_sent(
+            draft_id,
+            provider_message_id or f"operator-confirmed-{draft_id}",
+            metadata={"source": "operator_reconcile", **({"note": note} if note else {})},
+        )
+        add_event(draft["lead_id"], "outreach.reconciled_sent", {"draft_id": draft_id, "note": note})
+        return get_draft(draft_id)  # type: ignore[return-value]
+    timestamp = now_iso()
+    with connect() as connection:
+        cursor = connection.execute(
+            "UPDATE sales_drafts SET status = 'approved', updated_at = ? WHERE id = ? AND status = 'send_unknown'",
+            (timestamp, draft_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("draft is not awaiting send reconciliation")
+    add_event(draft["lead_id"], "outreach.reconciled_released", {"draft_id": draft_id, "note": note})
+    return get_draft(draft_id)  # type: ignore[return-value]
 
 
 def mark_sent(draft_id: str, provider_message_id: str, metadata: dict | None = None) -> None:

@@ -12,15 +12,27 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+# Byte-identical to core.db.open_db: engines run independently and must not
+# depend on `core` being importable. See core/db.py for the rationale.
+_BUSY_TIMEOUT_SECONDS = 30
+
+
+def _open(path: str | Path) -> sqlite3.Connection:
+    connection = sqlite3.connect(path, timeout=_BUSY_TIMEOUT_SECONDS)
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA foreign_keys=ON")
+    connection.execute(f"PRAGMA busy_timeout={int(_BUSY_TIMEOUT_SECONDS * 1000)}")
+    return connection
+
+
 class CampaignStore:
     def __init__(self, path: str | Path):
         self.path = Path(path)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.path)
+        conn = _open(self.path)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
         try:
             yield conn
             conn.commit()

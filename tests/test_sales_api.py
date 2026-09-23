@@ -135,6 +135,34 @@ class SalesApiTests(unittest.TestCase):
         self.assertEqual(response.json()["lead_id"], "lead_1")
         ingest.assert_called_once_with(json.loads(payload))
 
+    def test_send_unknown_reconciliation_routes(self):
+        with patch.dict(os.environ, {"SALES_ACTION_TOKEN": "action-secret"}, clear=False):
+            lead, _ = sales_store.upsert_lead({"email": "ops@example.com", "source": "website"})
+            draft = sales_store.create_draft(lead["id"], "Stranded", "Body left in sending.")
+            sales_store.approve_draft(draft["id"])
+            sales_store.claim_draft_for_send(draft["id"])
+            sales_store.mark_send_unknown(draft["id"], reason="test park")
+
+            listing = self.client.get("/company/sales/drafts/reconcile", auth=self.auth)
+            self.assertEqual(listing.status_code, 200, listing.text)
+            self.assertEqual([item["id"] for item in listing.json()["drafts"]], [draft["id"]])
+
+            denied = self.client.post(
+                f"/company/sales/drafts/{draft['id']}/reconcile",
+                auth=self.auth, json={"delivered": False},
+            )
+            self.assertEqual(denied.status_code, 403)
+
+            resolved = self.client.post(
+                f"/company/sales/drafts/{draft['id']}/reconcile",
+                auth=self.auth,
+                headers={"X-Founder-Action-Token": "action-secret"},
+                json={"delivered": False, "note": "provider shows nothing"},
+            )
+            self.assertEqual(resolved.status_code, 200, resolved.text)
+            self.assertEqual(resolved.json()["status"], "approved")
+            self.assertEqual(sales_store.get_draft(draft["id"])["status"], "approved")
+
     def test_prospect_domain_accepts_apollo_provider(self):
         payload = {"domain": "example.com", "limit": 3, "provider": "apollo"}
         with patch.dict(os.environ, {

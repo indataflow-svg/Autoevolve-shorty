@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from agents.founder import run_founder
+from app.ratelimit import rate_limit_intake
 from app.security import authenticate
 from core.branding import company_logo_url, company_name
 from core.dashboard import get_dashboard_state, get_operations_page_state
@@ -25,6 +26,27 @@ def _on_startup():
     from core.state import init_db, _seed_orgs_from_env
     init_db()
     _seed_orgs_from_env()
+    _reconcile_stranded_sends()
+
+
+def _reconcile_stranded_sends():
+    """Recover drafts left in 'sending' by a crash or restart.
+
+    Inside the provider idempotency window the same key is retried; older
+    attempts are parked in send_unknown for an operator. Never block boot.
+    """
+    enabled = os.getenv("SALES_SEND_RECONCILE_ON_STARTUP", "true").strip().lower()
+    if enabled in {"0", "false", "no"}:
+        return
+    try:
+        from services.sales_service import reconcile_sending_drafts
+
+        report = reconcile_sending_drafts()
+    except Exception as exc:  # noqa: BLE001 - recovery must not stop the API
+        print(f"[startup] send reconciliation failed: {exc}")
+        return
+    if report["scanned"]:
+        print(f"[startup] send reconciliation: {report}")
 
 
 app = FastAPI(
@@ -348,5 +370,5 @@ app.include_router(sales_router, dependencies=[Depends(authenticate)])
 app.include_router(sales_action_router, dependencies=[Depends(authenticate)])
 app.include_router(setup_router, dependencies=[Depends(authenticate)])
 # Tunnel-facing integrations stay outside dashboard auth and enforce their own
-# shared-secret checks in app.sales_api.
-app.include_router(sales_intake_router)
+# shared-secret checks in app.sales_api. They are rate limited per client IP.
+app.include_router(sales_intake_router, dependencies=[Depends(rate_limit_intake)])

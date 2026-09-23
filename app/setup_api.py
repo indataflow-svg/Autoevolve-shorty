@@ -69,7 +69,7 @@ class SetupStepPayload(BaseModel):
 
 
 @router.post("/step")
-def set_setup_step_route(payload: SetupStepPayload):
+def set_setup_step_route(payload: SetupStepPayload, _: None = Depends(verify_founder_action)):
     from core.state import set_setup_step
 
     set_setup_step(payload.step.strip())

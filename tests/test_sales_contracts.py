@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import tempfile
@@ -5,6 +6,15 @@ import urllib.error
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+
+
+def _idempotency_key(request) -> str | None:
+    """Read the Idempotency-Key header case-insensitively: urllib normalizes
+    header names when storing them, so a literal lookup is not reliable."""
+    for name, value in request.header_items():
+        if name.lower() == "idempotency-key":
+            return value
+    return None
 
 
 class SalesContractsTest(unittest.TestCase):
@@ -1185,6 +1195,184 @@ class SalesContractsTest(unittest.TestCase):
 
         stored = get_draft(draft["id"])
         self.assertEqual(stored["status"], "approved")
+
+    RESEND_ENV = {
+        "SALES_RESEND_API_KEY": "re_test",
+        "SALES_RESEND_DOMAIN": "resend-test.com",
+        "SALES_FROM_EMAIL": "sales@example.com",
+        "SALES_REPLY_TO_EMAIL": "reply@example.com",
+    }
+
+    def test_send_uses_stable_idempotency_key_across_network_retries(self):
+        from core.sales_store import approve_draft, create_draft, get_draft, upsert_lead
+        from services.sales_service import send_approved
+
+        lead, _ = upsert_lead({"email": "ops@example.com", "source": "website"})
+        draft = create_draft(lead["id"], "Idempotent hello", "Body for the idempotency key test.")
+        approve_draft(draft["id"])
+
+        keys: list = []
+
+        class SendResponse:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self): return b'{"id":"re_key_1"}'
+
+        def fake_open(request, timeout):
+            keys.append(_idempotency_key(request))
+            if len(keys) == 1:
+                raise urllib.error.URLError("simulated timeout")
+            return SendResponse()
+
+        with patch.dict(os.environ, self.RESEND_ENV, clear=False), \
+                patch("urllib.request.urlopen", fake_open), \
+                patch("services.sales_service.RESEND_CONCURRENT_RETRY_DELAYS", (0.0,)):
+            result = send_approved(draft["id"])
+
+        self.assertTrue(result["sent"])
+        self.assertEqual(len(keys), 2, "the ambiguous first attempt should be retried in place")
+        self.assertEqual(keys[0], f"cc-draft-{draft['id']}")
+        self.assertEqual(keys[0], keys[1], "the retry must reuse the identical idempotency key")
+        stored = get_draft(draft["id"])
+        self.assertEqual(stored["status"], "sent")
+        self.assertEqual(stored["provider_message_id"], "re_key_1")
+        self.assertIsNotNone(stored["send_started_at"])
+
+    def test_409_concurrent_idempotent_request_retries_with_the_same_key(self):
+        from core.sales_store import approve_draft, create_draft, get_draft, upsert_lead
+        from services.sales_service import send_approved
+
+        lead, _ = upsert_lead({"email": "ops@example.com", "source": "website"})
+        draft = create_draft(lead["id"], "Concurrent hello", "Body for the concurrent 409 test.")
+        approve_draft(draft["id"])
+
+        keys: list = []
+
+        class SendResponse:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self): return b'{"id":"re_concurrent_1"}'
+
+        def fake_open(request, timeout):
+            keys.append(_idempotency_key(request))
+            if len(keys) == 1:
+                raise urllib.error.HTTPError(
+                    "https://api.resend.com/emails", 409, "Conflict", None,
+                    io.BytesIO(b'{"type":"concurrent_idempotent_requests"}'),
+                )
+            return SendResponse()
+
+        with patch.dict(os.environ, self.RESEND_ENV, clear=False), \
+                patch("urllib.request.urlopen", fake_open), \
+                patch("services.sales_service.RESEND_CONCURRENT_RETRY_DELAYS", (0.0,)):
+            result = send_approved(draft["id"])
+
+        self.assertTrue(result["sent"], "concurrent_idempotent_requests must be retried, never treated as success")
+        self.assertEqual(keys[0], keys[1])
+        self.assertEqual(get_draft(draft["id"])["status"], "sent")
+
+    def test_409_invalid_idempotent_request_fails_loudly_and_releases_the_claim(self):
+        from core.sales_store import approve_draft, create_draft, get_draft, get_lead, upsert_lead
+        from services.sales_service import ResendIdempotencyConflictError, send_approved
+
+        lead, _ = upsert_lead({"email": "ops@example.com", "source": "website"})
+        draft = create_draft(lead["id"], "Conflicting hello", "Body for the invalid-key 409 test.")
+        approve_draft(draft["id"])
+
+        def fake_open(request, timeout):
+            raise urllib.error.HTTPError(
+                "https://api.resend.com/emails", 409, "Conflict", None,
+                io.BytesIO(b'{"type":"invalid_idempotent_request"}'),
+            )
+
+        with patch.dict(os.environ, self.RESEND_ENV, clear=False), \
+                patch("urllib.request.urlopen", fake_open):
+            with self.assertRaisesRegex(ResendIdempotencyConflictError, "different payload"):
+                send_approved(draft["id"])
+
+        self.assertEqual(get_draft(draft["id"])["status"], "approved")
+        stored = get_lead(lead["id"])
+        events = [event["event"] for event in stored["recent_events"]]
+        self.assertIn("outreach.idempotency_conflict", events, "operator alert must be recorded")
+
+    def test_ambiguous_send_keeps_claim_and_reconcile_retries_inside_window(self):
+        from core.sales_store import approve_draft, create_draft, get_draft, upsert_lead
+        from services.sales_service import ResendAmbiguousError, reconcile_sending_drafts, send_approved
+
+        lead, _ = upsert_lead({"email": "ops@example.com", "source": "website"})
+        draft = create_draft(lead["id"], "Ambiguous hello", "Body for the ambiguity test.")
+        approve_draft(draft["id"])
+
+        with patch.dict(os.environ, self.RESEND_ENV, clear=False), \
+                patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timeout")), \
+                patch("services.sales_service.RESEND_CONCURRENT_RETRY_DELAYS", (0.0,)):
+            with self.assertRaises(ResendAmbiguousError):
+                send_approved(draft["id"])
+
+        # The claim survives an ambiguous outcome so the same key can dedupe.
+        self.assertEqual(get_draft(draft["id"])["status"], "sending")
+
+        class SendResponse:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self): return b'{"id":"re_reconciled"}'
+
+        with patch.dict(os.environ, self.RESEND_ENV, clear=False), \
+                patch("urllib.request.urlopen", lambda request, timeout: SendResponse()):
+            report = reconcile_sending_drafts()
+
+        self.assertEqual(report["sent"], 1, report)
+        stored = get_draft(draft["id"])
+        self.assertEqual(stored["status"], "sent")
+        self.assertEqual(stored["provider_message_id"], "re_reconciled")
+
+    def test_reconcile_parks_attempts_outside_window_and_operator_resolves(self):
+        from core.sales_store import (
+            approve_draft, claim_draft_for_send, connect as sales_connect, create_draft,
+            get_draft, list_send_unknown_drafts, release_send_claim, resolve_send_unknown,
+            upsert_lead,
+        )
+        from services.sales_service import reconcile_sending_drafts, send_approved
+
+        def park(draft_id: str) -> None:
+            claim_draft_for_send(draft_id)
+            with sales_connect() as connection:
+                connection.execute(
+                    "UPDATE sales_drafts SET send_started_at = '2000-01-01T00:00:00+00:00' WHERE id = ?",
+                    (draft_id,),
+                )
+
+        lead, _ = upsert_lead({"email": "ops@example.com", "source": "website"})
+        draft = create_draft(lead["id"], "Stranded hello", "Body for the stranded send test.")
+        approve_draft(draft["id"])
+        park(draft["id"])
+
+        report = reconcile_sending_drafts()
+        self.assertEqual(report["parked"], 1, report)
+        self.assertEqual(get_draft(draft["id"])["status"], "send_unknown")
+        self.assertEqual([item["id"] for item in list_send_unknown_drafts()], [draft["id"]])
+
+        # A parked draft can never be sent blindly.
+        with self.assertRaisesRegex(ValueError, "reconcile"):
+            send_approved(draft["id"])
+
+        # Operator confirms it was delivered.
+        resolve_send_unknown(draft["id"], delivered=True, provider_message_id="re_operator", note="checked")
+        stored = get_draft(draft["id"])
+        self.assertEqual(stored["status"], "sent")
+        self.assertEqual(stored["provider_message_id"], "re_operator")
+
+        # A parked draft that was NOT delivered is released for a fresh send.
+        second = create_draft(lead["id"], "Stranded again", "Body for the release path test.")
+        approve_draft(second["id"])
+        park(second["id"])
+        reconcile_sending_drafts()
+        self.assertEqual(get_draft(second["id"])["status"], "send_unknown")
+        released = resolve_send_unknown(second["id"], delivered=False, note="provider shows nothing")
+        self.assertEqual(released["status"], "approved")
+        reclaimed = claim_draft_for_send(second["id"])
+        self.assertEqual(reclaimed["status"], "sending")
+        release_send_claim(second["id"])
 
     def test_inbound_email_ingest_marks_reply_and_preserves_metadata(self):
         from core.sales_store import get_lead, upsert_lead

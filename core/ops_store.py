@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core.db import open_db
+
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "data" / "company_ops.db"
 
@@ -13,9 +15,7 @@ def now_iso() -> str:
 
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return open_db(DB_PATH, row_factory=sqlite3.Row)
 
 def init_db() -> None:
     with connect() as db:

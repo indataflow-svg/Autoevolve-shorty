@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from core.db import open_db
+
 
 DB_PATH = (
     Path(__file__).parent.parent
@@ -23,10 +25,7 @@ def connect() -> sqlite3.Connection:
         exist_ok=True,
     )
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-
-    return conn
+    return open_db(DB_PATH, row_factory=sqlite3.Row)
 
 
 def init_db() -> None:
