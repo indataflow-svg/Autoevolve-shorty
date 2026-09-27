@@ -28,7 +28,7 @@ test('desktop operational pages keep the approved visual structure', async ({ pa
 
 test('integrations renders real key presence and saves through backend gates', async ({ page, request }) => {
   await signIn(page, '/integrations', 'Integrations')
-  await expect(page.getByText('Provider groups')).toBeVisible()
+  await expect(page.locator('.operational-metrics').getByText('Provider groups')).toBeVisible()
   await expect(page.getByRole('row', { name: /Stock media/ })).toContainText('1 / 5')
   await page.getByRole('row', { name: /Stock media/ }).getByRole('button', { name: 'Configure' }).click()
   await expect(page).toHaveURL(/integration=media/)
