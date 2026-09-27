@@ -33,6 +33,8 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("accounts", help="list configured Buffer accounts (keys never shown)")
     channels = commands.add_parser("channels", help="list connected Buffer channels")
     channels.add_argument("--organization-id")
+    insights = commands.add_parser("insights", help="read one Buffer post and its available metrics (personal API key only)")
+    insights.add_argument("post_id")
     doctor = commands.add_parser("doctor", help="verify Buffer, R2 configuration, and channel IDs")
     doctor.add_argument("--require", action="append", choices=["x", "instagram"], default=[])
     validate = commands.add_parser("validate", help="validate a G2-to-G3 handoff without network access")
@@ -84,6 +86,10 @@ def main(argv: list[str] | None = None) -> int:
             _, organization_id = _organization(client, args.organization_id or account.organization_id or None)
             result = {"organization_id": organization_id, "buffer_account": account.name,
                       "channels": client.channels(organization_id)}
+        elif args.command == "insights":
+            account = load_account(args.account)
+            result = {"ok": True, "provider": "buffer", "buffer_account": account.name,
+                      "post": client_from_env(args.account).post_insights(args.post_id)}
         elif args.command == "doctor":
             account = load_account(args.account)
             client = client_from_env(args.account)

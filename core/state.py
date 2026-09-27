@@ -1,4 +1,5 @@
 import os
+import json
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -183,6 +184,22 @@ def set_setup_step(step: str) -> None:
             "INSERT INTO settings (key, value) VALUES ('setup_step', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (step,),
+        )
+
+
+def get_onboarding_program() -> dict | None:
+    """The single first-run sales program, stored with existing setup settings."""
+    with connect() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = 'v2_onboarding_program'").fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def save_onboarding_program(program: dict) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('v2_onboarding_program', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (json.dumps(program, ensure_ascii=False),),
         )
 
 

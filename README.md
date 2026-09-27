@@ -29,7 +29,7 @@ AI gateway (see `docs/keys.md`), other features need only their own integration.
 
 ## Product at a glance
 
-Company Core gives operators a browser-based cockpit instead of scattering research, enrichment,
+Company Core gives operators a React workspace instead of scattering research, enrichment,
 drafts, approvals, and campaign state across unrelated tools.
 
 ### Discover companies and resolve the right contact
@@ -37,6 +37,9 @@ drafts, approvals, and campaign state across unrelated tools.
 Search a market by industry and location, keep one candidate per company, and resolve contact data
 only when a company is worth pursuing. This keeps prospecting costs controlled while preserving the
 source and research context used for outreach.
+
+These illustrations predate the V2 React UI; see [UI reference coverage](docs/ui-reference-coverage.md)
+for the approved design images and current visual baselines.
 
 ![Company Core lead discovery workspace](docs/assets/company-core-lead-discovery.png)
 
@@ -48,15 +51,15 @@ external provider.
 
 ![Company Core company intelligence workspace](docs/assets/company-core-lead-intelligence.png)
 
-The same cockpit also handles marketing campaign direction, scripts, scene assets, carousel and
+The same workspace also handles marketing campaign direction, scripts, scene assets, carousel and
 video uploads, Buffer draft handoff, attribution, and operating history. See the
 [product tour](docs/product-tour.md) for the page-by-page workflow.
 
 ## Quick start
 
 Requirements: Python 3.12+, GNU Make, OpenSSL, and FFmpeg. Python 3.12 is required by the bundled
-OpenHands coding SDK. Node.js is only needed for the optional
-Cloudflare email Worker.
+OpenHands coding SDK. Node.js 22 is required to build the React UI; it also runs the optional
+Cloudflare email Worker. Docker is optional.
 
 On Debian or Ubuntu:
 
@@ -65,16 +68,19 @@ sudo apt-get update
 sudo apt-get install python3.12 python3.12-venv python3-pip make openssl ffmpeg
 ```
 
-On macOS with Homebrew:
+The setup scripts use GNU utilities. On macOS with Homebrew, also provide GNU sed:
 
 ```bash
-brew install python@3.12 make openssl ffmpeg
+brew install python@3.12 make openssl ffmpeg gnu-sed
+export PATH="$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
 ```
 
 ```bash
-git clone https://github.com/indoha-commits/AutoEvolve.git
-cd AutoEvolve
-make setup
+git clone https://github.com/indataflow-svg/Autoevolve-shorty.git
+cd Autoevolve-shorty
+make setup PYTHON=python3.12
+npm --prefix autoevolve-ui ci
+npm --prefix autoevolve-ui run build
 ```
 
 If `python3` is older than 3.12 but `python3.12` is installed, run
@@ -82,7 +88,14 @@ If `python3` is older than 3.12 but `python3.12` is installed, run
 
 `make setup` creates isolated virtual environments, installs the application and media engines,
 copies safe configuration templates, and generates local authentication secrets. It never
-overwrites an existing `.env`. Next, choose an AI backend.
+overwrites an existing `.env`. The npm steps build the complete operator UI served by FastAPI.
+Install Node.js 22 separately and verify `node --version` before running them.
+
+You can start immediately with `make dev` and open <http://localhost:8787> (redirects to Home).
+Sign in using `DASHBOARD_USER` and `DASHBOARD_PASSWORD` from the private `.env`; begin at
+`/onboarding`. No provider keys are needed to open the UI. Research, enrichment, drafting,
+sending, and publishing require their corresponding provider configuration. Provider failures
+are displayed explicitly. To enable model-backed actions, choose an AI backend below.
 
 ### Option A: OmniRoute
 
@@ -187,7 +200,7 @@ exist by design. This prevents a new installation from publishing another compan
 - Marketing: campaign planning, carousel and video asset workflows, AI scene planning, Pexels and
   Pixabay retrieval, voice options, caption variants, manual asset upload, and Buffer handoff.
 - Operations: unified queues, status filters, direct actions, project workspaces, health checks,
-  and immutable history views.
+  and persisted workflow activity.
 - Research and coding: web research, repository intelligence, and optional OpenHands-backed coding
   operations through any OpenAI-compatible model gateway.
 
@@ -218,6 +231,9 @@ Start with the [Documentation Index](docs/index.md), then:
 - [Lead Intake](docs/lead-intake.md): form and webhook contracts.
 - [Deployment](docs/deployment.md): reverse proxy and Cloudflare Tunnel examples.
 - [Troubleshooting](docs/troubleshooting.md): common HTTP, model, media, and tunnel failures.
+- [System Architecture](docs/system-architecture.md): current backend/frontend map and editable diagram.
+- [UI Reference Coverage](docs/ui-reference-coverage.md): your approved images, visual baselines, and limitations.
+- [Testing and Errors](docs/v2-testing-and-errors.md): regression commands and HTTP error handling.
 - [Architecture](docs/architecture.md): sales and publishing lifecycles with code references.
 - [Production Checklist](docs/production-checklist.md): security and deliverability checks before launch.
 - [Upgrading and Backups](docs/upgrading.md): safe update, validation, backup, and rollback process.
@@ -232,12 +248,15 @@ services/                       sales providers, email, media, monitoring, and w
 engines/g1                      campaign and content package generation
 engines/g2                      media acquisition, voice, and rendering
 engines/g3                      Buffer publishing handoff and R2 media hosting
-templates/ + static/            operator dashboard
+autoevolve-ui/                  React/Vite operator UI, generated API contract, browser tests
+autoevolve-ui-agent-pack/       approved reference images and implementation specifications
+templates/ + static/            public booking pages and shared logo
 company-sales-email-ingress/    optional Cloudflare inbound-email Worker
 config/                         local service and workspace registry
 data/ + projects/               private runtime state, never committed
 docs/                           setup and integration guides
-docs/assets/                    GitHub product illustrations
+docs/assets/                    GitHub product illustrations (not current UI screenshots)
+docs/plans/                     preserved planning documents and target-state diagrams
 ```
 
 ## Development
@@ -247,6 +266,9 @@ make test
 make lint
 make check
 make smoke   # HTTP smoke suite against a live server (auto-starts one)
+npm --prefix autoevolve-ui run typecheck
+npm --prefix autoevolve-ui run lint
+npm --prefix autoevolve-ui run test
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and the MIT [LICENSE](LICENSE).

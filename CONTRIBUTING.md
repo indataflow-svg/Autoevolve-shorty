@@ -10,11 +10,24 @@ are preferred over broad feature additions.
 
 ```bash
 make setup
+npm --prefix autoevolve-ui ci
+npm --prefix autoevolve-ui run build
 make check
 make dev
 ```
 
-Use mock mode for tests and examples. Tests must not require network access or paid provider credentials.
+Python 3.12+, Node.js 22, Make, OpenSSL, and FFmpeg are required. Use `make setup
+PYTHON=python3.12` if your default Python is older. Open `http://localhost:8787`
+for the built UI, or run `npm --prefix autoevolve-ui run dev` separately for Vite.
+
+Provider substitutes belong only in tests. Production must not contain mock data.
+Tests must not require paid provider credentials. Browser fixtures use isolated
+SQLite storage and real FastAPI routes.
+
+Run frontend typecheck, lint, build, unit tests, and all four Playwright suites
+before merging UI changes; see [the frontend guide](autoevolve-ui/README.md).
+CI also rejects stale generated OpenAPI/TypeScript files. Review visual baselines
+against the [approved images](docs/ui-reference-coverage.md) before updating them.
 
 ## Pull requests
 

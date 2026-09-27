@@ -1071,6 +1071,24 @@ def _draft_lead_context(lead: dict) -> dict[str, Any]:
     if company_context:
         safe["company_context"] = company_context
     metadata = lead.get("metadata") if isinstance(lead.get("metadata"), dict) else {}
+    program_id = metadata.get("onboarding_program_id")
+    if program_id:
+        from core.state import get_onboarding_program
+
+        program = get_onboarding_program()
+        if program and program.get("id") == program_id:
+            strategy = program.get("strategy") or {}
+            company = program.get("company_context") or {}
+            safe["program_strategy"] = {
+                "program_name": strategy.get("name"),
+                "objective": strategy.get("objective"),
+                "offers": strategy.get("offers") or [],
+                "tone": strategy.get("tone"),
+                "approved_claims": strategy.get("approved_claims") or [],
+                "prohibited_claims": strategy.get("prohibited_claims") or [],
+                "our_company": company.get("name"),
+                "our_positioning": company.get("positioning"),
+            }
     company_discovery = metadata.get("company_discovery") if isinstance(metadata.get("company_discovery"), dict) else {}
     if not company_discovery and lead.get("company_domain"):
         candidate = _company_candidate_for_domain(str(lead["company_domain"]))

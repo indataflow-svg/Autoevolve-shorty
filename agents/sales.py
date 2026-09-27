@@ -62,7 +62,7 @@ async def draft_outreach(lead: dict) -> OutreachDraft:
         for key in (
             "full_name", "job_title", "company", "company_domain", "country",
             "source", "source_detail", "campaign_id", "message", "lead_score",
-            "contact_profile", "company_context",
+            "contact_profile", "company_context", "program_strategy",
         )
     }
     latest = lead.get("latest_interaction") or {}
@@ -77,7 +77,8 @@ async def draft_outreach(lead: dict) -> OutreachDraft:
         "the conversation context. Otherwise, if the lead is inbound, acknowledge their "
         "request directly. If company_context is present, ground one observation in its operational focus, "
         "specialties, or pain points. If sourced through Hunter, open with a relevant operational hypothesis "
-        "and make it clear this is an introduction."
+        "and make it clear this is an introduction. If program_strategy is present, use its offer and tone, "
+        "make only claims listed in approved_claims, and never use prohibited_claims."
         + memory_note +
         " Lead facts:\n" + repr(safe)
     )

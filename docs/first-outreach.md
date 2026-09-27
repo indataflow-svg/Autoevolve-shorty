@@ -25,7 +25,7 @@ make doctor
 make dev
 ```
 
-Open `/operations/sales/discovery`. The Sales Doctor in the UI should show the features configured
+Open `/research`. The Integrations page should show the features configured
 by these values. It is normal for unused providers to remain disabled.
 
 ## 2. Discover companies
@@ -59,7 +59,7 @@ outreach policy.
 
 ## 4. Generate and edit the draft
 
-Open `/operations/sales/email`, select the saved lead, and generate a draft. The agent uses the
+Open `/contacts`, select the saved lead, and generate a draft. Review it in `/outreach`. The agent uses the
 saved contact and company profile. Review:
 
 - Recipient and company identity.

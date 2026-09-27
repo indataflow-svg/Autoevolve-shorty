@@ -29,7 +29,20 @@ class SetupKeysPayload(BaseModel):
     values: dict[str, str] = Field(default_factory=dict)
 
 
-@router.post("/keys/test")
+class SetupKeyTestResult(BaseModel):
+    ok: bool
+    checked: list[str]
+
+
+class SetupKeySaveResult(BaseModel):
+    ok: bool
+    group: str
+    saved: list[str]
+    backup: str | None
+    restart_required: bool
+
+
+@router.post("/keys/test", response_model=SetupKeyTestResult)
 def test_setup_keys(payload: SetupKeysPayload, _: None = Depends(verify_founder_action)):
     from core.setup_keys import PROVIDER_GROUPS, validate_group
 
@@ -41,7 +54,7 @@ def test_setup_keys(payload: SetupKeysPayload, _: None = Depends(verify_founder_
     return result
 
 
-@router.post("/keys")
+@router.post("/keys", response_model=SetupKeySaveResult)
 def save_setup_keys(payload: SetupKeysPayload, _: None = Depends(verify_founder_action)):
     from core.setup_keys import PROVIDER_GROUPS, save_group
 

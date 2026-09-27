@@ -165,11 +165,12 @@ class SalesApiTests(unittest.TestCase):
 
     def test_prospect_domain_accepts_apollo_provider(self):
         payload = {"domain": "example.com", "limit": 3, "provider": "apollo"}
+        saved_lead, _ = sales_store.upsert_lead({"company": "Example", "company_domain": "example.com", "source": "apollo"})
         with patch.dict(os.environ, {
             "DASHBOARD_PASSWORD": "dashboard-secret",
             "SALES_ACTION_TOKEN": "action-secret",
         }, clear=False):
-            with patch("app.sales_api.import_domain", return_value=[{"lead": {"id": "lead_1"}, "created": True}]) as import_domain:
+            with patch("app.sales_api.import_domain", return_value=[{"lead": saved_lead, "created": True}]) as import_domain:
                 response = self.client.post(
                     "/company/sales/prospect/domain",
                     auth=self.auth,
@@ -210,8 +211,8 @@ class SalesApiTests(unittest.TestCase):
                 "cached": False,
                 "provider": "pdl",
                 "domain": "example.com",
-                "lead": {"id": lead["id"]},
-                "company_profile": {"domain": "example.com", "summary": {"industry": "Logistics"}},
+                "lead": lead,
+                "company_profile": {"domain": "example.com", "provider": "pdl", "status": "resolved", "summary": {"industry": "Logistics"}},
             }) as resolve_company_mock:
                 response = self.client.post(
                     f"/company/sales/leads/{lead['id']}/resolve-company?provider=auto",
@@ -300,12 +301,13 @@ class SalesApiTests(unittest.TestCase):
             "location": "United States",
             "limit_per_provider": 5,
         }
+        saved_lead, _ = sales_store.upsert_lead({"company": "Example", "company_domain": "example.com", "source": "prospeo"})
         with patch.dict(os.environ, {
             "DASHBOARD_PASSWORD": "dashboard-secret",
             "SALES_ACTION_TOKEN": "action-secret",
         }, clear=False):
             with patch("app.sales_api.research_market_leads", return_value={
-                "results": [{"lead": {"id": "lead_1"}, "created": True}],
+                "results": [{"lead": saved_lead, "created": True}],
                 "providers": {"prospeo": 1, "apollo": 1, "lusha": 0},
                 "warnings": ["lusha: blocked"],
                 "requested": {"industry": "Logistics and Supply Chain", "location": "United States", "limit_per_provider": 5},

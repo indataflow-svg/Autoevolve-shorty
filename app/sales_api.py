@@ -7,7 +7,7 @@ import json
 import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from core.sales_store import (
     approve_draft, get_lead, list_leads, list_send_unknown_drafts, mark_meeting_scheduled, resolve_send_unknown,
@@ -75,6 +75,115 @@ class LeadIntake(BaseModel):
             cleaned = value.strip()
             return cleaned or None
         return value
+
+
+class MeetingMetadata(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    status: str | None = None
+    scheduled_for: str | None = None
+
+
+class SalesMetadata(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    meeting: MeetingMetadata | None = None
+
+
+class SalesLeadRecord(BaseModel):
+    """Stable fields consumed by React; extra persisted sales facts pass through."""
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    stage: str
+    source: str
+    email: str | None = None
+    full_name: str | None = None
+    job_title: str | None = None
+    company: str | None = None
+    company_domain: str | None = None
+    lead_score: int = 0
+    metadata: SalesMetadata = Field(default_factory=SalesMetadata)
+    created_at: str
+    updated_at: str
+
+
+class SalesDraftRecord(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    lead_id: str
+    channel: str
+    kind: str
+    status: str
+    subject: str
+    body: str
+    in_reply_to: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class LeadCreateResult(BaseModel):
+    lead: SalesLeadRecord
+    created: bool
+
+
+class ProspectResult(BaseModel):
+    lead: SalesLeadRecord
+    created: bool
+
+
+class ProspectActionResult(BaseModel):
+    ok: bool
+    provider: str
+    results: list[ProspectResult]
+
+
+class ResearchActionResult(BaseModel):
+    ok: bool
+    provider: str
+    results: list[ProspectResult]
+    providers: dict[str, int]
+    warnings: list[str]
+    mode: str
+    contact_enrichment: str
+    requested: dict
+
+
+class CompanyProfileRecord(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    domain: str
+    provider: str
+    status: str
+    summary: dict = Field(default_factory=dict)
+
+
+class CompanyResolutionResult(BaseModel):
+    ok: bool
+    cached: bool
+    provider: str
+    domain: str
+    lead: SalesLeadRecord
+    company_profile: CompanyProfileRecord
+    attempts: list[dict[str, str]] = Field(default_factory=list)
+    detail: str | None = None
+
+
+class SendActionResult(BaseModel):
+    ok: bool
+    draft_id: str
+    message_id: str
+    sent: bool
+    resumed: bool
+
+
+class MeetingActionResult(BaseModel):
+    ok: bool
+    lead_id: str
+    stage: str
+    lead: SalesLeadRecord
+    message: str
 
 
 class ProspectRequest(BaseModel):
@@ -384,13 +493,13 @@ def lead(lead_id: str):
     return value
 
 
-@action_router.post("/leads", dependencies=[Depends(verify_founder_action)])
+@action_router.post("/leads", response_model=LeadCreateResult, dependencies=[Depends(verify_founder_action)])
 def manual_lead(payload: LeadIntake):
     lead, created = upsert_lead({**payload.model_dump(), "source": payload.source or "manual"})
     return {"lead": lead, "created": created}
 
 
-@action_router.post("/prospect/domain", dependencies=[Depends(verify_founder_action)])
+@action_router.post("/prospect/domain", response_model=ProspectActionResult, dependencies=[Depends(verify_founder_action)])
 def prospect_domain(payload: ProspectRequest):
     try:
         provider = payload.provider.lower().strip()
@@ -426,7 +535,7 @@ def research_suggestions(payload: LeadResearchSuggestionsRequest):
         _raise_lusha_gateway_error(exc, "lusha suggestions failed")
 
 
-@action_router.post("/research/leads", dependencies=[Depends(verify_founder_action)])
+@action_router.post("/research/leads", response_model=ResearchActionResult, dependencies=[Depends(verify_founder_action)])
 def research_leads(payload: LeadResearchRequest):
     try:
         summary = research_market_leads(
@@ -450,7 +559,7 @@ def research_leads(payload: LeadResearchRequest):
         raise HTTPException(502, f"lead research failed: {exc}") from exc
 
 
-@action_router.post("/leads/{lead_id}/resolve-company", dependencies=[Depends(verify_founder_action)])
+@action_router.post("/leads/{lead_id}/resolve-company", response_model=CompanyResolutionResult, dependencies=[Depends(verify_founder_action)])
 def resolve_lead_company(lead_id: str, provider: str = "auto", force: bool = False):
     try:
         return resolve_company_profile(lead_id, provider=provider, force=force)
@@ -492,7 +601,7 @@ async def draft_preview(lead_id: str):
         raise HTTPException(502, f"draft preview failed: {exc}") from exc
 
 
-@action_router.post("/leads/{lead_id}/draft", dependencies=[Depends(verify_founder_action)])
+@action_router.post("/leads/{lead_id}/draft", response_model=SalesDraftRecord, dependencies=[Depends(verify_founder_action)])
 async def draft(lead_id: str):
     try:
         return await build_draft(lead_id)
@@ -528,7 +637,7 @@ async def linkedin_draft(lead_id: str, piece: str = "invite"):
         raise HTTPException(409, str(exc)) from exc
 
 
-@action_router.post("/drafts/{draft_id}/update", dependencies=[Depends(verify_founder_action)])
+@action_router.post("/drafts/{draft_id}/update", response_model=SalesDraftRecord, dependencies=[Depends(verify_founder_action)])
 def update_saved_draft(draft_id: str, payload: DraftUpdatePayload):
     try:
         return update_draft(draft_id, subject=payload.subject, body=payload.body)
@@ -536,7 +645,7 @@ def update_saved_draft(draft_id: str, payload: DraftUpdatePayload):
         raise HTTPException(409, str(exc)) from exc
 
 
-@action_router.post("/drafts/{draft_id}/approve", dependencies=[Depends(verify_founder_action)])
+@action_router.post("/drafts/{draft_id}/approve", response_model=SalesDraftRecord, dependencies=[Depends(verify_founder_action)])
 def approve(draft_id: str):
     try:
         return approve_draft(draft_id)
@@ -544,7 +653,7 @@ def approve(draft_id: str):
         raise HTTPException(409, str(exc)) from exc
 
 
-@action_router.post("/drafts/{draft_id}/send", dependencies=[Depends(verify_founder_action)])
+@action_router.post("/drafts/{draft_id}/send", response_model=SendActionResult, dependencies=[Depends(verify_founder_action)])
 def send(draft_id: str):
     try:
         return send_approved(draft_id)
@@ -581,7 +690,7 @@ def reconcile_draft(draft_id: str, payload: SendReconcilePayload):
     return {"ok": True, "draft": draft, "status": draft["status"], "message": f"Draft {action}."}
 
 
-@action_router.post("/leads/{lead_id}/schedule-meeting", dependencies=[Depends(verify_founder_action)])
+@action_router.post("/leads/{lead_id}/schedule-meeting", response_model=MeetingActionResult, dependencies=[Depends(verify_founder_action)])
 def schedule_meeting(lead_id: str, payload: MeetingScheduledPayload):
     try:
         lead = mark_meeting_scheduled(lead_id, scheduled_for=payload.scheduled_for, note=payload.note)

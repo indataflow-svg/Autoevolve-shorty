@@ -81,6 +81,32 @@ class BufferScheduleTests(unittest.TestCase):
         self.assertIn("queue", command)
         self.assertNotIn("--due-at", command)
 
+    def test_insights_read_uses_saved_buffer_id_and_account(self):
+        post = self._post(
+            buffer_post_ids=["post-9"], buffer_accounts=["beta"], buffer_account="beta",
+            buffer_result={"beta": {"results": [{"post_id": "post-9", "status": "scheduled"}]}}
+        )
+        provider = json.dumps({"ok": True, "provider": "buffer", "post": {
+            "id": "post-9", "status": "sent", "dueAt": None, "externalLink": "https://example.test/post-9",
+            "metrics": [{"type": "reactions", "name": "Reactions", "value": 4, "unit": "count"}],
+            "metricsUpdatedAt": "2026-09-24T00:00:00Z",
+        }})
+        with patch("app.marketing_api.MarketingConfig.load", return_value=_config()), \
+                patch("app.marketing_api._run", return_value=provider) as run_mock:
+            response = self.client.get(f"/company/marketing/manual-posts/{post['id']}/buffer-insights?post_id=post-9", auth=self.auth)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "sent")
+        self.assertEqual(response.json()["metrics"][0]["value"], 4)
+        self.assertTrue(response.json()["experimental"])
+        self.assertEqual(run_mock.call_args.args[0][1:], ["--account", "beta", "insights", "post-9"])
+        rejected = self.client.get(f"/company/marketing/manual-posts/{post['id']}/buffer-insights?post_id=not-saved", auth=self.auth)
+        self.assertEqual(rejected.status_code, 404)
+
+    def test_insights_without_confirmed_buffer_id_are_unavailable(self):
+        post = self._post()
+        response = self.client.get(f"/company/marketing/manual-posts/{post['id']}/buffer-insights", auth=self.auth)
+        self.assertEqual(response.status_code, 409)
+
     def test_timed_schedule_passes_due_at_and_records_it(self):
         post = self._post()
         with patch("app.marketing_api.MarketingConfig.load", return_value=_config()), \

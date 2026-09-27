@@ -1,9 +1,13 @@
 # AutoEvolve V2 Implementation Plan
 
-Direction source: `AutoEvolve_V2_Operating_and_Infrastructure_Plan.docx` (architecture review,
+> Planning document: proposed infrastructure is not automatically implemented. For current runtime behavior, use [System Architecture](system-architecture.md) and [V2 Closure](v2-closure.md).
+
+> This is the design plan, not a current-state inventory. See [V2 closure](v2-closure.md) for implemented operator routes and [testing/error handling](v2-testing-and-errors.md) for verification.
+
+Direction source: `docs/plans/AutoEvolve_V2_Operating_and_Infrastructure_Plan.docx` (architecture review,
 24/7 operating model, hardware sizing, API-cost planning, Foundry integration).
-Architecture detail source: `company-core-architecture.excalidraw` (trust boundaries + numbered
-control gates) and `autoevolve-v2-infrastructure.excalidraw` (V2 node layout and operating loop).
+Architecture detail source: `docs/plans/company-core-architecture.excalidraw` (trust boundaries + numbered
+control gates) and `docs/plans/autoevolve-v2-infrastructure.excalidraw` (V2 node layout and operating loop).
 This file is the delta between that direction and the repository as it exists today, expressed as
 ordered, file-level changes.
 
@@ -11,9 +15,9 @@ ordered, file-level changes.
 
 | Artifact | Role |
 | --- | --- |
-| `AutoEvolve_V2_Operating_and_Infrastructure_Plan.docx` | Operating direction, sizing, commercial loops, DoD |
-| `company-core-architecture.excalidraw` | Current runtime architecture, trust boundaries, gates 1-7 |
-| `autoevolve-v2-infrastructure.excalidraw` | Target node layout and 24/7 operating loop |
+| `docs/plans/AutoEvolve_V2_Operating_and_Infrastructure_Plan.docx` | Operating direction, sizing, commercial loops, DoD |
+| `docs/plans/company-core-architecture.excalidraw` | Current runtime architecture, trust boundaries, gates 1-7 |
+| `docs/plans/autoevolve-v2-infrastructure.excalidraw` | Target node layout and 24/7 operating loop |
 | This repository | Implementation; code references below are authoritative |
 
 ## 1. Verified current state
@@ -505,7 +509,7 @@ API latency or memory. Do not spend the Day 1-2 window on remote SSH execution.
 | Add `healthcheck` on `/health`, `init: true`, json-file log rotation options | `compose.yaml` |
 | Require `SALES_RESEND_WEBHOOK_SECRET`, `SALES_EMAIL_WEBHOOK_SECRET`, `TALLY_WEBHOOK_SECRET`; report `bulk_send: false` | `scripts/doctor.py` |
 | Add `SCHEDULER_ENABLED`, `SCHEDULER_MODE`, `WORKER_MODE`, `NOTIFY_*`, `RATE_LIMIT_*`, `PROGRAM_*` | `.env.example`, `scripts/init_env.sh` |
-| Fix artifact list: file is `company-core-architecture.excalidraw`, add `autoevolve-v2-infrastructure.excalidraw` | `AutoEvolve_V2_Operating_and_Infrastructure_Plan.docx` section 15 |
+| Fix artifact list: file is `docs/plans/company-core-architecture.excalidraw`, add `docs/plans/autoevolve-v2-infrastructure.excalidraw` | `docs/plans/AutoEvolve_V2_Operating_and_Infrastructure_Plan.docx` section 15 |
 | Add a non-goals section mirroring doc 14 | `README.md`, `docs/non-goals.md` |
 | Keep one process explicit, add reverse-proxy rate-limit example | `docs/deployment.md` |
 

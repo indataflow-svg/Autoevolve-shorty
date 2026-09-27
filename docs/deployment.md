@@ -3,12 +3,30 @@
 Run Company Core behind HTTPS. SQLite is suitable for a single application process; use one
 worker or migrate the stores before horizontal scaling.
 
+Native deployment requires Python 3.12+, Node.js 22 for the UI build, Make,
+OpenSSL, and FFmpeg. Docker is an optional packaging alternative, not a requirement.
+
 ## Native service
 
 ```bash
 make setup
+npm --prefix autoevolve-ui ci
+npm --prefix autoevolve-ui run build
 .venv/bin/uvicorn app.api:app --host 127.0.0.1 --port 8787
 ```
+
+React is the sole operator UI, served by the same FastAPI process. `/` redirects to `/home`.
+Available pages: `/home`, `/onboarding`, `/contacts`, `/companies`, `/research`, `/outreach`,
+`/replies`, `/meetings`, `/campaigns`, `/content`, `/integrations`, and `/settings`.
+Trailing slashes redirect to canonical paths and preserve query filters. Old `/operations/*`
+and `/legacy/operations/*` bookmarks redirect to their replacements; the retired history
+page redirects to Home. Historical records remain available through the existing APIs.
+The former founder form at `POST /` has been removed. Domain actions remain available through
+existing authenticated APIs and their React workflows.
+
+Unknown browser addresses return HTTP 404 with a React not-found screen. Unknown API paths
+return JSON 404; they never fall back to the app. `/meet` and `/calendar` remain public booking
+utilities, independent of the operator UI.
 
 Use systemd, Supervisor, or another process manager to keep the command running. Put Caddy,
 Nginx, or Cloudflare Tunnel in front of `http://127.0.0.1:8787`.

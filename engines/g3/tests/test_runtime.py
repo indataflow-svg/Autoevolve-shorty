@@ -138,6 +138,17 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(G3Error):
             client.create_draft({"saveToDraft": False, "mode": "shareNow"})
 
+    def test_insights_are_a_read_for_the_exact_buffer_post(self):
+        client = BufferClient("test")
+        provider = {"id": "post-9", "status": "sent", "metrics": [{"type": "reactions", "name": "Reactions", "value": 4.0, "unit": "count"}], "metricsUpdatedAt": "2026-09-24T00:00:00Z"}
+        with patch.object(BufferClient, "_request", return_value={"post": provider}) as request:
+            self.assertEqual(client.post_insights("post-9"), provider)
+        self.assertIn("post(input: $input)", request.call_args.args[0])
+        self.assertEqual(request.call_args.args[1], {"input": {"id": "post-9"}})
+        with patch.object(BufferClient, "_request", return_value={"post": provider}):
+            with self.assertRaisesRegex(G3Error, "no matching post"):
+                client.post_insights("other-post")
+
     @patch("g3_runtime.r2.urlopen", return_value=FakeResponse())
     def test_public_mp4_probe_passes(self, mocked):
         video = self.root / "video.mp4"

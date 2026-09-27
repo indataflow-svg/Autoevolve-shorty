@@ -32,7 +32,7 @@ video. Run `make doctor` and confirm G1, G2, showcase, and outro are ready.
 
 ## 2. Create a campaign
 
-Open `/operations/marketing/campaigns`. Choose an objective, provide a concrete brief, select social
+Open `/campaigns`. Choose an objective, provide a concrete brief, select social
 platforms and a video platform, then choose TTS or real voice. The AI selects the buyer and topic
 from your direction; a supplied transcript remains the narration source.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate autoevolve-v2-infrastructure.excalidraw (V2 target state + 24/7 operating loop).
+"""Generate docs/plans/autoevolve-v2-infrastructure.excalidraw (V2 target state + 24/7 operating loop).
 
 Rows are explicit, and box widths are chosen so every cross-lane arrow runs through a
 verified empty corridor instead of through another box.
@@ -8,7 +8,7 @@ import json
 import textwrap
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parents[1] / "autoevolve-v2-infrastructure.excalidraw"
+OUT = Path(__file__).resolve().parents[1] / "docs" / "plans" / "autoevolve-v2-infrastructure.excalidraw"
 
 FONT = 16
 PAD = 14

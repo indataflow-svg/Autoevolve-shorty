@@ -1,34 +1,42 @@
 # Documentation index
 
-Repository: `AutoEvolve`. Application: `Company Core` (dashboard, config keys,
-and `company-core-g1/g2/g3` binaries). Start here, then follow the stages below.
+AutoEvolve's React UI uses the Company Core FastAPI backend. Existing
+`COMPANY_CORE_*` configuration names and engine binaries retain their names.
 
-## Start here
+## Start and operate
 
-1. [README](../README.md): clone, `make setup`, first boot.
-2. [API Keys](keys.md): canonical guide for every key and verify command.
-3. [Configuration](configuration.md): provider map and required settings.
+- [README](../README.md): requirements, installation, frontend build, first boot.
+- [Frontend Guide](../autoevolve-ui/README.md): development, sign-in, generated API contract, browser tests.
+- [Product Tour](product-tour.md): current React pages and supported actions.
+- [V2 Closure](v2-closure.md): resumable onboarding, real-record orchestration, legacy route disposition.
+- [API Keys](keys.md), [Configuration](configuration.md), and [Provider Setup](providers.md): required versus optional integrations.
+- [Deployment](deployment.md): native hosting, optional Docker, HTTPS, and public links.
+- [Testing and Errors](v2-testing-and-errors.md): regression gates and HTTP failure handling.
+- [Repository Readiness](repository-readiness.md): source packaging, exclusions, and unverified startup limits.
+- [Production Checklist](production-checklist.md) and [Upgrading and Backups](upgrading.md).
 
-## Tutorials
+## Current implementation references
 
-4. [First Sales Outreach](first-outreach.md): install check through approved Resend delivery.
-5. [First Marketing Campaign](first-campaign.md): brief through media review and Buffer draft.
-6. [Product Tour](product-tour.md): what each operator page does.
+- [System Architecture](system-architecture.md) and its [editable Excalidraw map](system-architecture.excalidraw): runtime, auth, persistence, frontend/backend relationships.
+- [Workflow UI Contract](workflow-ui-contract.md): page reads, mutations, exact backend semantics, unsupported fields.
+- [UI Reference Coverage](ui-reference-coverage.md): approved images mapped to implementation baselines; visual limitations.
+- [Visual Specification](../autoevolve-ui-agent-pack/docs/SCREENSHOT_REFERENCES.md) and [UI Implementation Rules](../autoevolve-ui-agent-pack/docs/UI_IMPLEMENTATION.md).
+- [Lifecycle Architecture](architecture.md): sales and publishing state transitions.
+- [V2 Final Report](v2-final-report.md): closure functionality, validation, and remaining limitations.
 
-## Operations
+## Tutorials and troubleshooting
 
-7. [Provider Setup](providers.md): minimum keys, feature mapping, credit-saving.
-8. [Model Routing](model-routing.md): OmniRoute, Ollama, and direct gateway summary.
-9. [Lead Intake](lead-intake.md): form and webhook contracts.
-10. [Deployment](deployment.md): reverse proxy and Cloudflare Tunnel.
-11. [Production Checklist](production-checklist.md): security and deliverability before launch.
-12. [Upgrading and Backups](upgrading.md): safe update, backup, rollback.
+- [First Sales Outreach](first-outreach.md) and [First Marketing Campaign](first-campaign.md).
+- [Model Routing](model-routing.md), [Lead Intake](lead-intake.md), and [Troubleshooting](troubleshooting.md).
 
-## Reference
+## Historical and planning material
 
-13. [Troubleshooting](troubleshooting.md): common HTTP, model, media, and tunnel failures.
-14. [Architecture](architecture.md): sales and publishing lifecycles with code references.
+Use these to understand decisions, not as current API or startup contracts:
 
-Conventions used across these docs: Title-Case link labels, flat fenced code blocks
-(`bash`, `dotenv`), two-column reference tables, unnumbered `##` headers except
-step-by-step tutorials.
+- [Planning Sources](plans/README.md): original operating plan, extraction, and target-state drawings.
+- [V2 Implementation Plan](v2-implementation-plan.md): product direction and proposed infrastructure.
+- [Original Backend/UI Audit](backend-ui-audit.md): findings before later projections and pages were added.
+- [Historical Backend Map](backend-system-map.md), [diagram](backend-system-map.excalidraw), and [preview](backend-system-map-preview.png).
+
+Where a historical artifact differs from code, use the generated OpenAPI contract,
+current runtime documentation, and regression tests.

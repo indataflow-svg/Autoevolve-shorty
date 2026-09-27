@@ -1,5 +1,10 @@
 # Troubleshooting
 
+If React routes return `503 Frontend has not been built`, install Node.js 22 and run
+`npm --prefix autoevolve-ui ci` followed by `npm --prefix autoevolve-ui run build`,
+then restart FastAPI. `/` now redirects to `/home`; it does not serve the retired
+founder cockpit. A valid sign-in is still required before protected API reads.
+
 Start with:
 
 ```bash

@@ -485,6 +485,52 @@ def list_leads(limit: int = 50, stage: str | None = None) -> list[dict]:
     return result
 
 
+def list_contacts_page(
+    *, page: int = 1, page_size: int = 10, stage: str | None = None,
+    query: str = "", sort: str = "recent",
+) -> tuple[list[dict], int, dict[str, Any]]:
+    """Read-only, complete pagination over the existing sales leads."""
+    order = {
+        "recent": "updated_at DESC, id DESC",
+        "oldest": "updated_at ASC, id ASC",
+        "name": "full_name COLLATE NOCASE ASC, id ASC",
+        "score": "lead_score DESC, id ASC",
+        "company": "company COLLATE NOCASE ASC, id ASC",
+    }[sort]
+    filters: list[str] = []
+    values: list[Any] = []
+    if stage:
+        filters.append("stage = ?")
+        values.append(stage)
+    if query:
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        filters.append("(full_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' "
+                       "OR company LIKE ? ESCAPE '\\' OR job_title LIKE ? ESCAPE '\\')")
+        values.extend([pattern] * 4)
+    where = " WHERE " + " AND ".join(filters) if filters else ""
+    with connect() as connection:
+        total = connection.execute(f"SELECT COUNT(*) FROM sales_leads{where}", values).fetchone()[0]
+        rows = connection.execute(
+            f"SELECT sales_leads.*, (SELECT MAX(created_at) FROM sales_interactions "
+            f"WHERE lead_id = sales_leads.id) AS last_touch_at FROM sales_leads{where} "
+            f"ORDER BY {order} LIMIT ? OFFSET ?",
+            [*values, page_size, (page - 1) * page_size],
+        ).fetchall()
+        metrics = connection.execute(
+            """SELECT COUNT(*) AS total,
+                      SUM(CASE WHEN email IS NOT NULL AND email != '' AND stage != 'suppressed' THEN 1 ELSE 0 END) AS ready,
+                      SUM(CASE WHEN lower(verification_status) = 'valid' THEN 1 ELSE 0 END) AS verified,
+                      SUM(CASE WHEN stage = 'suppressed' THEN 1 ELSE 0 END) AS suppressed
+               FROM sales_leads"""
+        ).fetchone()
+        stage_rows = connection.execute("SELECT stage, COUNT(*) AS count FROM sales_leads GROUP BY stage").fetchall()
+        leads = [_decode(row) for row in rows]
+    counts = {key: metrics[key] or 0 for key in metrics.keys()}
+    counts["by_stage"] = {row["stage"]: row["count"] for row in stage_rows}
+    return [lead for lead in leads if lead], total, counts
+
+
 def merge_lead_metadata(lead_id: str, patch: dict[str, Any]) -> dict:
     timestamp = now_iso()
     with connect() as connection:

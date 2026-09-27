@@ -1,21 +1,25 @@
 from fastapi import (
     Depends,
     FastAPI,
-    Form,
+    HTTPException,
     Request,
 )
 import os
+from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from agents.founder import run_founder
 from app.ratelimit import rate_limit_intake
 from app.security import authenticate
+from app.contacts_api import router as contacts_router
+from app.companies_api import router as companies_router
+from app.workspace_api import router as workspace_router
+from app.workflow_views_api import router as workflow_views_router
+from app.onboarding_api import read_router as onboarding_read_router, write_router as onboarding_write_router
 from core.branding import company_logo_url, company_name
-from core.dashboard import get_dashboard_state, get_operations_page_state
 
 
 def _on_startup():
@@ -112,208 +116,73 @@ def _calendar_embed_url() -> str | None:
     return _calendar_booking_url()
 
 
-def _research_context(request: Request, *, result=None, error=None) -> dict:
-    return {
-        "request": request,
-        "result": result,
-        "error": error,
-        **get_dashboard_state(),
-    }
+def _ui_redirect(request: Request, destination: str, *, status_code: int = 307):
+    # Preserve shareable filters and selections when following an old bookmark.
+    query = request.url.query
+    return RedirectResponse(f"{destination}?{query}" if query else destination, status_code=status_code)
 
 
-@app.get(
-    "/",
-    response_class=HTMLResponse,
-)
-async def home(
-    request: Request,
-    _: str = Depends(authenticate),
-):
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context=_research_context(request),
-    )
+@app.get("/", include_in_schema=False)
+def home(request: Request):
+    return _ui_redirect(request, "/home")
 
 
-@app.post(
-    "/",
-    response_class=HTMLResponse,
-)
-async def submit(
-    request: Request,
-    message: str = Form(...),
-    _: str = Depends(authenticate),
-):
-    result = None
-    error = None
-
-    try:
-        result = await run_founder(message)
-
-    except Exception as exc:
-        error = (
-            f"{type(exc).__name__}: {exc}"
-        )
-
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context=_research_context(request, result=result, error=error),
-    )
+@app.get("/legacy/operations", include_in_schema=False)
+def operations(request: Request):
+    return _ui_redirect(request, "/home")
 
 
-@app.get(
-    "/operations",
-    response_class=HTMLResponse,
-)
-async def operations(
-    request: Request,
-    _: str = Depends(authenticate),
-):
-    return templates.TemplateResponse(
-        request=request,
-        name="operations.html",
-        context={
-            "request": request,
-            "page_mode": "operations",
-            "active_nav": "operations",
-            **get_operations_page_state(),
-        },
-    )
+@app.get("/operations/sales", include_in_schema=False)
+@app.get("/operations/sales/discovery", include_in_schema=False)
+def operations_sales(request: Request):
+    return _ui_redirect(request, "/research")
 
 
-@app.get(
-    "/operations/sales",
-    response_class=HTMLResponse,
-)
-@app.get(
-    "/operations/sales/discovery",
-    response_class=HTMLResponse,
-)
-async def operations_sales(
-    request: Request,
-    _: str = Depends(authenticate),
-):
-    return templates.TemplateResponse(
-        request=request,
-        name="operations_sales.html",
-        context={
-            "request": request,
-            "page_mode": "sales",
-            "sales_view": "discovery",
-            "active_nav": "sales",
-            **get_operations_page_state(),
-        },
-    )
+@app.get("/legacy/operations/sales/email", include_in_schema=False)
+def operations_sales_email(request: Request):
+    return _ui_redirect(request, "/outreach")
 
 
-@app.get(
-    "/operations/sales/email",
-    response_class=HTMLResponse,
-)
-async def operations_sales_email(
-    request: Request,
-    _: str = Depends(authenticate),
-):
-    return templates.TemplateResponse(
-        request=request,
-        name="operations_sales.html",
-        context={
-            "request": request,
-            "page_mode": "sales",
-            "sales_view": "email",
-            "active_nav": "sales",
-            **get_operations_page_state(),
-        },
-    )
+@app.get("/legacy/operations/marketing", include_in_schema=False)
+@app.get("/legacy/operations/marketing/campaigns", include_in_schema=False)
+def operations_marketing(request: Request):
+    return _ui_redirect(request, "/campaigns")
 
 
-@app.get(
-    "/operations/marketing",
-    response_class=HTMLResponse,
-)
-@app.get(
-    "/operations/marketing/campaigns",
-    response_class=HTMLResponse,
-)
-async def operations_marketing(
-    request: Request,
-    _: str = Depends(authenticate),
-):
-    return templates.TemplateResponse(
-        request=request,
-        name="operations_marketing.html",
-        context={
-            "request": request,
-            "page_mode": "marketing",
-            "marketing_view": "campaigns",
-            "active_nav": "marketing",
-            **get_operations_page_state(),
-        },
-    )
+@app.get("/legacy/operations/marketing/assets", include_in_schema=False)
+def operations_marketing_assets(request: Request):
+    return _ui_redirect(request, "/content")
 
 
-@app.get(
-    "/operations/marketing/assets",
-    response_class=HTMLResponse,
-)
-async def operations_marketing_assets(
-    request: Request,
-    _: str = Depends(authenticate),
-):
-    return templates.TemplateResponse(
-        request=request,
-        name="operations_marketing.html",
-        context={
-            "request": request,
-            "page_mode": "marketing",
-            "marketing_view": "assets",
-            "active_nav": "marketing",
-            **get_operations_page_state(),
-        },
-    )
+@app.get("/operations", include_in_schema=False)
+def modern_operations(request: Request):
+    return _ui_redirect(request, "/home")
 
 
-@app.get(
-    "/operations/marketing/publishing",
-    response_class=HTMLResponse,
-)
-async def operations_marketing_publishing(
-    request: Request,
-    _: str = Depends(authenticate),
-):
-    return templates.TemplateResponse(
-        request=request,
-        name="operations_marketing.html",
-        context={
-            "request": request,
-            "page_mode": "marketing",
-            "marketing_view": "publishing",
-            "active_nav": "marketing",
-            **get_operations_page_state(),
-        },
-    )
+@app.get("/operations/sales/email", include_in_schema=False)
+def modern_outreach(request: Request):
+    return _ui_redirect(request, "/outreach")
 
 
-@app.get(
-    "/operations/history",
-    response_class=HTMLResponse,
-)
-async def operations_history(
-    request: Request,
-    _: str = Depends(authenticate),
-):
-    return templates.TemplateResponse(
-        request=request,
-        name="operations_history.html",
-        context={
-            "request": request,
-            "page_mode": "history",
-            "active_nav": "history",
-            **get_operations_page_state(),
-        },
-    )
+@app.get("/operations/marketing", include_in_schema=False)
+@app.get("/operations/marketing/campaigns", include_in_schema=False)
+def modern_campaigns(request: Request):
+    return _ui_redirect(request, "/campaigns")
+
+
+@app.get("/operations/marketing/assets", include_in_schema=False)
+def modern_content(request: Request):
+    return _ui_redirect(request, "/content")
+
+
+@app.get("/operations/marketing/publishing", include_in_schema=False)
+def operations_marketing_publishing(request: Request):
+    return _ui_redirect(request, "/content")
+
+
+@app.get("/operations/history", include_in_schema=False)
+def operations_history(request: Request):
+    return _ui_redirect(request, "/home")
 
 
 @app.get(
@@ -367,8 +236,64 @@ from app.setup_api import router as setup_router
 app.include_router(company_ops_router, dependencies=[Depends(authenticate)])
 app.include_router(marketing_router, dependencies=[Depends(authenticate)])
 app.include_router(sales_router, dependencies=[Depends(authenticate)])
+app.include_router(contacts_router, dependencies=[Depends(authenticate)])
+app.include_router(companies_router, dependencies=[Depends(authenticate)])
+app.include_router(workspace_router, dependencies=[Depends(authenticate)])
+app.include_router(workflow_views_router, dependencies=[Depends(authenticate)])
+app.include_router(onboarding_read_router, dependencies=[Depends(authenticate)])
 app.include_router(sales_action_router, dependencies=[Depends(authenticate)])
 app.include_router(setup_router, dependencies=[Depends(authenticate)])
+app.include_router(onboarding_write_router, dependencies=[Depends(authenticate)])
 # Tunnel-facing integrations stay outside dashboard auth and enforce their own
 # shared-secret checks in app.sales_api. They are rate limited per client IP.
 app.include_router(sales_intake_router, dependencies=[Depends(rate_limit_intake)])
+
+# The React client is a static build served by this FastAPI process. API routes
+# keep their existing authentication and action gates.
+_ui_dist = Path(__file__).resolve().parent.parent / "autoevolve-ui" / "dist"
+if _ui_dist.is_dir():
+    app.mount("/assets", StaticFiles(directory=_ui_dist / "assets"), name="ui-assets")
+
+
+@app.get("/contacts", include_in_schema=False)
+@app.get("/contacts/", include_in_schema=False)
+@app.get("/research", include_in_schema=False)
+@app.get("/research/", include_in_schema=False)
+@app.get("/companies", include_in_schema=False)
+@app.get("/companies/", include_in_schema=False)
+@app.get("/integrations", include_in_schema=False)
+@app.get("/integrations/", include_in_schema=False)
+@app.get("/settings", include_in_schema=False)
+@app.get("/settings/", include_in_schema=False)
+@app.get("/home", include_in_schema=False)
+@app.get("/home/", include_in_schema=False)
+@app.get("/outreach", include_in_schema=False)
+@app.get("/outreach/", include_in_schema=False)
+@app.get("/replies", include_in_schema=False)
+@app.get("/replies/", include_in_schema=False)
+@app.get("/meetings", include_in_schema=False)
+@app.get("/meetings/", include_in_schema=False)
+@app.get("/campaigns", include_in_schema=False)
+@app.get("/campaigns/", include_in_schema=False)
+@app.get("/content", include_in_schema=False)
+@app.get("/content/", include_in_schema=False)
+@app.get("/onboarding", include_in_schema=False)
+@app.get("/onboarding/", include_in_schema=False)
+def ui_app(request: Request):
+    if request.url.path.endswith("/"):
+        return _ui_redirect(request, request.url.path.rstrip("/"), status_code=308)
+    if not (_ui_dist / "index.html").is_file():
+        raise HTTPException(503, "Frontend has not been built")
+    return FileResponse(_ui_dist / "index.html")
+
+
+@app.get("/{path:path}", include_in_schema=False)
+def missing_page(path: str, request: Request):
+    # Only browser navigation gets the React not-found screen. Unknown API,
+    # asset, and utility paths remain genuine JSON 404s, never SPA success.
+    namespace = path.split("/", 1)[0]
+    if namespace not in {"company", "assets", "static", "health", "docs", "redoc", "openapi.json"} and "text/html" in request.headers.get("accept", ""):
+        if not (_ui_dist / "index.html").is_file():
+            raise HTTPException(503, "Frontend has not been built")
+        return FileResponse(_ui_dist / "index.html", status_code=404)
+    raise HTTPException(404, "Not Found")

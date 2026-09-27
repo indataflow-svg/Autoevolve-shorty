@@ -16,7 +16,7 @@ steps and verify commands, start with [API Keys](keys.md).
 | Pexels | Stock image/video search | `PEXELS_API_KEY` | Provider request |
 | Pixabay | Stock media fallback | `PIXABAY_API_KEY` | Provider request |
 | Coverr | Additional stock-video search | `COVERR_API_KEY` | Provider request; selected download only |
-| Buffer | Social draft creation | `BUFFER_API_KEY` and channel IDs | Draft creation |
+| Buffer | Social draft creation, explicit scheduling, and experimental post insights | `BUFFER_API_KEY` and channel IDs | Draft/schedule mutations; read-only post status and available metrics for saved Buffer IDs |
 | Cloudflare R2 | Public media hosting for Buffer | `R2_*` | Upload/storage |
 
 ## Sales providers

@@ -1,0 +1,31 @@
+import { expect, test } from '@playwright/test'
+
+test('root opens React Home and old bookmarks preserve filters', async ({ page, request }) => {
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/home$/)
+  await page.getByLabel('Username').fill('founder')
+  await page.getByLabel('Password').fill('browser-secret')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible()
+  await page.goto('/contacts/?q=Rift')
+  await expect(page).toHaveURL(/\/contacts\?q=Rift$/)
+  await expect(page.getByLabel('Username')).toBeVisible()
+  const legacy = await request.get('/operations/sales/email?status=draft', { maxRedirects: 0 })
+  expect(legacy.status()).toBe(307)
+  expect(legacy.headers().location).toBe('/outreach?status=draft')
+})
+
+test('unknown pages show a recoverable 404 instead of silently opening Contacts', async ({ page, request }) => {
+  const response = await page.goto('/missing-page')
+  expect(response?.status()).toBe(404)
+  await page.getByLabel('Username').fill('founder')
+  await page.getByLabel('Password').fill('browser-secret')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible()
+  await expect(page).toHaveURL(/\/missing-page$/)
+  await page.getByRole('link', { name: 'Go to Home' }).click()
+  await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible()
+  const missingApi = await request.get('/company/ui/missing', { headers: { Accept: 'text/html' } })
+  expect(missingApi.status()).toBe(404)
+  expect(await missingApi.json()).toEqual({ detail: 'Not Found' })
+})

@@ -19,6 +19,20 @@ class CodingTaskRequest(BaseModel):
     request: str
     model: str | None = None
 
+
+class IncidentRecord(BaseModel):
+    id: str
+    service: str
+    severity: str
+    status: str
+    trigger: str
+    created_at: str
+    updated_at: str
+
+
+class IncidentsView(BaseModel):
+    incidents: list[IncidentRecord]
+
 @router.post("/coding/tasks", dependencies=[Depends(verify_founder_action)])
 def create_coding_task(body: CodingTaskRequest):
     return execute_task(body.workspace, body.request, source="founder", model_override=body.model)
@@ -41,7 +55,7 @@ def coding_apply(task_id: str):
     except ValueError as exc:
         raise HTTPException(409, str(exc))
 
-@router.get("/incidents")
+@router.get("/incidents", response_model=IncidentsView)
 def incidents(limit: int = 30):
     return {"incidents": list_incidents(limit)}
 

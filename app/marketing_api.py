@@ -14,7 +14,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from fastapi.responses import FileResponse
 from PIL import Image
 
@@ -120,6 +120,122 @@ class BufferScheduleRequest(BaseModel):
     def _clean_due_at(cls, value: object) -> object:
         text = str(value or "").strip()
         return text or None
+
+
+class BufferAccountInfo(BaseModel):
+    name: str
+    organization_id: str | None
+    instagram_channel_id: bool
+    x_channel_id: bool
+
+
+class BufferAccountsView(BaseModel):
+    accounts: list[BufferAccountInfo]
+    error: str | None = None
+
+
+class BufferMetric(BaseModel):
+    type: str
+    name: str
+    value: float
+    unit: str
+
+
+class BufferInsightsView(BaseModel):
+    post_id: str
+    buffer_account: str
+    status: str
+    due_at: str | None
+    external_link: str | None
+    metrics: list[BufferMetric] | None
+    metrics_updated_at: str | None
+    experimental: bool = True
+
+
+class AssetPackActionRecord(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    title: str
+    status: str
+    objective: str
+
+
+class AssetPackCreateResult(BaseModel):
+    ok: bool
+    pack: AssetPackActionRecord
+    message: str
+
+
+class CampaignActionRecord(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    status: str
+    current_stage: str
+    g3_status: str
+
+
+class CampaignCreateResult(BaseModel):
+    ok: bool
+    campaign: CampaignActionRecord
+    message: str
+
+
+class CampaignTransitionResult(BaseModel):
+    ok: bool
+    campaign_id: str
+    status: str | None = None
+    next_stage: str | None = None
+    resume_stage: str | None = None
+    g3_status: str | None = None
+
+
+class MarketingOrgActionRecord(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    name: str
+    slug: str
+    domain: str | None = None
+    status: str | None = None
+    capabilities: dict[str, bool] = Field(default_factory=dict)
+
+
+class MarketingOrgCreateResult(BaseModel):
+    ok: bool
+    org: MarketingOrgActionRecord
+
+
+class MarketingOrgActiveResult(BaseModel):
+    ok: bool
+    org: MarketingOrgActionRecord
+
+
+class OrgCapabilitiesResult(BaseModel):
+    org_id: int
+    capabilities: dict[str, bool]
+
+
+class ManualPostActionRecord(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    workflow_status: str
+    buffer_status: str
+
+
+class ManualPostCreateResult(BaseModel):
+    ok: bool
+    post: ManualPostActionRecord
+    message: str
+
+
+class BufferScheduleResult(BaseModel):
+    ok: bool
+    post: ManualPostActionRecord
+    result: dict[str, Any]
+    message: str
 
 
 BUFFER_ACCOUNT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,30}$")
@@ -766,7 +882,7 @@ def _public_campaign(campaign: dict) -> dict:
     return value
 
 
-@router.post("/asset-packs")
+@router.post("/asset-packs", response_model=AssetPackCreateResult)
 def create_asset_pack(payload: AssetPackRequest):
     from core.state import get_active_org
 
@@ -989,7 +1105,7 @@ def finalize_manual_post(post_record_id: str):
     return {"ok": True, "post": _public_manual_post(updated), "message": f"{post_type.title()} saved locally and marked ready for Buffer handoff."}
 
 
-@router.post("/manual-posts")
+@router.post("/manual-posts", response_model=ManualPostCreateResult)
 async def create_manual_post_from_ui(
     platform: str = Form(...),
     post_type: str = Form(default="carousel"),
@@ -1012,7 +1128,7 @@ async def create_manual_post_from_ui(
     return {"ok": True, "post": finalized["post"], "message": "Manual post saved with backend-generated tracking and caption."}
 
 
-@router.get("/buffer-accounts")
+@router.get("/buffer-accounts", response_model=BufferAccountsView)
 def buffer_accounts():
     """Named Buffer accounts configured in g3.env (keys never leave the server)."""
     try:
@@ -1058,6 +1174,58 @@ def buffer_accounts():
     if not isinstance(accounts, list) or not accounts:
         return {**fallback, "error": "G3 reported no Buffer accounts"}
     return {"accounts": accounts}
+
+
+@router.get("/manual-posts/{post_record_id}/buffer-insights", response_model=BufferInsightsView)
+def manual_post_buffer_insights(post_record_id: str, post_id: str | None = None):
+    """Read one saved Buffer post's provider state and optional personal-key metrics."""
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    metadata = post.get("metadata") or {}
+    saved_ids = [str(value) for value in metadata.get("buffer_post_ids") or [] if value]
+    if not saved_ids:
+        raise HTTPException(409, "this manual post has no confirmed Buffer post ID")
+    selected_id = post_id or saved_ids[0]
+    if selected_id not in saved_ids:
+        raise HTTPException(404, "Buffer post ID is not saved for this manual post")
+    account_names = set()
+    for account, output in (metadata.get("buffer_result") or {}).items():
+        if not isinstance(output, dict):
+            continue
+        for result in output.get("results") or []:
+            if isinstance(result, dict) and str(result.get("post_id") or "") == selected_id:
+                account_names.add(account)
+    if not account_names:
+        fallback = metadata.get("buffer_account")
+        if fallback and len(metadata.get("buffer_accounts") or []) <= 1:
+            account_names.add(str(fallback))
+    if len(account_names) != 1:
+        raise HTTPException(409, "Buffer account for this post cannot be determined")
+    account = next(iter(account_names))
+    config = MarketingConfig.load()
+    if not config.g3_bin.is_file():
+        raise HTTPException(503, f"G3 command not found: {config.g3_bin}")
+    try:
+        log_dir = PROJECTS_ROOT / ".logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        output = _last_json(_run(
+            [str(config.g3_bin), *_g3_account_args(account), "insights", selected_id],
+            cwd=config.g3_root, env_file=config.g3_env_file, timeout=45,
+            log_path=log_dir / "g3_insights.log",
+        ))
+    except Exception as exc:
+        raise HTTPException(502, f"Buffer insights unavailable: {type(exc).__name__}: {exc}") from exc
+    provider_post = output.get("post") if isinstance(output, dict) and output.get("ok") else None
+    if not isinstance(provider_post, dict) or str(provider_post.get("id") or "") != selected_id:
+        raise HTTPException(502, "Buffer did not confirm the requested post")
+    return {
+        "post_id": selected_id, "buffer_account": account,
+        "status": str(provider_post.get("status") or "unknown"),
+        "due_at": provider_post.get("dueAt"), "external_link": provider_post.get("externalLink"),
+        "metrics": provider_post.get("metrics"), "metrics_updated_at": provider_post.get("metricsUpdatedAt"),
+        "experimental": True,
+    }
 
 
 @router.post("/manual-posts/{post_record_id}/buffer-draft")
@@ -1116,7 +1284,7 @@ def create_manual_post_buffer_draft(post_record_id: str, buffer_account: str | N
     return {"ok": True, "post": _public_manual_post(updated), "result": outputs, "message": f"Buffer draft created for the manual post (accounts: {names})."}
 
 
-@router.post("/manual-posts/{post_record_id}/buffer-schedule", dependencies=[Depends(verify_founder_action)])
+@router.post("/manual-posts/{post_record_id}/buffer-schedule", response_model=BufferScheduleResult, dependencies=[Depends(verify_founder_action)])
 def schedule_manual_post_buffer(post_record_id: str, payload: BufferScheduleRequest, buffer_account: str | None = None):
     accounts = _clean_buffer_accounts(buffer_account)
     post = get_manual_post(post_record_id)
@@ -1230,7 +1398,7 @@ class MarketingOrgCreateRequest(BaseModel):
     capabilities: dict[str, bool] = Field(default_factory=dict)
 
 
-@router.post("/orgs")
+@router.post("/orgs", response_model=MarketingOrgCreateResult)
 def create_marketing_org(payload: MarketingOrgCreateRequest):
     import re
     from core.state import (
@@ -1297,7 +1465,7 @@ def get_org_capabilities_route(org_id: int):
     return {"org_id": org_id, "capabilities": get_org_capabilities(org_id)}
 
 
-@router.post("/orgs/{org_id}/capabilities")
+@router.post("/orgs/{org_id}/capabilities", response_model=OrgCapabilitiesResult)
 def set_org_capabilities_route(org_id: int, payload: OrgCapabilitiesRequest):
     from core.state import get_org, set_org_capabilities, VALID_CAPABILITIES
 
@@ -1310,7 +1478,7 @@ def set_org_capabilities_route(org_id: int, payload: OrgCapabilitiesRequest):
     return {"org_id": org_id, "capabilities": capabilities}
 
 
-@router.post("/orgs/active")
+@router.post("/orgs/active", response_model=MarketingOrgActiveResult)
 def set_active(payload: ManualPostOrgRequest):
     from core.state import get_org, set_active_org
 
@@ -1487,7 +1655,7 @@ def manual_post_asset(post_record_id: str, asset_index: int):
     return FileResponse(asset_path, media_type=str(asset.get("content_type") or "application/octet-stream"))
 
 
-@router.post("/campaigns")
+@router.post("/campaigns", response_model=CampaignCreateResult)
 def create_campaign_from_ui(payload: CampaignLaunchRequest):
     from core.state import create_task, get_active_org
     from core.marketing_store import create_campaign
@@ -1667,7 +1835,7 @@ def create_drafts(campaign_id: str):
     return {"ok": True, "campaign_id": campaign_id, "g3_status": "queued", "publish_allowed": False}
 
 
-@router.post("/campaigns/{campaign_id}/approve-script", dependencies=[Depends(verify_founder_action)])
+@router.post("/campaigns/{campaign_id}/approve-script", response_model=CampaignTransitionResult, dependencies=[Depends(verify_founder_action)])
 def approve_script(campaign_id: str):
     campaign = get_campaign(campaign_id)
     if not campaign:
@@ -1723,7 +1891,7 @@ def regenerate_script(campaign_id: str, payload: dict = Body(default={})):
     return {"ok": True, "campaign_id": campaign_id, "status": "queued", "next_stage": "g1_campaign"}
 
 
-@router.post("/campaigns/{campaign_id}/retry", dependencies=[Depends(verify_founder_action)])
+@router.post("/campaigns/{campaign_id}/retry", response_model=CampaignTransitionResult, dependencies=[Depends(verify_founder_action)])
 def retry_campaign(campaign_id: str):
     campaign = get_campaign(campaign_id)
     if not campaign:

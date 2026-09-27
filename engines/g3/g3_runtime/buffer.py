@@ -9,7 +9,7 @@ from .errors import G3Error
 
 
 class BufferClient:
-    """Small GraphQL client exposing only reads and draft creation."""
+    """Small GraphQL client for account reads and explicit post operations."""
 
     def __init__(self, api_key: str, endpoint: str = "https://api.buffer.com", timeout: int = 45):
         if not api_key.strip():
@@ -66,6 +66,24 @@ class BufferClient:
         if not isinstance(channels, list):
             raise G3Error("Buffer returned no channel list")
         return channels
+
+    def post_insights(self, post_id: str) -> dict[str, Any]:
+        """Read the provider's current post state and optional personal-key metrics."""
+        clean_id = post_id.strip()
+        if not clean_id:
+            raise G3Error("Buffer post ID is required")
+        data = self._request("""
+            query G3PostInsights($input: PostInput!) {
+              post(input: $input) {
+                id status dueAt externalLink metricsUpdatedAt
+                metrics { type name value unit }
+              }
+            }
+        """, {"input": {"id": clean_id}})
+        post = data.get("post")
+        if not isinstance(post, dict) or str(post.get("id") or "") != clean_id:
+            raise G3Error("Buffer returned no matching post")
+        return post
 
     def create_draft(self, post_input: dict[str, Any]) -> dict[str, Any]:
         # Safety is enforced twice: at service construction and at the network boundary.

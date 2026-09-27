@@ -46,6 +46,8 @@ backup.
 git fetch --tags
 git pull --ff-only
 make setup
+npm --prefix autoevolve-ui ci
+npm --prefix autoevolve-ui run build
 make check
 ```
 

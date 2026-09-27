@@ -26,9 +26,12 @@ def authenticate(
     valid = valid and secrets.compare_digest(credentials.password, password)
     if not valid:
         check_auth_failure(request)  # may raise 429 before the 401
+        # Fetch requests should render their own sign-in error. Keep the Basic
+        # challenge for direct navigation to the legacy dashboard.
+        challenge = request.headers.get("x-requested-with", "").lower() != "xmlhttprequest"
         raise HTTPException(
             status_code=401,
             detail="Unauthorized",
-            headers={"WWW-Authenticate": "Basic"},
+            headers={"WWW-Authenticate": "Basic"} if challenge else None,
         )
     return credentials.username

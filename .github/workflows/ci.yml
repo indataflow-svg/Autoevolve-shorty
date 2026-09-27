@@ -24,3 +24,49 @@ jobs:
       - run: engines/g1/.venv/bin/python -m unittest discover -s engines/g1/tests
       - run: engines/g2/.venv/bin/python -m unittest discover -s engines/g2/tests
       - run: engines/g3/.venv/bin/python -m unittest discover -s engines/g3/tests
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: autoevolve-ui/package-lock.json
+      - name: Install backend for isolated browser fixtures
+        run: make setup-core PYTHON=python
+      - name: Install frontend
+        run: npm --prefix autoevolve-ui ci
+      - name: Check generated API contract
+        run: |
+          npm --prefix autoevolve-ui run generate:api
+          git diff --exit-code -- autoevolve-ui/openapi.json autoevolve-ui/src/api/schema.ts
+      - name: Check and build frontend
+        run: |
+          npm --prefix autoevolve-ui run typecheck
+          npm --prefix autoevolve-ui run lint
+          npm --prefix autoevolve-ui run build
+          npm --prefix autoevolve-ui run test
+      - name: Install Chromium and system dependencies
+        working-directory: autoevolve-ui
+        run: npx playwright install --with-deps chromium
+      - name: Functional and visual browser regressions
+        run: |
+          npm --prefix autoevolve-ui run test:e2e
+          npm --prefix autoevolve-ui run test:e2e:workflows
+          npm --prefix autoevolve-ui run test:e2e:sales-workflow
+          npm --prefix autoevolve-ui run test:e2e:onboarding
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-browser-failures
+          path: |
+            autoevolve-ui/test-results/
+            autoevolve-ui/playwright-report/
+          if-no-files-found: ignore

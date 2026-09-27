@@ -42,100 +42,68 @@ class OperationsUiTests(unittest.TestCase):
         sales_store.DB_PATH = self.old_sales_path
         self.temporary.cleanup()
 
-    def test_research_and_operations_pages_are_split(self):
-        with patch.dict(os.environ, {"DASHBOARD_PASSWORD": "dashboard-secret"}, clear=False):
-            research = self.client.get("/", auth=self.auth)
-            operations = self.client.get("/operations", auth=self.auth)
-        self.assertEqual(research.status_code, 200)
-        self.assertEqual(operations.status_code, 200)
-        self.assertIn("Research cockpit", research.text)
-        self.assertNotIn("Lead review", research.text)
-        self.assertIn("Action launchers", operations.text)
-        self.assertIn("New Marketing Campaign", operations.text)
-        self.assertIn("New Sales Lead", operations.text)
-        self.assertIn("Research Leads", operations.text)
-        self.assertIn("Research leads", operations.text)
-        self.assertIn("Industry", operations.text)
-        self.assertIn("Lusha", operations.text)
-        self.assertIn("Apollo", operations.text)
-        self.assertIn("Hunter", operations.text)
-        self.assertIn("Prospeo", operations.text)
+    def test_old_workflow_page_urls_redirect_to_modern_pages(self):
+        for old, modern in (
+            ("/operations", "/home"),
+            ("/operations/sales/email", "/outreach"),
+            ("/operations/marketing", "/campaigns"),
+            ("/operations/marketing/campaigns", "/campaigns"),
+            ("/operations/marketing/assets", "/content"),
+        ):
+            response = self.client.get(old, follow_redirects=False)
+            self.assertEqual(response.status_code, 307, old)
+            self.assertEqual(response.headers["location"], modern)
 
-    def test_history_page_renders_archive_layout(self):
-        with patch.dict(os.environ, {"DASHBOARD_PASSWORD": "dashboard-secret"}, clear=False):
-            response = self.client.get("/operations/history", auth=self.auth)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("Action history", response.text)
-        self.assertIn("Marketing archive", response.text)
-        self.assertIn("Sales archive", response.text)
-        self.assertIn("Action stream", response.text)
-        self.assertIn('/operations/sales', response.text)
-        self.assertIn('/operations/marketing', response.text)
+    def test_replaced_operator_routes_preserve_compatibility_redirects(self):
+        for old, modern in (
+            ("/legacy/operations", "/home"),
+            ("/operations/sales", "/research"),
+            ("/operations/sales/discovery", "/research"),
+            ("/legacy/operations/sales/email", "/outreach"),
+            ("/legacy/operations/marketing", "/campaigns"),
+            ("/legacy/operations/marketing/campaigns", "/campaigns"),
+            ("/legacy/operations/marketing/assets", "/content"),
+            ("/operations/marketing/publishing", "/content"),
+        ):
+            response = self.client.get(old, follow_redirects=False)
+            self.assertEqual(response.status_code, 307, old)
+            self.assertEqual(response.headers["location"], modern)
 
-    def test_dedicated_sales_and_marketing_pages_render(self):
-        with patch.dict(os.environ, {"DASHBOARD_PASSWORD": "dashboard-secret"}, clear=False):
-            sales = self.client.get("/operations/sales/discovery", auth=self.auth)
-            email = self.client.get("/operations/sales/email", auth=self.auth)
-            marketing = self.client.get("/operations/marketing", auth=self.auth)
-            marketing_assets = self.client.get("/operations/marketing/assets", auth=self.auth)
-            marketing_publishing = self.client.get("/operations/marketing/publishing", auth=self.auth)
-        self.assertEqual(sales.status_code, 200)
-        self.assertEqual(email.status_code, 200)
-        self.assertEqual(marketing.status_code, 200)
-        self.assertEqual(marketing_assets.status_code, 200)
-        self.assertEqual(marketing_publishing.status_code, 200)
-        self.assertIn("Lead discovery control", sales.text)
-        self.assertIn("Lead discovery", sales.text)
-        self.assertIn("Email outreach", sales.text)
-        self.assertIn("Website signups", sales.text)
-        self.assertIn("Research Leads", sales.text)
-        self.assertIn('data-sales-source-filter="website"', sales.text)
-        self.assertNotIn("Email queue", sales.text)
-        self.assertIn("Email agent control", email.text)
-        self.assertIn("Email queue", email.text)
-        self.assertIn("Replies and delivery timeline", email.text)
-        self.assertNotIn("Research Leads", email.text)
-        self.assertNotIn('data-sales-source-filter="website"', email.text)
-        self.assertIn("Marketing campaign control", marketing.text)
-        self.assertIn("Campaign Studio", marketing.text)
-        self.assertIn("Scene Assets", marketing.text)
-        self.assertIn("Publishing", marketing.text)
-        self.assertIn("New Marketing Campaign", marketing.text)
-        self.assertIn("Voice mode", marketing.text)
-        self.assertIn("Campaign direction", marketing.text)
-        self.assertNotIn("Pull Scene Images", marketing.text)
-        self.assertNotIn("Register Carousel Post", marketing.text)
+    def test_root_and_retired_history_redirect_without_legacy_html(self):
+        for path in ("/", "/operations/history"):
+            response = self.client.get(path, follow_redirects=False)
+            self.assertEqual(response.status_code, 307)
+            self.assertEqual(response.headers["location"], "/home")
+        self.assertEqual(self.client.post("/", data={"message": "old command"}, auth=self.auth).status_code, 405)
 
-        self.assertIn("Scene asset control", marketing_assets.text)
-        self.assertIn("Pull Scene Images", marketing_assets.text)
-        self.assertIn("Downloaded scene media", marketing_assets.text)
-        self.assertNotIn("New Marketing Campaign", marketing_assets.text)
-        self.assertNotIn("Register Carousel Post", marketing_assets.text)
+    def test_public_booking_pages_remain_available(self):
+        self.assertEqual(self.client.get("/meet").status_code, 200)
+        self.assertEqual(self.client.get("/calendar").status_code, 200)
 
-        self.assertIn("Publishing control", marketing_publishing.text)
-        self.assertIn("Register Carousel Post", marketing_publishing.text)
-        self.assertIn("Register Video Post", marketing_publishing.text)
-        self.assertIn("Destination URL", marketing_publishing.text)
-        self.assertIn("CTA label", marketing_publishing.text)
-        self.assertIn("forms.example.com", marketing_publishing.text)
-        self.assertNotIn("New Marketing Campaign", marketing_publishing.text)
-        self.assertNotIn("Pull Scene Images", marketing_publishing.text)
-        self.assertIn('/operations/sales', marketing.text)
+    def test_redirects_preserve_query_state_and_canonicalize_slashes(self):
+        for path, target, status in (
+            ("/?view=latest", "/home?view=latest", 307),
+            ("/operations/sales/email?status=draft&page=2", "/outreach?status=draft&page=2", 307),
+            ("/contacts/?contact=abc%3A123", "/contacts?contact=abc%3A123", 308),
+        ):
+            response = self.client.get(path, follow_redirects=False)
+            self.assertEqual(response.status_code, status)
+            self.assertEqual(response.headers["location"], target)
 
-    def test_sales_filter_uses_real_stage_values_and_failed_send_events(self):
-        lead, _ = sales_store.upsert_lead({"email": "ops@example.com", "company": "Example Logistics", "source": "website"})
-        sales_store.update_lead(lead["id"], stage="contacted")
-        sales_store.add_event(lead["id"], "resend.email.failed", {"reason": "bounce"})
+    def test_missing_api_routes_never_return_spa_html(self):
+        for path in ("/company/ui/missing", "/company/Sales/contacts", "/assets/missing.js", "/static/cockpit.js"):
+            response = self.client.get(path, headers={"Accept": "text/html"})
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.json(), {"detail": "Not Found"})
 
-        with patch.dict(os.environ, {"DASHBOARD_PASSWORD": "dashboard-secret"}, clear=False):
-            response = self.client.get("/operations", auth=self.auth)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('data-sales-filter="new"', response.text)
-        self.assertIn('data-sales-filter="enriched"', response.text)
-        self.assertIn('data-sales-filter="contacted"', response.text)
-        self.assertIn('data-sales-filter="failed"', response.text)
-        self.assertIn('data-sales-source-filter="website"', response.text)
-        self.assertIn('data-sales-source-filter="popup"', response.text)
+    def test_missing_browser_page_has_true_404_and_react_document(self):
+        fixture_build = Path(self.temporary.name) / "dist"
+        fixture_build.mkdir()
+        (fixture_build / "index.html").write_text('<div id="root"></div>')
+        with patch("app.api._ui_dist", fixture_build):
+            response = self.client.get("/missing-page", headers={"Accept": "text/html"})
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('id="root"', response.text)
 
     def test_operations_overview_returns_unified_history(self):
         task = state.create_task(org_id=self.project["id"], agent="growth", task_type="campaign", input_text="Create campaign")
