@@ -8,6 +8,7 @@ test('first user resumes and activates a program using saved sales records', asy
   await page.getByLabel('Password').fill('browser-secret')
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('heading', { name: 'First-run setup' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '1. Your company', exact: true })).toBeVisible()
   await page.screenshot({ path: '/tmp/autoevolve-onboarding-first-run.png', fullPage: true })
   await expect(page).toHaveScreenshot('onboarding-first-run.png', { fullPage: true })
   await page.getByLabel('Founder action token').fill('browser-action')
