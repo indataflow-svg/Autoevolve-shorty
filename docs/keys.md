@@ -17,6 +17,14 @@ Recommended tiers:
 
 After any edit: `make doctor`, then restart `make dev` (or the container).
 
+The Integrations page writes the same server-side files: root `.env` for most
+providers and `engines/g3/config/g3.env` for Buffer and R2. These credentials
+are shared by the server, including all organizations in Settings; switching
+the active marketing organization does not switch these provider keys. Saving
+through the page updates the files but does not reload the running process, so
+restart the server before using the new values. The page shows key presence,
+not provider health.
+
 ## AI gateway (Tier 1, required for AI actions)
 
 Pick one. Despite the variable name, the endpoint does not have to be OmniRoute.

@@ -31,6 +31,16 @@ class SetupKeysTests(unittest.TestCase):
         self.assertIn("OMNIROUTE_API_KEY", ai["missing"])
         self.assertNotIn("http://127.0.0.1:20128/v1", str(status))
 
+    def test_exported_g3_keys_are_visible_and_updated_in_place(self):
+        from core.setup_keys import group_status, save_group
+
+        self.g3_file.write_text('export BUFFER_API_KEY="old-buffer-key"\n')
+        self.assertIn("BUFFER_API_KEY", group_status()["social"]["configured"])
+        result = save_group("social", {"BUFFER_API_KEY": "new-buffer-key"})
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.g3_file.read_text(), "export BUFFER_API_KEY=new-buffer-key\n")
+        self.assertIn("BUFFER_API_KEY", group_status()["social"]["configured"])
+
     def test_validate_rejects_unknown_group(self):
         from core.setup_keys import validate_group
 

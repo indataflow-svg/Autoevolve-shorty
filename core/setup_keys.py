@@ -12,6 +12,8 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+from dotenv import dotenv_values
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENV_FILE = ROOT / ".env"
 DEFAULT_G3_ENV_FILE = ROOT / "engines" / "g3" / "config" / "g3.env"
@@ -113,18 +115,9 @@ PROVIDER_GROUPS: dict[str, dict] = {
 
 
 def _read_values(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
     if not path.exists():
-        return values
-    for line in path.read_text().splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, _, value = stripped.partition("=")
-        key = key.strip()
-        if key:
-            values[key] = value.strip().strip('"').strip("'")
-    return values
+        return {}
+    return {key: value for key, value in dotenv_values(path).items() if value is not None}
 
 
 def group_status() -> dict[str, dict]:
@@ -245,9 +238,10 @@ def save_group(group: str, values: dict[str, str]) -> dict:
         for line in lines:
             stripped = line.strip()
             if stripped and not stripped.startswith("#") and "=" in stripped:
-                key = stripped.partition("=")[0].strip()
+                key = stripped.partition("=")[0].strip().removeprefix("export ").strip()
                 if key in cleaned:
-                    updated.append(f"{key}={cleaned[key]}")
+                    prefix = "export " if stripped.startswith("export ") else ""
+                    updated.append(f"{prefix}{key}={cleaned[key]}")
                     seen.add(key)
                     continue
             updated.append(line)
