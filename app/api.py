@@ -19,6 +19,7 @@ from app.companies_api import router as companies_router
 from app.workspace_api import router as workspace_router
 from app.workflow_views_api import router as workflow_views_router
 from app.onboarding_api import read_router as onboarding_read_router, write_router as onboarding_write_router
+from app.service_discovery_api import read_router as service_discovery_read_router, write_router as service_discovery_write_router
 from core.branding import company_logo_url, company_name
 
 
@@ -30,6 +31,8 @@ def _on_startup():
     from core.state import init_db, _seed_orgs_from_env
     init_db()
     _seed_orgs_from_env()
+    from core.video_store import init_video_db
+    init_video_db()
     _reconcile_stranded_sends()
 
 
@@ -232,6 +235,9 @@ from app.sales_api import action_router as sales_action_router
 from app.sales_api import intake_router as sales_intake_router
 from app.sales_api import router as sales_router
 from app.setup_api import router as setup_router
+from app.video_api import action_router as video_action_router
+from app.video_api import router as video_router
+from app.video_api import worker_router as video_worker_router
 
 app.include_router(company_ops_router, dependencies=[Depends(authenticate)])
 app.include_router(marketing_router, dependencies=[Depends(authenticate)])
@@ -241,9 +247,14 @@ app.include_router(companies_router, dependencies=[Depends(authenticate)])
 app.include_router(workspace_router, dependencies=[Depends(authenticate)])
 app.include_router(workflow_views_router, dependencies=[Depends(authenticate)])
 app.include_router(onboarding_read_router, dependencies=[Depends(authenticate)])
+app.include_router(service_discovery_read_router, dependencies=[Depends(authenticate)])
 app.include_router(sales_action_router, dependencies=[Depends(authenticate)])
 app.include_router(setup_router, dependencies=[Depends(authenticate)])
+app.include_router(video_router, dependencies=[Depends(authenticate)])
+app.include_router(video_action_router, dependencies=[Depends(authenticate)])
+app.include_router(video_worker_router, dependencies=[Depends(authenticate)])
 app.include_router(onboarding_write_router, dependencies=[Depends(authenticate)])
+app.include_router(service_discovery_write_router, dependencies=[Depends(authenticate)])
 # Tunnel-facing integrations stay outside dashboard auth and enforce their own
 # shared-secret checks in app.sales_api. They are rate limited per client IP.
 app.include_router(sales_intake_router, dependencies=[Depends(rate_limit_intake)])
