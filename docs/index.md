@@ -8,7 +8,6 @@ AutoEvolve's React UI uses the Company Core FastAPI backend. Existing
 - [Functionality Reference](FUNCTIONALITY.md): **every capability in the product** — onboarding, sales, marketing, video, engineering, research, platform — with routes, tables, and honest limits.
 - [API Reference](API-REFERENCE.md): every public function, class, route, and table, generated from source.
 - [Video Model Survey](video-model-survey.md): local open models for the MI300X worker, and why deterministic vector rendering beats a diffusion model for icon animation.
-- [Upgrading](upgrading.md): backups and restore, plus **renderer upgrade instructions** — measured worker constraints, weight upgrades, and what to re-measure when the model changes.
 
 ## Start and operate
 
