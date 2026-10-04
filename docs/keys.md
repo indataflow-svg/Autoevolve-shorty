@@ -141,6 +141,21 @@ LORDICON_API_TOKEN=<optional>
 OMNIROUTE_IMAGE_MODEL=<optional image model for G2>
 ```
 
+### MI300X render worker (Tier 4, phase-1 synchronous submit)
+
+```dotenv
+# root .env — Tailscale-only private address. Never expose it publicly,
+# never commit a real one outside .env, and never add credentials here:
+# the worker API takes none.
+RENDER_WORKER_URL=http://100.126.189.74:8000
+RENDER_WORKER_TIMEOUT_SECONDS=1800
+RENDER_OUTPUT_DIR=data/renders
+```
+
+Check `make video-worker-status` (health + capacity, no render started).
+The renderer reads only `RENDER_WORKER_URL`, so the worker IP changes
+without code edits. See `docs/video-pipeline.md`.
+
 ```dotenv
 # engines/g3/config/g3.env
 BUFFER_API_KEY=<buffer.com developer token>

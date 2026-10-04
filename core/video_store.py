@@ -471,6 +471,46 @@ def lease_next_job(
     return get_job(job_id)
 
 
+def claim_job(
+    job_id: str,
+    worker_id: str,
+    lease_seconds: int = DEFAULT_LEASE_SECONDS,
+) -> dict[str, Any]:
+    """Claim a specific pending job for control-plane dispatch (push model).
+
+    Unlike ``lease_next_job`` (worker pull), the control plane names the job:
+    phase-1 MI300X submits claim the hunyuan job, submit it over HTTP, then
+    report back through ``complete_job``/``fail_job``. Each claim counts as
+    an attempt, so jobs that exhausted ``max_attempts`` cannot be claimed;
+    they wait for an operator ``retry_job``.
+    """
+    job = get_job(job_id)
+    if not job:
+        raise ValueError(f"render job not found: {job_id}")
+    if job["status"] != "pending":
+        raise ValueError(f"job {job_id} is {job['status']}; only pending jobs can be claimed")
+    if job["attempts"] >= job["max_attempts"]:
+        raise ValueError(
+            f"job {job_id} exhausted its attempts ({job['attempts']}/{job['max_attempts']}); "
+            "retry it before claiming"
+        )
+    timestamp = now_iso()
+    with connect() as connection:
+        connection.execute(
+            """
+            UPDATE video_render_jobs
+            SET status = 'leased', worker_id = ?, leased_until = ?,
+                attempts = attempts + 1, started_at = COALESCE(started_at, ?), updated_at = ?
+            WHERE id = ? AND status = 'pending'
+            """,
+            (worker_id, _lease_deadline(lease_seconds), timestamp, timestamp, job_id),
+        )
+    claimed = get_job(job_id)
+    if not claimed or claimed["status"] != "leased":
+        raise ValueError(f"job {job_id} was claimed concurrently")
+    return claimed
+
+
 def _owned_job(job_id: str, worker_id: str, states: tuple[str, ...]) -> dict[str, Any]:
     job = get_job(job_id)
     if not job:

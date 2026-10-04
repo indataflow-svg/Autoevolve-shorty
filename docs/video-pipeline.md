@@ -99,6 +99,42 @@ There is no separate queue infrastructure: `video_render_jobs` in
 completed` (`failed` / `cancelled` terminal). Each lease counts as an attempt
 (`maxAttempts` 3); expired leases are reclaimed by the next `leaseNextJob`.
 
+### Phase 1: synchronous MI300X submit (control-plane push)
+
+The validated worker (`http://100.126.189.74:8000`, Tailscale-only) exposes
+`GET /health`, `GET /capacity` and synchronous `POST /render`. AutoEvolve
+submits one queued hunyuan job at a time:
+
+```bash
+make video-worker-status                  # health + capacity, starts no render
+make video-submit JOB=<job-id>            # claim -> submit -> QA -> complete/fail
+```
+
+Implementation is `services/renderers.py`:
+
+- `Renderer` interface (`check_health`, `check_capacity`, `submit`) with
+  `HunyuanRenderer` posting the RenderJob payload (`prompt` required, plus
+  `negative_prompt`, `resolution`, explicit `aspect_ratio` derived from the
+  job's width/height, `frames`, `fps`, `steps`, `seed`, `dtype`,
+  `output_name`). It never implements Hunyuan; the worker owns its validated
+  environment (`HUNYUAN_PYTHON=/root/video-lab/.venv/bin/python`).
+- `submit_hunyuan_job` claims the job (one attempt, long lease so the pull
+  queue cannot reclaim it mid-render), checks health/capacity, POSTs once,
+  saves the MP4 under `data/renders/<job-id>.mp4`, runs ffprobe QA, then
+  records `completed` (output path, frames, sha256) or `failed`.
+- Failure handling reuses the existing layers, no second retry system:
+  connection errors retry the idempotent GETs (bounded, 3 attempts);
+  a POST that may have reached the worker is **never re-sent** — the job
+  returns to `pending` (`retryable=true`) for an explicit resubmit, while
+  `422`/contract mismatches are `retryable=false`. QA failures (missing
+  file, ffprobe decode failure, frame/fps mismatch) fail the job with the
+  reason preserved in `error_json`; nothing is ever silently completed.
+- No credentials anywhere: the worker takes none, the endpoint comes only
+  from `RENDER_WORKER_URL`, and nothing render-related is exposed through
+  the public UI or compose ports.
+
+### Phase 2: worker pull (already built, not yet wired to this worker)
+
 The worker only needs the dashboard credentials plus its own identity:
 
 ```env

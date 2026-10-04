@@ -98,6 +98,30 @@ def command_profile(_args: argparse.Namespace) -> int:
     return 0
 
 
+def command_submit(args: argparse.Namespace) -> int:
+    from services import renderers
+
+    try:
+        job = renderers.submit_hunyuan_job(args.job_id, timeout_seconds=args.timeout)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except renderers.RenderWorkerError as exc:
+        print(f"render failed ({exc.kind}): {exc}", file=sys.stderr)
+        print(f"job recorded as failed; retryable={exc.retryable}", file=sys.stderr)
+        return 1
+    result = job.get("result") or {}
+    print(f"job {job['id']} completed: {result.get('outputPath')}")
+    return 0
+
+
+def command_worker_status(_args: argparse.Namespace) -> int:
+    from services import renderers
+
+    print(json.dumps(renderers.worker_status(), indent=2))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -119,6 +143,15 @@ def main(argv: list[str] | None = None) -> int:
 
     profile = sub.add_parser("profile", help="print the default Hunyuan render profile")
     profile.set_defaults(func=command_profile)
+
+    submit = sub.add_parser("submit", help="submit one queued hunyuan job to the MI300X worker")
+    submit.add_argument("job_id")
+    submit.add_argument("--timeout", type=int, default=None,
+                        help="sync render budget in seconds (default RENDER_WORKER_TIMEOUT_SECONDS)")
+    submit.set_defaults(func=command_submit)
+
+    worker_status = sub.add_parser("worker-status", help="check MI300X worker health/capacity")
+    worker_status.set_defaults(func=command_worker_status)
 
     args = parser.parse_args(argv)
     return int(args.func(args))
