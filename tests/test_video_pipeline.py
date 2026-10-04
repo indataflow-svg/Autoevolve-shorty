@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.api import app
 from core import state, video_store
-from services import video_pipeline
+from services.video import pipeline as video_pipeline
 
 CORRIDOR = Path(__file__).resolve().parent.parent / "scripts" / "indataflow" / "corridor.md"
 

@@ -21,7 +21,7 @@ deterministic pipeline continues (or, for brief-driven directing, exits with
 a clear error). AI output is assist-only:Schema validation precedes
 generation, and generation precedes review.
 
-## Flow (`video_pipeline.direct_brief`)
+## Flow (`services.video.pipeline.direct_brief`)
 
 ```text
 human brief

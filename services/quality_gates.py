@@ -26,7 +26,7 @@ def run_gates(
     boundary before calling.
     """
     from services import review
-    from services import video_pipeline
+    from services.video import pipeline as video_pipeline
 
     gates: dict[str, dict[str, Any]] = {}
     context = context if context is not None else video_pipeline.load_indataflow_context()

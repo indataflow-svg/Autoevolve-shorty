@@ -20,7 +20,7 @@ from unittest.mock import patch
 
 from core import state, video_store
 from services import renderers
-from services import video_pipeline
+from services.video import pipeline as video_pipeline
 
 CORRIDOR = Path(__file__).resolve().parent.parent / "scripts" / "indataflow" / "corridor.md"
 HAS_FFPROBE = shutil.which("ffprobe") is not None

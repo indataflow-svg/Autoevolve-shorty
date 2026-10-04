@@ -239,7 +239,8 @@ deterministic (`42 + shot index`) unless a job is explicitly re-seeded.
 ## Reference-video reconstruction (later)
 
 The seam for the planned `REFERENCE VIDEO → BLUEPRINT → VideoSpec` front end
-is `services/video_pipeline.py::build_spec` / `plan_shots`: a blueprint
+is `services/video/spec_builder.py::build_spec` /
+`services/video/shot_planner.py::plan_shots`: a blueprint
 adapter only needs to produce the parsed-script dict (`title`, `meta`,
 `beats[]` with `startSeconds`/`endSeconds`/`text`/`visual`) and everything
 downstream — validation, queueing, the worker contract — stays unchanged.

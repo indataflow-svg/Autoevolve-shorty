@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.sales_api import verify_founder_action
 from core import video_store
-from services import video_pipeline
+from services.video import pipeline as video_pipeline
 
 router = APIRouter(prefix="/company/video", tags=["video"])
 action_router = APIRouter(prefix="/company/video", tags=["video-actions"])
@@ -141,7 +141,7 @@ def create_spec(payload: SpecCreate) -> dict[str, Any]:
         video_pipeline.validate_spec(spec_payload)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    stored = video_store.create_spec(video_pipeline._store_spec_payload(spec_payload))
+    stored = video_store.create_spec(video_pipeline.store_spec_payload(spec_payload))
     video_store.update_spec_status(stored["id"], "planned")
     return {"ok": True, "spec": video_store.get_spec(stored["id"])}
 

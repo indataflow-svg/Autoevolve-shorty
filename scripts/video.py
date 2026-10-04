@@ -31,7 +31,7 @@ def _slug_for_script(path: Path) -> str:
 
 
 def command_plan(args: argparse.Namespace) -> int:
-    from services import video_pipeline
+    from services.video import pipeline as video_pipeline
 
     script = Path(args.script)
     if not script.is_file():
@@ -68,7 +68,7 @@ def command_plan(args: argparse.Namespace) -> int:
 
 
 def command_queue(args: argparse.Namespace) -> int:
-    from services import video_pipeline
+    from services.video import pipeline as video_pipeline
 
     try:
         result = video_pipeline.queue_shot_plan(
@@ -99,7 +99,7 @@ def command_queue(args: argparse.Namespace) -> int:
 
 
 def command_profile(_args: argparse.Namespace) -> int:
-    from services import video_pipeline
+    from services.video import pipeline as video_pipeline
 
     print(json.dumps(video_pipeline.hunyuan_profile(), indent=2))
     return 0
@@ -137,7 +137,7 @@ def command_worker_status(_args: argparse.Namespace) -> int:
 
 
 def command_launch(args: argparse.Namespace) -> int:
-    from services import video_pipeline
+    from services.video import pipeline as video_pipeline
 
     brief = args.brief
     if args.brief_file:
@@ -157,6 +157,7 @@ def command_launch(args: argparse.Namespace) -> int:
             references=args.reference,
             submit=not args.no_submit,
             timeout_seconds=args.timeout,
+            render_mode=args.mode,
         )
     except (ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -179,7 +180,7 @@ def command_launch(args: argparse.Namespace) -> int:
 
 
 def command_direct(args: argparse.Namespace) -> int:
-    from services import video_pipeline
+    from services.video import pipeline as video_pipeline
 
     brief = args.brief
     if args.brief_file:
@@ -268,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="product footage/screenshot to register (repeatable)")
     launch.add_argument("--no-submit", action="store_true",
                         help="stop after queueing; do not submit hunyuan jobs")
+    launch.add_argument("--mode", default="shots", choices=["shots", "full"],
+                        help="shots: one job per clip; full: single whole-video job")
     launch.add_argument("--timeout", type=int, default=None)
     launch.add_argument("--manifest-out", default=None)
     launch.set_defaults(func=command_launch)

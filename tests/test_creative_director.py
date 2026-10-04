@@ -13,7 +13,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core import state, video_store
-from services import cinematography, motion_recipes, quality_gates, review, video_pipeline
+from services import cinematography, motion_recipes, quality_gates, review
+from services.video import pipeline as video_pipeline
 from services.creative_director import (
     ROLE_ROUTES,
     CreativeDirector,
