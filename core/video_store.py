@@ -113,8 +113,41 @@ def init_video_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_video_jobs_queue
                 ON video_render_jobs(status, priority, created_at);
+
+            CREATE TABLE IF NOT EXISTS video_visual_bibles (
+                video_spec_id TEXT PRIMARY KEY,
+                recipe_id TEXT,
+                bible_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(video_spec_id) REFERENCES video_specs(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS video_assets (
+                id TEXT PRIMARY KEY,
+                video_spec_id TEXT NOT NULL,
+                type TEXT NOT NULL,
+                path TEXT,
+                purpose TEXT,
+                identity_priority INTEGER NOT NULL DEFAULT 0,
+                preserve_json TEXT NOT NULL DEFAULT '[]',
+                allowed_changes_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(video_spec_id) REFERENCES video_specs(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_video_assets_spec
+                ON video_assets(video_spec_id);
             """
         )
+        _ensure_column(connection, "video_render_jobs", "hunyuan_mode", "TEXT")
+        _ensure_column(connection, "video_specs", "extra_json", "TEXT NOT NULL DEFAULT '{}'")
+
+
+def _ensure_column(connection: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    existing = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in existing:
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
 def _new_id(prefix: str) -> str:
@@ -141,6 +174,7 @@ def _decode_spec(row: sqlite3.Row) -> dict[str, Any]:
         ("visual_rules_json", {}),
         ("brand_constraints_json", None),
         ("sources_json", []),
+        ("extra_json", {}),
     ):
         raw = item.pop(key, None)
         item[key.removesuffix("_json")] = _decode_json(raw, default)
@@ -191,6 +225,7 @@ def create_spec(payload: dict[str, Any]) -> dict[str, Any]:
         "product_boundary": payload.get("productBoundary"),
         "cta": payload.get("cta"),
         "sources_json": json.dumps(payload.get("sources") or []),
+        "extra_json": json.dumps(payload.get("extra") or {}),
         "source_script_id": payload.get("sourceScriptId"),
         "source_path": payload.get("source_path"),
         "status": payload.get("status") or "draft",
@@ -204,12 +239,12 @@ def create_spec(payload: dict[str, Any]) -> dict[str, Any]:
                 id, project_id, campaign_id, title, brand_json, format_json,
                 audience_json, narrative, transcript_json, beats_visual_json, visual_rules_json,
                 brand_constraints_json, product_boundary, cta, sources_json,
-                source_script_id, source_path, status, created_at, updated_at
+                extra_json, source_script_id, source_path, status, created_at, updated_at
             ) VALUES (
                 :id, :project_id, :campaign_id, :title, :brand_json, :format_json,
                 :audience_json, :narrative, :transcript_json, :beats_visual_json, :visual_rules_json,
                 :brand_constraints_json, :product_boundary, :cta, :sources_json,
-                :source_script_id, :source_path, :status, :created_at, :updated_at
+                :extra_json, :source_script_id, :source_path, :status, :created_at, :updated_at
             )
             """,
             record,
@@ -313,6 +348,9 @@ def enqueue_jobs(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for item in rows:
         if item.get("renderer") not in RENDERERS:
             raise ValueError(f"unknown renderer: {item.get('renderer')!r}")
+        hunyuan_mode = item.get("hunyuan_mode") or item.get("hunyuanMode")
+        if hunyuan_mode not in (None, "t2v", "i2v"):
+            raise ValueError(f"unknown hunyuan mode: {hunyuan_mode!r}")
         records.append({
             "id": item.get("id") or _new_id("job"),
             "video_spec_id": item["video_spec_id"],
@@ -320,6 +358,7 @@ def enqueue_jobs(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "shot_id": item["shot_id"],
             "priority": int(item.get("priority") or 100),
             "renderer": item["renderer"],
+            "hunyuan_mode": hunyuan_mode,
             "model": item.get("model"),
             "prompt": item.get("prompt"),
             "negative_prompt": item.get("negativePrompt"),
@@ -354,14 +393,14 @@ def enqueue_jobs(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 """
                 INSERT INTO video_render_jobs (
                     id, video_spec_id, shot_plan_id, shot_id, priority,
-                    renderer, model, prompt, negative_prompt, input_assets_json,
+                    renderer, hunyuan_mode, model, prompt, negative_prompt, input_assets_json,
                     output_path, resolution, width, height, fps, frames, steps,
                     dtype, seed, continuity_json, status, attempts, max_attempts,
                     worker_id, leased_until, created_at, updated_at, started_at,
                     completed_at, result_json, error_json
                 ) VALUES (
                     :id, :video_spec_id, :shot_plan_id, :shot_id, :priority,
-                    :renderer, :model, :prompt, :negative_prompt, :input_assets_json,
+                    :renderer, :hunyuan_mode, :model, :prompt, :negative_prompt, :input_assets_json,
                     :output_path, :resolution, :width, :height, :fps, :frames, :steps,
                     :dtype, :seed, :continuity_json, :status, :attempts, :max_attempts,
                     :worker_id, :leased_until, :created_at, :updated_at, :started_at,
@@ -616,3 +655,104 @@ def cancel_job(job_id: str) -> dict[str, Any]:
             (now_iso(), job_id),
         )
     return get_job(job_id)  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Visual Bible (one per spec)
+# ---------------------------------------------------------------------------
+
+
+def save_visual_bible(spec_id: str, bible: dict[str, Any], recipe_id: str | None = None) -> dict[str, Any]:
+    timestamp = now_iso()
+    with connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO video_visual_bibles (video_spec_id, recipe_id, bible_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(video_spec_id) DO UPDATE SET
+                recipe_id = excluded.recipe_id,
+                bible_json = excluded.bible_json,
+                updated_at = excluded.updated_at
+            """,
+            (spec_id, recipe_id, json.dumps(bible), timestamp, timestamp),
+        )
+    return get_visual_bible(spec_id)  # type: ignore[return-value]
+
+
+def get_visual_bible(spec_id: str) -> dict[str, Any] | None:
+    with connect() as connection:
+        row = connection.execute(
+            "SELECT * FROM video_visual_bibles WHERE video_spec_id = ?", (spec_id,)
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "video_spec_id": row["video_spec_id"],
+        "recipe_id": row["recipe_id"],
+        "bible": _decode_json(row["bible_json"], {}),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Asset registry (reference images/captures/sources per spec)
+# ---------------------------------------------------------------------------
+
+
+def register_assets(spec_id: str, assets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    timestamp = now_iso()
+    records = []
+    for index, item in enumerate(assets):
+        records.append({
+            "id": item.get("id") or f"asset_{index + 1:02d}",
+            "video_spec_id": spec_id,
+            "type": item.get("type") or "reference",
+            "path": item.get("path") or item.get("url"),
+            "purpose": item.get("purpose"),
+            "identity_priority": int(item.get("identity_priority") or 0),
+            "preserve_json": json.dumps(item.get("preserve") or []),
+            "allowed_changes_json": json.dumps(item.get("allowed_changes") or []),
+            "created_at": timestamp,
+        })
+    with connect() as connection:
+        connection.executemany(
+            """
+            INSERT INTO video_assets (
+                id, video_spec_id, type, path, purpose, identity_priority,
+                preserve_json, allowed_changes_json, created_at
+            ) VALUES (
+                :id, :video_spec_id, :type, :path, :purpose, :identity_priority,
+                :preserve_json, :allowed_changes_json, :created_at
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                type = excluded.type,
+                path = excluded.path,
+                purpose = excluded.purpose,
+                identity_priority = excluded.identity_priority,
+                preserve_json = excluded.preserve_json,
+                allowed_changes_json = excluded.allowed_changes_json
+            """,
+            records,
+        )
+    return list_assets(spec_id)
+
+
+def list_assets(spec_id: str) -> list[dict[str, Any]]:
+    with connect() as connection:
+        rows = connection.execute(
+            "SELECT * FROM video_assets WHERE video_spec_id = ? ORDER BY identity_priority DESC, id ASC",
+            (spec_id,),
+        ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "type": row["type"],
+            "path": row["path"],
+            "purpose": row["purpose"],
+            "identity_priority": row["identity_priority"],
+            "preserve": _decode_json(row["preserve_json"], []),
+            "allowed_changes": _decode_json(row["allowed_changes_json"], []),
+        }
+        for row in rows
+    ]

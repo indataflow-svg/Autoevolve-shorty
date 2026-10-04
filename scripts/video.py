@@ -133,6 +133,42 @@ def command_worker_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def command_direct(args: argparse.Namespace) -> int:
+    from services import video_pipeline
+
+    brief = args.brief
+    if args.brief_file:
+        brief_path = Path(args.brief_file)
+        if not brief_path.is_file():
+            print(f"error: brief file not found: {brief_path}", file=sys.stderr)
+            return 2
+        brief = brief_path.read_text(encoding="utf-8")
+    if not brief:
+        print("error: provide --brief or --brief-file", file=sys.stderr)
+        return 2
+    try:
+        result = video_pipeline.direct_brief(
+            brief,
+            project_id=args.project_id or _slug_for_script(Path(args.brief_file or "brief")),
+            aspect_ratio=args.format,
+            fps=args.fps,
+        )
+    except (ValueError, RuntimeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    spec, plan = result["spec"], result["plan"]
+    print(f"VideoSpec  {spec['id']}  {spec['title']!r}  {spec['format']['durationSeconds']}s")
+    print(f"ShotPlan   {plan['id']}  {len(plan['shots'])} shots  status={plan['status']}")
+    print(f"Recipe     {result['recipe']}  (bible stored)")
+    manifest = {"spec_id": spec["id"], "shot_plan_id": plan["id"], "jobs": result["jobs"]}
+    if args.manifest_out:
+        Path(args.manifest_out).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        print(f"manifest written: {args.manifest_out}")
+    else:
+        print(json.dumps(manifest, indent=2))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -163,6 +199,15 @@ def main(argv: list[str] | None = None) -> int:
 
     worker_status = sub.add_parser("worker-status", help="check MI300X worker health/capacity")
     worker_status.set_defaults(func=command_worker_status)
+
+    direct = sub.add_parser("direct", help="direct a video from a human creative brief (needs OMNIROUTE_API_KEY)")
+    direct.add_argument("--brief", default=None)
+    direct.add_argument("--brief-file", default=None)
+    direct.add_argument("--project-id", default=None)
+    direct.add_argument("--format", default="9:16", choices=["4:5", "9:16", "16:9", "1:1"])
+    direct.add_argument("--fps", type=int, default=24)
+    direct.add_argument("--manifest-out", default=None)
+    direct.set_defaults(func=command_direct)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

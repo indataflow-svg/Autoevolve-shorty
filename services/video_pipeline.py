@@ -59,7 +59,8 @@ FORMAT_SIZES = {
 DEFAULT_NEGATIVE_PROMPT = (
     "blurry, low quality, distorted, deformed, malformed hands, extra fingers, "
     "duplicated objects, flickering, unstable geometry, temporal inconsistency, "
-    "camera jitter, text artifacts, watermark, logo artifacts, cartoon, anime"
+    "camera jitter, text artifacts, legible text, logos, user interfaces, "
+    "watermark, logo artifacts, cartoon, anime"
 )
 
 VISUAL_TYPES = (
@@ -122,7 +123,8 @@ TIMESTAMP_RE = re.compile(r"^(?:(\d+):)?([0-5]?\d):([0-5]\d)$")
 BEAT_HEADER_RE = re.compile(r"^(?:#{1,3}\s*)?(\d+:[\d:]+\s*[-\u2013\u2014]\s*\d+:[\d:]+)\s*$")
 VISUAL_FIELD_RE = re.compile(r"^(visual|type|search|motion|connection|source)\s*:\s*(.+)$", re.IGNORECASE)
 META_FIELD_RE = re.compile(
-    r"^(buyer|duration|narrative|cta|product\s*boundary|target\s*buyer)\s*:\s*(.+)$", re.IGNORECASE
+    r"^(buyer|duration|narrative|cta|product\s*boundary|target\s*buyer|objective|message|platform|"
+    r"visual\s*style|style|emotion|emotional\s*direction|audio)\s*:\s*(.+)$", re.IGNORECASE
 )
 
 
@@ -351,8 +353,29 @@ def build_spec(
         "productBoundary": meta.get("product_boundary")
         or "Only approved product claims; never show unreleased UI, fake dashboards, or fabricated statistics.",
         "cta": meta.get("cta") or default_cta,
+        "extra": {
+            "objective": meta.get("objective"),
+            "message": meta.get("message"),
+            "platform": meta.get("platform"),
+            "visual_style": meta.get("visual_style") or meta.get("style"),
+            "emotional_direction": meta.get("emotional_direction") or meta.get("emotion"),
+            "audio": meta.get("audio"),
+        },
         "sources": [
             {"title": beat["visual"].get("source", ""), "url": ""}
+            for beat in beats
+            if beat.get("visual", {}).get("source")
+        ],
+        "assets": [
+            {
+                "id": f"asset_{beat['id']}",
+                "type": "source_reference",
+                "path": beat["visual"].get("source", ""),
+                "purpose": f"source for {beat['id']}",
+                "identity_priority": 5,
+                "preserve": ["source identity", "attribution"],
+                "allowed_changes": ["crop", "caption overlay"],
+            }
             for beat in beats
             if beat.get("visual", {}).get("source")
         ],
@@ -454,14 +477,108 @@ def _purpose(beat_text: str, visual: dict[str, Any], visual_type: str) -> str:
     return f"{kind}: {first_line[:160]}".strip()
 
 
-def _template_prompt(beat_text: str, visual: dict[str, Any], visual_type: str) -> tuple[str, str]:
-    first_line = next((line.strip() for line in str(beat_text).splitlines() if line.strip()), "")
-    subject = str(visual.get("visual") or visual.get("search") or first_line)[:200]
-    motion = str(visual.get("motion") or "slow cinematic push, natural motion")
+def _camera_for(visual_type: str, visual: dict[str, Any]) -> dict[str, Any]:
+    """Map beat notes onto the template-4 camera record schema."""
+    motion = str(visual.get("motion") or "").lower()
+    if visual_type in ("hunyuan", "stock"):
+        shot_type = "wide_establishing"
+    elif visual_type == "product_capture":
+        shot_type = "medium"
+    else:
+        shot_type = "medium"
+    if "track" in motion:
+        movement = "tracking"
+    elif "orbit" in motion:
+        movement = "orbit"
+    elif "pan" in motion:
+        movement = "pan"
+    elif "static" in motion or "still" in motion:
+        movement = "static"
+    elif "aerial" in motion:
+        movement = "crane"
+    else:
+        movement = "push_in" if visual_type in ("hunyuan", "stock") else "static"
+    return {
+        "shot_type": shot_type,
+        "movement": movement,
+        "direction": "",
+        "speed": "slow" if movement != "static" else "",
+    }
+
+
+def decide_hunyuan_mode(families: list[str], reference_assets: list[str]) -> str:
+    """T2V/I2V decision policy: exact identity needs an image reference.
+
+    - I2V: product identity, brand identity, or an explicit reference asset.
+    - T2V: unconstrained environments and concept exploration.
+    """
+    if "product_capture" in families or "source_capture" in families or reference_assets:
+        return "i2v"
+    return "t2v"
+
+
+def select_reference_assets(
+    assets: list[dict[str, Any]], families: list[str], visual: dict[str, Any]
+) -> list[str]:
+    """Resolve registry assets relevant to one shot (deterministic)."""
+    if not assets or not any(family in ("product_capture", "source_capture", "stock") for family in families):
+        return []
+    haystack = set(
+        word for word in re.findall(
+            r"[a-z0-9]+",
+            " ".join([
+                str(visual.get("visual") or ""),
+                str(visual.get("search") or ""),
+                str(visual.get("source") or ""),
+                str(visual.get("connection") or ""),
+            ]).lower(),
+        ) if len(word) > 3
+    )
+    scored = []
+    for asset in assets:
+        words = set(
+            word for word in re.findall(
+                r"[a-z0-9]+",
+                f"{asset.get('type', '')} {asset.get('path', '')} {asset.get('purpose', '')}".lower(),
+            ) if len(word) > 3
+        )
+        scored.append((len(haystack & words), -asset.get("identity_priority", 0), asset.get("id")))
+    scored.sort(reverse=True)
+    return [asset_id for overlap, _, asset_id in scored[:2] if overlap > 0 and asset_id]
+
+
+def compile_hunyuan_prompt(
+    bible: dict[str, Any],
+    recipe: dict[str, Any],
+    shot: dict[str, Any],
+) -> tuple[str, str]:
+    """Compile Subject + Motion + Scene + ShotType + Camera + Lighting + Style
+    + Atmosphere into the final generation prompt (template-4 phase 10).
+
+    The application owns this schema; the AI may refine wording later but
+    never the structure. Deterministic finishing (text, logos, UI) is never
+    part of the prompt.
+    """
+    from services import cinematography
+    from services.visual_bible import inherit_for_shot
+
+    inherited = inherit_for_shot(bible, shot)
+    subject = str(shot.get("subject") or shot.get("purpose") or "")[:200]
+    detail = shot.get("motion_detail") or {}
+    motion = ", ".join(part for part in (
+        detail.get("subject_motion"), detail.get("environment_motion"), detail.get("camera_motion"),
+    ) if part)[:200]
+    scene = str(shot.get("environment") or "")[:200]
+    camera = cinematography.describe_shot_language(
+        shot.get("camera"), shot.get("lens"),
+        {"start": "wide", "end": "hold"},
+    )
+    strategy = str(recipe.get("hunyuan_prompt_strategy") or "")[:160]
     prompt = (
-        f"Cinematic realistic {subject}, authentic freight environment, premium commercial "
-        f"cinematography, restrained blue and indigo visual language, realistic materials, "
-        f"natural motion, shallow depth of field, {motion}"
+        f"Subject: {subject}. Motion: {motion or 'natural motion'}. Scene: {scene}. "
+        f"Camera: {camera or 'slow cinematic push'}. Lighting: {inherited['lighting']}. "
+        f"Style: {inherited['style']}. Atmosphere: {inherited['environment']}. "
+        f"Constraint: {strategy}"
     )
     return prompt[:900], DEFAULT_NEGATIVE_PROMPT
 
@@ -470,11 +587,18 @@ def plan_shots(
     spec: dict[str, Any],
     context: dict[str, Any] | None = None,
     use_ai: bool = True,
+    bible: dict[str, Any] | None = None,
+    recipe: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build an (unsaved) ShotPlan dict. Returns (plan, ai_report)."""
+    from services.visual_bible import default_bible
+
     beats = spec.get("transcript") or []
     if not beats:
         raise ValueError("cannot plan shots for a spec with no transcript beats")
+    bible = bible or default_bible()
+    recipe = recipe or {}
+    assets: list[dict[str, Any]] = spec.get("_assets") or spec.get("assets") or []
     visuals: dict[str, dict[str, Any]] = spec.get("_beats_visual") or spec.get("beats_visual") or {}
     shots: list[dict[str, Any]] = []
     for index, beat in enumerate(beats):
@@ -484,6 +608,9 @@ def plan_shots(
         duration = end - start
         fps = spec["format"]["fps"]
         shot_id = f"shot_{index + 1:03d}"
+        camera = _camera_for(visual_type, visual)
+        motion_text = str(visual.get("motion") or "")[:200] or None
+        references = select_reference_assets(assets, families, visual)
         shot: dict[str, Any] = {
             "id": shot_id,
             "index": index + 1,
@@ -494,15 +621,26 @@ def plan_shots(
             "purpose": _purpose(str(beat.get("text") or ""), visual, visual_type),
             "visualType": visual_type,
             "families": families,
-            "camera": {
-                "shotType": "wide" if visual_type in ("hunyuan", "stock") else "graphic",
-                "movement": str(visual.get("motion") or "slow push"),
-                "framing": "portrait composition for vertical video",
-            },
-            "environment": str(visual.get("visual") or visual.get("search") or "")[:200] or None,
             "subject": str(visual.get("search") or "")[:200] or None,
+            "environment": str(visual.get("visual") or visual.get("search") or "")[:200] or None,
             "composition": "portrait composition for vertical video",
-            "motion": str(visual.get("motion") or "")[:200] or None,
+            "camera": camera,
+            "lens": {"focal_length": "35mm", "visual_effect": "natural environmental storytelling"},
+            "lighting": dict(bible.get("lighting", {})),
+            "motion": motion_text,
+            "motion_detail": {
+                "subject_motion": "natural motion",
+                "environment_motion": "ambient activity",
+                "camera_motion": motion_text or ("slow push" if camera["movement"] != "static" else "static"),
+            },
+            "transition_in": "fade" if index == 0 else "cut",
+            "transition_out": "fade" if index == len(beats) - 1 else "cut",
+            "reference_assets": references,
+            "hunyuan_mode": decide_hunyuan_mode(families, references),
+            "finishing": {
+                "renderer": renderer,
+                "strategy": str(recipe.get("finishing_strategy") or "deterministic assembly"),
+            },
             "continuity": {},
             "assets": _assets_for(visual_type, families, visual, beat),
             "productConnection": str(visual.get("connection") or "")[:240] or None
@@ -520,7 +658,8 @@ def plan_shots(
                 "animation": "fade",
             }
         if renderer == "hunyuan":
-            prompt, negative = _template_prompt(str(beat.get("text") or ""), visual, visual_type)
+            shot["hunyuan_mode"] = decide_hunyuan_mode(families, shot["reference_assets"])
+            prompt, negative = compile_hunyuan_prompt(bible, recipe, shot)
             shot["visualPrompt"] = prompt
             shot["negativePrompt"] = negative
             shot["renderProfile"] = {
@@ -616,6 +755,14 @@ def validate_plan(spec: dict[str, Any], plan: dict[str, Any]) -> None:
         if visual_type not in VISUAL_TYPES:
             errors.append(f"shot {shot.get('id')} has an invalid visual type {visual_type!r}")
             continue
+        from services import cinematography
+
+        for camera_error in cinematography.validate_camera(shot.get("camera") or {}):
+            errors.append(f"shot {shot.get('id')}: {camera_error}")
+        if not shot.get("transition_in") or not shot.get("transition_out"):
+            errors.append(f"shot {shot.get('id')} is missing edit transitions")
+        if not isinstance(shot.get("reference_assets"), list):
+            errors.append(f"shot {shot.get('id')} has no reference asset list")
         renderer = _primary_renderer(shot.get("families") or [visual_type])
         expected_renderer = RENDERER_FOR_TYPE[visual_type]
         if visual_type != "mixed" and renderer != expected_renderer:
@@ -625,6 +772,8 @@ def validate_plan(spec: dict[str, Any], plan: dict[str, Any]) -> None:
                 errors.append(f"hunyuan shot {shot.get('id')} has no visual prompt")
             if not str(shot.get("negativePrompt") or "").strip():
                 errors.append(f"hunyuan shot {shot.get('id')} has no negative prompt")
+            if shot.get("hunyuan_mode") not in ("t2v", "i2v"):
+                errors.append(f"hunyuan shot {shot.get('id')} has no T2V/I2V decision")
         for beat_id in beat_ids:
             beat = beats.get(beat_id)
             if beat and (start != beat["startSeconds"] or end != beat["endSeconds"]):
@@ -684,6 +833,30 @@ class AIEnhancedShot(BaseModel):
 
 class AIPlanEnhancement(BaseModel):
     shots: list[AIEnhancedShot] = Field(min_length=1)
+
+
+class CreativeBriefResponse(BaseModel):
+    objective: str = Field(min_length=3, max_length=500)
+    message: str = Field(min_length=3, max_length=500)
+    audience: str = Field(default="", max_length=200)
+    platform: str = Field(default="9:16", max_length=16)
+    visual_style: str = Field(default="", max_length=240)
+    emotional_direction: str = Field(default="", max_length=240)
+    audio: str = Field(default="", max_length=240)
+    runtime_seconds: int = Field(default=48, ge=5, le=300)
+    title: str = Field(default="Untitled video", max_length=160)
+
+
+class StoryboardBeat(BaseModel):
+    narration: str = Field(min_length=1, max_length=600)
+    visual: str = Field(default="", max_length=300)
+    duration_seconds: float = Field(gt=0, le=60)
+    purpose: str = Field(default="", max_length=240)
+    source_refs: list[str] = Field(default_factory=list)
+
+
+class StoryboardOutline(BaseModel):
+    beats: list[StoryboardBeat] = Field(min_length=1, max_length=12)
 
 
 def _enhance_with_ai(spec: dict[str, Any], shots: list[dict[str, Any]]) -> dict[str, Any]:
@@ -763,6 +936,7 @@ def build_render_jobs(
             "shotId": shot["id"],
             "priority": priority,
             "renderer": renderer,
+            "hunyuan_mode": shot.get("hunyuan_mode"),
             "model": "HunyuanVideo-1.5" if renderer == "hunyuan" else None,
             "prompt": shot.get("visualPrompt"),
             "negativePrompt": shot.get("negativePrompt"),
@@ -853,10 +1027,45 @@ def plan_video(
         source_path=str(path),
         context=context,
     )
+    from services.motion_recipes import select_recipe
+    from services.visual_bible import default_bible
+
+    brief_text = " ".join([
+        spec_payload.get("title", ""),
+        str(spec_payload.get("narrative") or ""),
+        " ".join(beat.get("text", "") for beat in parsed["beats"]),
+    ])
+    recipe_id, recipe = select_recipe(brief_text)
+    bible = default_bible(brand_name=spec_payload.get("brand", {}).get("name", "InDataFlow"))
+    return _finalize_directed_plan(
+        spec_payload, context, use_ai=use_ai,
+        recipe_id=recipe_id, recipe=recipe, bible=bible,
+    )
+
+
+def _finalize_directed_plan(
+    spec_payload: dict[str, Any],
+    context: dict[str, Any],
+    *,
+    use_ai: bool,
+    recipe_id: str,
+    recipe: dict[str, Any],
+    bible: dict[str, Any],
+) -> dict[str, Any]:
+    """Shared persist path: validate, store spec/bible/assets/plan, build jobs."""
+    from core import video_store
+    from services.visual_bible import validate_bible
+
     validate_spec(spec_payload)
+    validate_bible(bible)
     spec = video_store.create_spec(_store_spec_payload(spec_payload))
     spec_payload["id"] = spec["id"]
-    plan_payload, ai_report = plan_shots({**spec_payload, "id": spec["id"]}, context, use_ai=use_ai)
+    stored_bible = video_store.save_visual_bible(spec["id"], bible, recipe_id=recipe_id)
+    video_store.register_assets(spec["id"], spec_payload.get("assets") or [])
+    plan_payload, ai_report = plan_shots(
+        {**spec_payload, "id": spec["id"]}, context, use_ai=use_ai,
+        bible=bible, recipe=recipe,
+    )
     validate_plan(spec_payload, plan_payload)
     validate_claims(spec_payload, plan_payload, context)
     plan = video_store.create_shot_plan({
@@ -873,7 +1082,122 @@ def plan_video(
         "plan": video_store.get_shot_plan(plan["id"]),
         "jobs": jobs,
         "ai": ai_report,
+        "recipe": recipe_id,
+        "visual_bible": stored_bible,
+        "assets": video_store.list_assets(spec["id"]),
     }
+
+
+def direct_brief(
+    brief: str,
+    *,
+    project_id: str,
+    campaign_id: str | None = None,
+    aspect_ratio: str = "9:16",
+    fps: int = 24,
+) -> dict[str, Any]:
+    """Direct a video from a human creative brief (template-4 phase 20).
+
+    Requires a configured model router: the director (creative direction +
+    storyboarding over OmniRoute) turns the brief into a validated outline,
+    then the deterministic pipeline (recipe, bible, shots, jobs, validators)
+    takes over. Transcript-wording rules do not apply here — there is no
+    source script; beats carry ``source: "ai-brief"`` provenance instead.
+    Raises RuntimeError when no model key is configured.
+    """
+    from services.creative_director import CreativeDirector, DirectorUnavailable
+    from services.motion_recipes import RECIPES, select_recipe_ai
+    from services.visual_bible import default_bible
+
+    if not brief or not brief.strip():
+        raise ValueError("brief must not be empty")
+    try:
+        creative = CreativeDirector(
+            "creative_direction",
+            instructions=(
+                "You are a creative director turning a human brief into a production "
+                "plan. Preserve the brief's factual claims verbatim; label anything "
+                "you invent as an assumption in the message field."
+            ),
+        ).run(f"Creative brief:\n{brief[:2000]}", CreativeBriefResponse)
+    except DirectorUnavailable as exc:
+        raise RuntimeError(
+            "brief-driven directing needs a model router key (OMNIROUTE_API_KEY). "
+            "Use a prepared script with plan_video instead."
+        ) from exc
+
+    recipe_choice = select_recipe_ai(brief)
+    recipe_id = recipe_choice["recipe"]
+    recipe = RECIPES[recipe_id]
+    bible = default_bible()
+
+    from pydantic_ai import ModelRetry
+
+    def _validate_outline(outline: StoryboardOutline) -> StoryboardOutline:
+        total = sum(beat.duration_seconds for beat in outline.beats)
+        if total <= 0:
+            raise ModelRetry("Storyboard beats must have positive total duration.")
+        return outline
+
+    storyteller = CreativeDirector(
+        "storyboarding",
+        instructions=(
+            "You are a storyboard artist. Break the approved direction into an ordered "
+            "list of visual beats covering the runtime exactly once, in order. Keep "
+            "narration factual per the brief; every beat needs a concrete visual."
+        ),
+        output_validator=_validate_outline,
+    )
+
+    direction_text = (
+        f"Objective: {creative.objective}\nMessage: {creative.message}\n"
+        f"Audience: {creative.audience}\nRuntime: {creative.runtime_seconds}s\n"
+        f"Style: {creative.visual_style}\nEmotion: {creative.emotional_direction}"
+    )
+    outline = storyteller.run(
+        f"{direction_text}\n\nOriginal brief:\n{brief[:2000]}", StoryboardOutline
+    )
+
+    cursor = 0.0
+    beats = []
+    for index, beat in enumerate(outline.beats):
+        start, end = cursor, cursor + beat.duration_seconds
+        cursor = end
+        beats.append({
+            "id": f"beat_{index + 1:02d}",
+            "startSeconds": start,
+            "endSeconds": end,
+            "text": beat.narration,
+            "source": "ai-brief",
+            "visual": {
+                "visual": beat.visual,
+                "connection": beat.purpose,
+                "source": "; ".join(beat.source_refs),
+            },
+        })
+    context = load_indataflow_context()
+    spec_payload = build_spec(
+        {"title": creative.title, "meta": {
+            "objective": creative.objective,
+            "message": creative.message,
+            "buyer": creative.audience,
+            "platform": creative.platform,
+            "visual_style": creative.visual_style,
+            "emotional_direction": creative.emotional_direction,
+            "audio": creative.audio,
+            "narrative": brief[:1000],
+        }, "beats": beats},
+        project_id=project_id,
+        campaign_id=campaign_id,
+        aspect_ratio=aspect_ratio if aspect_ratio in FORMAT_SIZES else "9:16",
+        fps=fps,
+        source_path=None,
+        context=context,
+    )
+    return _finalize_directed_plan(
+        spec_payload, context, use_ai=True,
+        recipe_id=recipe_id, recipe=recipe, bible=bible,
+    )
 
 
 def _store_spec_payload(spec: dict[str, Any]) -> dict[str, Any]:
@@ -892,6 +1216,7 @@ def _store_spec_payload(spec: dict[str, Any]) -> dict[str, Any]:
         "productBoundary": spec.get("productBoundary"),
         "cta": spec.get("cta"),
         "sources": spec.get("sources"),
+        "extra": spec.get("extra"),
         "sourceScriptId": spec.get("sourceScriptId"),
         "source_path": spec.get("source_path"),
         "status": "planned",
@@ -929,6 +1254,7 @@ def _store_job_rows(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "shot_id": job["shotId"],
             "priority": job.get("priority") or 100,
             "renderer": job["renderer"],
+            "hunyuan_mode": job.get("hunyuan_mode"),
             "model": job.get("model"),
             "prompt": job.get("prompt"),
             "negativePrompt": job.get("negativePrompt"),

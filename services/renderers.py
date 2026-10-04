@@ -771,7 +771,13 @@ def submit_hunyuan_job(job_id: str, *, timeout_seconds: int | None = None) -> di
                     retryable=True,
                 )
             submitted = renderer.submit_render(payload)
-            saved = render_output_dir() / f"{job_id}.mp4"
+            # Phase-16 generation persistence: every attempt keeps its own
+            # output, so corrections never overwrite history and any
+            # generation stays reproducible and selectable.
+            attempt = video_store.get_job(job_id)["attempts"]
+            generation_dir = render_output_dir() / job_id / f"generation_{attempt:03d}"
+            generation_dir.mkdir(parents=True, exist_ok=True)
+            saved = generation_dir / output_name
             if "output_bytes" in submitted:
                 saved.write_bytes(submitted["output_bytes"])
             elif "output_url" in submitted:
@@ -813,6 +819,14 @@ def submit_hunyuan_job(job_id: str, *, timeout_seconds: int | None = None) -> di
                 "width": details.get("width"),
                 "height": details.get("height"),
                 "output_name": output_name,
+                "model": job.get("model"),
+                "prompt": job.get("prompt"),
+                "seed": job.get("seed"),
+                "steps": job.get("steps"),
+                "dtype": job.get("dtype"),
+                "fps": job.get("fps"),
+                "hunyuan_mode": job.get("hunyuan_mode"),
+                "attempt": video_store.get_job(job_id)["attempts"],
                 "worker_job_id": worker_job_id,
                 "worker_health": health,
                 "worker_capacity": capacity,

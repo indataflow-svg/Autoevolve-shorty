@@ -31,9 +31,17 @@ make video-queue PLAN=<shot-plan-id>
 
 # Lower level equivalents:
 .venv/bin/python scripts/video.py plan --script scripts/indataflow/corridor.md --manifest-out /tmp/manifest.json
+.venv/bin/python scripts/video.py direct --brief "A 15-second product film." --project-id demo
 .venv/bin/python scripts/video.py queue <shot-plan-id>
 .venv/bin/python scripts/video.py profile   # default Hunyuan render profile
 ```
+
+Two entry points feed the same validators: `plan` (prepared script,
+transcript wording preserved verbatim) and `direct` (human brief via the
+AI director — needs `OMNIROUTE_API_KEY`; beats carry `ai-brief`
+provenance). Both persist the spec, its Visual Bible + motion recipe, its
+asset registry, and the shot plan, then build RenderJobs. Details:
+`docs/creative-director/`.
 
 Planning is deterministic. When `OMNIROUTE_API_KEY` is set, the AI layer
 refines shot purposes and visual prompts (and adds continuity notes); when it
