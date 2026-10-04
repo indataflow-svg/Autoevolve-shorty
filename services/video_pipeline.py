@@ -745,21 +745,9 @@ def _enhance_with_ai(spec: dict[str, Any], shots: list[dict[str, Any]]) -> dict[
 
 
 def build_render_jobs(
-    spec: dict[str, Any], plan: dict[str, Any], *, priority: int = 100,
-    render_mode: str = "shots",
+    spec: dict[str, Any], plan: dict[str, Any], *, priority: int = 100
 ) -> list[dict[str, Any]]:
-    """Build RenderJob dicts (unsaved) in the requested render mode.
-
-    - ``shots``: one RenderJob per render-required shot (clip division).
-    - ``full``: a single whole-video Hunyuan job spanning the spec duration.
-      The ShotPlan is still produced (timing/visual reference), but the
-      queue holds one job. Note the validated worker envelope is ~81
-      frames; a full-duration job exceeds it and the worker may reject it.
-    """
-    if render_mode not in ("shots", "full"):
-        raise ValueError(f"unknown render mode: {render_mode!r} (expected 'shots' or 'full')")
-    if render_mode == "full":
-        return [_full_video_job(spec, plan, priority=priority)]
+    """Build one RenderJob dict per render-required shot (unsaved)."""
     jobs: list[dict[str, Any]] = []
     width, height = spec["format"]["width"], spec["format"]["height"]
     project_id = spec.get("projectId") or "project"
@@ -801,73 +789,10 @@ def build_render_jobs(
     return jobs
 
 
-def _full_video_job(
-    spec: dict[str, Any], plan: dict[str, Any], *, priority: int = 100
-) -> dict[str, Any]:
-    """One whole-video Hunyuan job: no clip division, user-chosen mode."""
-    shots = plan.get("shots") or []
-    beats = " / ".join(
-        str(shot.get("purpose") or "")[:160] for shot in shots
-    )[:700]
-    prompt = (
-        f"Cinematic short video, {spec.get('title')}: {beats}. "
-        "Authentic freight environment, premium commercial cinematography, "
-        "restrained blue and indigo visual language, realistic materials, "
-        "natural motion, smooth continuous camera."
-    )[:900]
-    project_id = spec.get("projectId") or "project"
-    total = spec["format"]["durationSeconds"]
-    fps = spec["format"]["fps"]
-    return {
-        "videoSpecId": spec.get("id"),
-        "shotPlanId": plan.get("id"),
-        "shotId": "full",
-        "priority": priority,
-        "renderer": "hunyuan",
-        "model": "HunyuanVideo-1.5",
-        "prompt": prompt,
-        "negativePrompt": DEFAULT_NEGATIVE_PROMPT,
-        "inputAssets": [],
-        "outputPath": f"videos/{project_id}/full.mp4",
-        "resolution": HUNYUAN_DEFAULT_PROFILE["resolution"],
-        "width": spec["format"]["width"],
-        "height": spec["format"]["height"],
-        "fps": fps,
-        "frames": max(1, round(total * fps)),
-        "steps": HUNYUAN_DEFAULT_PROFILE["steps"],
-        "dtype": HUNYUAN_DEFAULT_PROFILE["dtype"],
-        "seed": HUNYUAN_DEFAULT_PROFILE["seed"],
-        "continuityContext": {
-            "previousShot": None,
-            "nextShot": None,
-            "environment": "full video, all beats",
-            "style": "restrained blue and indigo, premium commercial cinematography",
-        },
-        "maxAttempts": 3,
-    }
-
-
 def validate_jobs(
-    spec: dict[str, Any], plan: dict[str, Any], jobs: list[dict[str, Any]],
-    *, render_mode: str = "shots",
+    spec: dict[str, Any], plan: dict[str, Any], jobs: list[dict[str, Any]]
 ) -> None:
     errors: list[str] = []
-    if render_mode not in ("shots", "full"):
-        raise ValueError(f"unknown render mode: {render_mode!r} (expected 'shots' or 'full')")
-    if render_mode == "full":
-        if len(jobs) != 1 or jobs[0].get("shotId") != "full":
-            errors.append("full render mode expects exactly one job for shot 'full'")
-            return _raise(errors)
-        job = jobs[0]
-        expected_frames = max(1, round(spec["format"]["durationSeconds"] * spec["format"]["fps"]))
-        if job.get("frames") != expected_frames:
-            errors.append(f"full job frames {job.get('frames')} != total duration x FPS ({expected_frames})")
-        if job.get("seed") is None:
-            errors.append("full job has no deterministic seed")
-        if job.get("renderer") == "hunyuan" and not str(job.get("prompt") or "").strip():
-            errors.append("full hunyuan job has no prompt")
-        _raise(errors)
-        return
     required = [shot for shot in (plan.get("shots") or []) if shot.get("renderRequired", True)]
     if len(jobs) != len(required):
         errors.append(
@@ -907,13 +832,11 @@ def plan_video(
     aspect_ratio: str = "9:16",
     fps: int = 24,
     use_ai: bool = True,
-    render_mode: str = "shots",
 ) -> dict[str, Any]:
     """Parse a script file, validate, plan and persist spec + shot plan.
 
-    Render jobs are built and validated (in ``render_mode``) but NOT
-    enqueued; call :func:`queue_shot_plan` (or the ``queue`` CLI command,
-    with the same mode) to enqueue.
+    Render jobs are built and validated but NOT enqueued; call
+    :func:`queue_shot_plan` (or the ``queue`` CLI command) to enqueue.
     """
     from core import video_store
 
@@ -943,11 +866,8 @@ def plan_video(
         "status": "planned",
     })
     video_store.update_spec_status(spec["id"], "planned")
-    jobs = build_render_jobs(
-        {**spec_payload, "id": spec["id"]}, {**plan_payload, "id": plan["id"]},
-        render_mode=render_mode,
-    )
-    validate_jobs(spec_payload, {**plan_payload, "id": plan["id"]}, jobs, render_mode=render_mode)
+    jobs = build_render_jobs({**spec_payload, "id": spec["id"]}, {**plan_payload, "id": plan["id"]})
+    validate_jobs(spec_payload, {**plan_payload, "id": plan["id"]}, jobs)
     return {
         "spec": video_store.get_spec(spec["id"]),
         "plan": video_store.get_shot_plan(plan["id"]),
@@ -978,14 +898,8 @@ def _store_spec_payload(spec: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def queue_shot_plan(plan_id: str, *, priority: int = 100, render_mode: str = "shots") -> dict[str, Any]:
-    """Enqueue RenderJobs for a planned shot plan in the requested render mode.
-
-    ``shots`` (default) enqueues one RenderJob per render-required shot;
-    ``full`` enqueues a single whole-video Hunyuan job and skips the clip
-    division. Re-queueing a plan that already has jobs returns the existing
-    rows with ``already_queued=True``.
-    """
+def queue_shot_plan(plan_id: str, *, priority: int = 100) -> dict[str, Any]:
+    """Enqueue one RenderJob per render-required shot of a planned shot plan."""
     from core import video_store
 
     video_store.init_video_db()
@@ -998,8 +912,8 @@ def queue_shot_plan(plan_id: str, *, priority: int = 100, render_mode: str = "sh
     existing = video_store.list_jobs(shot_plan_id=plan_id)
     if existing:
         return {"queued": existing, "already_queued": True, "counts": _job_counts(existing, plan)}
-    jobs = build_render_jobs(spec, plan, priority=priority, render_mode=render_mode)
-    validate_jobs(spec, plan, jobs, render_mode=render_mode)
+    jobs = build_render_jobs(spec, plan, priority=priority)
+    validate_jobs(spec, plan, jobs)
     queued = video_store.enqueue_jobs(_store_job_rows(jobs))
     video_store.update_plan_status(plan_id, "queued")
     video_store.update_spec_status(spec["id"], "queued")

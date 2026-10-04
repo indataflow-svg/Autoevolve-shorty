@@ -46,7 +46,6 @@ def command_plan(args: argparse.Namespace) -> int:
             aspect_ratio=args.format,
             fps=args.fps,
             use_ai=not args.no_ai,
-            render_mode=args.mode,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -72,9 +71,7 @@ def command_queue(args: argparse.Namespace) -> int:
     from services import video_pipeline
 
     try:
-        result = video_pipeline.queue_shot_plan(
-            args.shot_plan_id, priority=args.priority, render_mode=args.mode
-        )
+        result = video_pipeline.queue_shot_plan(args.shot_plan_id, priority=args.priority)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -87,8 +84,7 @@ def command_queue(args: argparse.Namespace) -> int:
         if count:
             print(f"{count} {noun} job{'s' if count != 1 else ''}")
 
-    total = counts["total"]
-    print(f"{total} job{'s' if total != 1 else ''} queued")
+    print(f"{counts['total']} jobs queued")
     jobs("Hunyuan", by_renderer.get("hunyuan", 0))
     jobs("asset/motion", by_renderer.get("asset", 0) + by_renderer.get("motion_graphics", 0))
     jobs("brand-end-frame", counts.get("brand_end_frames", 0))
@@ -148,16 +144,12 @@ def main(argv: list[str] | None = None) -> int:
     plan.add_argument("--format", default="9:16", choices=["4:5", "9:16", "16:9", "1:1"])
     plan.add_argument("--fps", type=int, default=24)
     plan.add_argument("--no-ai", action="store_true", help="skip AI prompt refinement even if configured")
-    plan.add_argument("--mode", default="shots", choices=["shots", "full"],
-                      help="shots: manifest per clip; full: single whole-video job")
     plan.add_argument("--manifest-out", default=None, help="write the job manifest JSON here instead of stdout")
     plan.set_defaults(func=command_plan)
 
-    queue = sub.add_parser("queue", help="enqueue RenderJobs (per-shot clips or one full video)")
+    queue = sub.add_parser("queue", help="enqueue one RenderJob per render-required shot")
     queue.add_argument("shot_plan_id")
     queue.add_argument("--priority", type=int, default=100)
-    queue.add_argument("--mode", default="shots", choices=["shots", "full"],
-                       help="shots: one job per clip; full: single whole-video job, no clip division")
     queue.set_defaults(func=command_queue)
 
     profile = sub.add_parser("profile", help="print the default Hunyuan render profile")
