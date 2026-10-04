@@ -71,6 +71,17 @@ class WorkerDouble(BaseHTTPRequestHandler):
         if download:
             self._serve_download(download.group(1))
             return
+        by_name = re.fullmatch(r"/video/([A-Za-z0-9_.-]+)", self.path or "")
+        if by_name:
+            if getattr(self.server, "video_missing", False):
+                self._json({"detail": "Video not found"}, status=404)
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Content-Length", str(len(self.server.mp4_bytes)))
+                self.end_headers()
+                self.wfile.write(self.server.mp4_bytes)
+            return
         status = re.fullmatch(r"/render/([A-Za-z0-9_-]+)", self.path or "")
         if status:
             self._serve_status(status.group(1))
@@ -214,6 +225,7 @@ class HunyuanRendererTests(unittest.TestCase):
         self.server.last_auth = None
         self.server.polls = 0
         self.server.required_token = None
+        self.server.video_missing = False
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         port = self.server.server_address[1]
@@ -340,6 +352,7 @@ class HunyuanRendererTests(unittest.TestCase):
         # would burn GPU again, so the job fails terminally with everything
         # needed for manual recovery.
         self.server.mode = "completed-local-path"
+        self.server.video_missing = True
         with self.assertRaises(renderers.RenderWorkerError) as raised:
             renderers.submit_hunyuan_job(self.hunyuan_job["id"])
         self.assertEqual(raised.exception.kind, "output_unavailable")
@@ -349,6 +362,20 @@ class HunyuanRendererTests(unittest.TestCase):
         self.assertEqual(stored["error"]["code"], "output_unavailable")
         self.assertIn("/root/video-lab/outputs/shot_001.mp4", stored["error"]["message"])
         self.assertIn("782773", stored["error"]["message"])
+
+    def test_completed_local_path_downloaded_by_name(self):
+        # Observed worker shape: completed body + GET /video/{output_name}.
+        self.server.mode = "completed-local-path"
+        completed = renderers.submit_hunyuan_job(self.hunyuan_job["id"])
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["result"]["metadata"]["download_via"], "video-by-name")
+        self.assertTrue(Path(completed["result"]["outputPath"]).is_file())
+
+    def test_unsafe_output_name_rejected(self):
+        with renderers.HunyuanRenderer() as renderer:
+            with self.assertRaises(renderers.RenderWorkerError) as raised:
+                renderer.download_by_name("../../etc/x.mp4", Path(self.temporary.name) / "x.mp4")
+        self.assertEqual(raised.exception.kind, "validation")
 
     def test_corrupt_video_fails_qa(self):
         self.server.mode = "garbage-video"

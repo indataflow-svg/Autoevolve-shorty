@@ -173,15 +173,14 @@ the video bytes:
  "output_path": "/root/video-lab/outputs/shot_001.mp4", "size_bytes": 782773}
 ```
 
-`output_path` is worker-local: there is currently no download endpoint
-(`GET /outputs/{name}`) and no SSH from the control plane, so a completed
-render whose bytes cannot be fetched is recorded as terminal
-`output_unavailable` (never silently completed, never blindly re-rendered)
-with the worker path + size preserved for manual recovery. For the
-production flow the worker needs one of: return the MP4 bytes directly,
-serve them for download, or accept an upload target. Until then, recover
-the file manually and mark the job complete with its QA metadata
-(`qa_render_output` in `services/renderers.py` validates any local MP4).
+The file is then fetched at `GET /video/{output_name}` using the
+**submitted** output name (verified live: 782,773 bytes in 0.34s,
+byte-identical to `size_bytes`). The dispatcher tries, in order: inline
+bytes → `output_url` download → async poll + `/render/{id}/download` →
+`/video/{output_name}` → terminal `output_unavailable` (never silently
+completed, never blindly re-rendered). Every fetch streams to disk with
+truncation detection; job ids and filenames are allow-listed against
+path traversal.
 
 ### Phase 2: worker pull (already built, not yet wired to this worker)
 

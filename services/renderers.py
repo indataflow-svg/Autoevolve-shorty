@@ -172,6 +172,25 @@ class Renderer(ABC):
     ) -> dict[str, Any]:
         """Stream ``GET /render/{job_id}/download`` to disk (no full RAM load)."""
 
+    @abstractmethod
+    def download_by_name(
+        self,
+        output_name: str,
+        dest_path: str | Path,
+        *,
+        expected_sha256: str | None = None,
+    ) -> dict[str, Any]:
+        """Stream ``GET /video/{output_name}`` to disk (observed worker shape)."""
+
+
+def _safe_filename(name: str) -> str:
+    """Allow only plain filenames (the /video/{name} download shape)."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", name or "") or ".." in name:
+        raise RenderWorkerError(
+            "validation", f"unsafe worker output name: {name!r}", retryable=False
+        )
+    return name
+
 
 def _safe_job_id(worker_job_id: str) -> str:
     """Reject anything that is not a plain job identifier (path traversal)."""
@@ -381,20 +400,16 @@ class HunyuanRenderer(Renderer):
             # Asynchronous worker: poll GET /render/{job_id}, then download.
             return {"worker_job_id": worker_job_id, "status": status or "submitted"}
         if str(body.get("status") or "").lower() == "completed":
-            # The render SUCCEEDED on the worker, but only a worker-local
-            # path came back and no download endpoint exists. Resubmitting
-            # would re-render the same shot, so this is terminal: the
-            # operator recovers the file (see docs/video-pipeline.md) and
-            # completes the job with its metadata. All recovery details are
-            # preserved in the job's error row.
-            raise RenderWorkerError(
-                "output_unavailable",
-                "worker completed the render but returned only a worker-local path "
-                f"(output_path={body.get('output_path')!r}, "
-                f"size_bytes={body.get('size_bytes')!r}); no download endpoint "
-                "exists yet - recover the file manually, then complete the job",
-                retryable=False,
-            )
+            # The render SUCCEEDED on the worker. Newer workers serve the
+            # file at GET /video/{output_name}; older ones return only the
+            # worker-local path. The caller tries the download first and
+            # records output_unavailable only when nothing is fetchable.
+            return {
+                "completed_unfetchable": True,
+                "worker_job_id": _worker_job_id(body),
+                "output_path": body.get("output_path"),
+                "size_bytes": body.get("size_bytes"),
+            }
         raise RenderWorkerError(
             "malformed",
             f"worker 200 carried no downloadable output: {json.dumps(body)[:300]}",
@@ -464,6 +479,23 @@ class HunyuanRenderer(Renderer):
         job_id = _safe_job_id(worker_job_id)
         return self._stream_get(
             f"/render/{job_id}/download",
+            dest_path,
+            expected_sha256=expected_sha256,
+            timeout_seconds=timeout_seconds or self.timeout_seconds,
+        )
+
+    def download_by_name(
+        self,
+        output_name: str,
+        dest_path: str | Path,
+        *,
+        expected_sha256: str | None = None,
+        timeout_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        """Stream the observed ``GET /video/{output_name}`` worker shape."""
+        name = _safe_filename(output_name)
+        return self._stream_get(
+            f"/video/{name}",
             dest_path,
             expected_sha256=expected_sha256,
             timeout_seconds=timeout_seconds or self.timeout_seconds,
@@ -778,10 +810,32 @@ def submit_hunyuan_job(job_id: str, *, timeout_seconds: int | None = None) -> di
             generation_dir = render_output_dir() / job_id / f"generation_{attempt:03d}"
             generation_dir.mkdir(parents=True, exist_ok=True)
             saved = generation_dir / output_name
+            download_via: str | None = None
             if "output_bytes" in submitted:
                 saved.write_bytes(submitted["output_bytes"])
+                download_via = "inline-bytes"
             elif "output_url" in submitted:
                 renderer.download_url(submitted["output_url"], saved)
+                download_via = "output-url"
+            elif "completed_unfetchable" in submitted:
+                # The worker finished but returned only its local path. The
+                # observed worker serves GET /video/{output_name}: fetch by
+                # the name WE submitted before declaring it unrecoverable.
+                try:
+                    renderer.download_by_name(output_name, saved)
+                    download_via = "video-by-name"
+                except RenderWorkerError as exc:
+                    if exc.kind != "not_found":
+                        raise
+                    raise RenderWorkerError(
+                        "output_unavailable",
+                        "worker completed the render but neither "
+                        f"/video/{output_name} nor a download endpoint exposed it "
+                        f"(worker path={submitted.get('output_path')!r}, "
+                        f"size_bytes={submitted.get('size_bytes')!r}); recover the "
+                        "file manually, then complete the job",
+                        retryable=False,
+                    ) from exc
             else:
                 worker_job_id = submitted["worker_job_id"]
                 worker_status_body = _poll_until_done(renderer, worker_job_id, deadline)
@@ -792,6 +846,7 @@ def submit_hunyuan_job(job_id: str, *, timeout_seconds: int | None = None) -> di
                     expected_sha256=str(checksum) if checksum else None,
                     timeout_seconds=max(10, int(deadline - time.monotonic())),
                 )
+                download_via = "render-download"
             qa = qa_render_output(saved, expected_frames=job.get("frames"), expected_fps=job.get("fps"))
     except RenderQAError as exc:
         video_store.fail_job(
@@ -819,6 +874,7 @@ def submit_hunyuan_job(job_id: str, *, timeout_seconds: int | None = None) -> di
                 "width": details.get("width"),
                 "height": details.get("height"),
                 "output_name": output_name,
+                "download_via": download_via,
                 "model": job.get("model"),
                 "prompt": job.get("prompt"),
                 "seed": job.get("seed"),
