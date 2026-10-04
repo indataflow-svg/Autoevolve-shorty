@@ -148,7 +148,11 @@ OMNIROUTE_IMAGE_MODEL=<optional image model for G2>
 # never commit a real one outside .env, and never add credentials here:
 # the worker API takes none.
 RENDER_WORKER_URL=http://100.126.189.74:8000
+# Bearer token once the worker protects /render + status + download
+# (empty while the worker is unauthenticated). Never commit a real token.
+RENDER_WORKER_API_TOKEN=
 RENDER_WORKER_TIMEOUT_SECONDS=1800
+RENDER_WORKER_POLL_INTERVAL_SECONDS=15
 RENDER_OUTPUT_DIR=data/renders
 ```
 

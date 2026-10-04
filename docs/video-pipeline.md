@@ -112,16 +112,31 @@ make video-submit JOB=<job-id>            # claim -> submit -> QA -> complete/fa
 
 Implementation is `services/renderers.py`:
 
-- `Renderer` interface (`check_health`, `check_capacity`, `submit`) with
-  `HunyuanRenderer` posting the RenderJob payload (`prompt` required, plus
-  `negative_prompt`, `resolution`, explicit `aspect_ratio` derived from the
-  job's width/height, `frames`, `fps`, `steps`, `seed`, `dtype`,
-  `output_name`). It never implements Hunyuan; the worker owns its validated
-  environment (`HUNYUAN_PYTHON=/root/video-lab/.venv/bin/python`).
+- `Renderer` interface (`check_health`, `check_capacity`, `submit_render`,
+  `get_render_status`, `download_render`) with `HunyuanRenderer` posting the
+  RenderJob payload (`prompt` required, plus `negative_prompt`,
+  `resolution`, explicit `aspect_ratio` derived from the job's width/height,
+  `frames`, `fps`, `steps`, `seed`, `dtype`, `output_name`). It never
+  implements Hunyuan; the worker owns its validated environment
+  (`HUNYUAN_PYTHON=/root/video-lab/.venv/bin/python`).
+- Authentication: `RENDER_WORKER_API_TOKEN` is sent as
+  `Authorization: Bearer` on every protected request (`/render`, status,
+  download — never `/health`, never in errors or logs). Missing/invalid
+  credentials surface as terminal `unauthorized`. UFW on the worker allows
+  port 8000 only from AutoEvolve's Tailscale IP (`100.113.134.27`).
+- Two worker shapes are supported: synchronous bytes/download-URL answers
+  are saved directly; a queued/running answer (`job_id` + pending status)
+  is polled via `GET /render/{job_id}` (`RENDER_WORKER_POLL_INTERVAL_SECONDS`,
+  overall deadline `RENDER_WORKER_TIMEOUT_SECONDS`) and then streamed via
+  `GET /render/{job_id}/download` in 64 KiB chunks with Content-Length
+  truncation detection and optional worker-checksum comparison — the MP4 is
+  never fully loaded into RAM. Job ids are allow-listed client-side, so a
+  malicious id cannot turn the download into a path traversal.
 - `submit_hunyuan_job` claims the job (one attempt, long lease so the pull
   queue cannot reclaim it mid-render), checks health/capacity, POSTs once,
   saves the MP4 under `data/renders/<job-id>.mp4`, runs ffprobe QA, then
-  records `completed` (output path, frames, sha256) or `failed`.
+  records `completed` (output path, frames, sha256, worker job id, render
+  completion time) or `failed`.
 - Failure handling reuses the existing layers, no second retry system:
   connection errors retry the idempotent GETs (bounded, 3 attempts);
   a POST that may have reached the worker is **never re-sent** — the job
@@ -129,9 +144,10 @@ Implementation is `services/renderers.py`:
   `422`/contract mismatches are `retryable=false`. QA failures (missing
   file, ffprobe decode failure, frame/fps mismatch) fail the job with the
   reason preserved in `error_json`; nothing is ever silently completed.
-- No credentials anywhere: the worker takes none, the endpoint comes only
-  from `RENDER_WORKER_URL`, and nothing render-related is exposed through
-  the public UI or compose ports.
+- One credential, in one place: `RENDER_WORKER_API_TOKEN` lives only in
+  `.env` (never source, never logs, never committed); the endpoint comes
+  only from `RENDER_WORKER_URL`, and nothing render-related is exposed
+  through the public UI or compose ports.
 
 ### Worker response contract (observed live)
 

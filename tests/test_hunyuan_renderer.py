@@ -7,10 +7,12 @@ real ffprobe binary validates the QA success path (skipped if absent).
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -58,16 +60,75 @@ class WorkerDouble(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self._json({"status": "healthy", "worker_id": "mi300x-01", "renderer": "hunyuan"})
-        elif self.path == "/capacity":
+            return
+        if self.server.required_token and not self._authorized():
+            self._json({"detail": "missing or invalid authentication"}, status=401)
+            return
+        if self.path == "/capacity":
             self._json({"status": "available", "worker_id": "mi300x-01", "renderer": "hunyuan"})
-        elif self.path == "/files/out.mp4":
+            return
+        download = re.fullmatch(r"/render/([A-Za-z0-9_-]+)/download", self.path or "")
+        if download:
+            self._serve_download(download.group(1))
+            return
+        status = re.fullmatch(r"/render/([A-Za-z0-9_-]+)", self.path or "")
+        if status:
+            self._serve_status(status.group(1))
+            return
+        if self.path == "/files/out.mp4":
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
             self.send_header("Content-Length", str(len(self.server.mp4_bytes)))
             self.end_headers()
             self.wfile.write(self.server.mp4_bytes)
+            return
+        self._json({"detail": "not found"}, status=404)
+
+    def _authorized(self):
+        import hmac
+
+        expected = f"Bearer {self.server.required_token}"
+        return hmac.compare_digest(self.headers.get("Authorization", ""), expected)
+
+    def _serve_status(self, job_id):
+        mode = self.server.mode
+        if job_id != "wjob-1" and mode in {"async-submit", "failed-job"}:
+            self._json({"detail": "unknown job"}, status=404)
+            return
+        if mode == "async-submit":
+            self.server.polls += 1
+            if self.server.polls < 3:
+                self._json({"job_id": "wjob-1", "status": "running"})
+            else:
+                import hashlib as _hashlib
+
+                self._json({
+                    "job_id": "wjob-1",
+                    "status": "completed",
+                    "output_name": "shot_001.mp4",
+                    "size_bytes": len(self.server.mp4_bytes),
+                    "sha256": _hashlib.sha256(self.server.mp4_bytes).hexdigest(),
+                })
+        elif mode == "failed-job":
+            self._json({"job_id": "wjob-1", "status": "failed", "error": "CUDA out of memory"})
         else:
-            self._json({"detail": "not found"}, status=404)
+            self._json({"job_id": job_id, "status": "completed"})
+
+    def _serve_download(self, job_id):
+        if self.server.mode == "download-zero":
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        body = self.server.mp4_bytes
+        declared = len(body) + 100 if self.server.mode == "download-short" else len(body)
+        self.send_response(200)
+        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Content-Length", str(declared))
+        self.end_headers()
+        self.wfile.write(body)
+        # download-short: close early so the client sees a truncation.
 
     def do_POST(self):
         if self.path != "/render":
@@ -80,8 +141,14 @@ class WorkerDouble(BaseHTTPRequestHandler):
         except ValueError:
             payload = {}
         self.server.last_payload = payload
+        if self.server.required_token and not self._authorized():
+            self._json({"detail": "missing or invalid authentication"}, status=401)
+            return
+        self.server.last_auth = self.headers.get("Authorization")
         mode = self.server.mode
-        if mode == "ok-bytes":
+        if mode == "async-submit":
+            self._json({"status": "running", "job_id": "wjob-1"})
+        elif mode == "ok-bytes":
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
             self.send_header("Content-Length", str(len(self.server.mp4_bytes)))
@@ -144,6 +211,9 @@ class HunyuanRendererTests(unittest.TestCase):
         self.server.mode = "ok-bytes"
         self.server.mp4_bytes = self.mp4_bytes
         self.server.last_payload = None
+        self.server.last_auth = None
+        self.server.polls = 0
+        self.server.required_token = None
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         port = self.server.server_address[1]
@@ -305,6 +375,105 @@ class HunyuanRendererTests(unittest.TestCase):
         self.assertEqual(raised.exception.kind, "no_submitter")
         # Rejected before claiming: the job is untouched.
         self.assertEqual(video_store.get_job(asset_job["id"])["status"], "pending")
+
+    # -- authenticated worker + async lifecycle ---------------------------
+
+    def test_missing_token_is_401(self):
+        self.server.required_token = "secret"
+        with self.assertRaises(renderers.RenderWorkerError) as raised:
+            renderers.submit_hunyuan_job(self.hunyuan_job["id"])
+        self.assertEqual(raised.exception.kind, "unauthorized")
+        self.assertFalse(raised.exception.retryable)
+        stored = video_store.get_job(self.hunyuan_job["id"])
+        self.assertEqual(stored["status"], "failed")
+
+    def test_invalid_token_is_401(self):
+        self.server.required_token = "secret"
+        with patch.dict(os.environ, {"RENDER_WORKER_API_TOKEN": "wrong"}):
+            with self.assertRaises(renderers.RenderWorkerError) as raised:
+                renderers.submit_hunyuan_job(self.hunyuan_job["id"])
+        self.assertEqual(raised.exception.kind, "unauthorized")
+
+    def test_valid_token_is_accepted(self):
+        self.server.required_token = "secret"
+        with patch.dict(os.environ, {"RENDER_WORKER_API_TOKEN": "secret"}):
+            completed = renderers.submit_hunyuan_job(self.hunyuan_job["id"])
+        self.assertEqual(completed["status"], "completed")
+        # Bearer scheme, exact secret, constant-time comparable server-side.
+        self.assertEqual(self.server.last_auth, "Bearer secret")
+
+    def test_async_submit_poll_then_download(self):
+        self.server.mode = "async-submit"
+        with patch.dict(os.environ, {"RENDER_WORKER_POLL_INTERVAL_SECONDS": "0"}):
+            completed = renderers.submit_hunyuan_job(self.hunyuan_job["id"])
+        self.assertEqual(completed["status"], "completed")
+        self.assertGreaterEqual(self.server.polls, 3)
+        result = completed["result"]
+        self.assertTrue(Path(result["outputPath"]).is_file())
+        self.assertEqual(result["frames"], 144)
+        self.assertEqual(result["metadata"]["worker_job_id"], "wjob-1")
+        self.assertEqual(result["metadata"]["worker_status"]["status"], "completed")
+
+    def test_async_worker_failure_returns_to_pending(self):
+        self.server.mode = "async-submit"
+        with patch.dict(os.environ, {"RENDER_WORKER_POLL_INTERVAL_SECONDS": "0"}):
+            with renderers.HunyuanRenderer() as renderer:
+                submitted = renderer.submit_render({"prompt": "x"})
+                self.assertEqual(submitted["worker_job_id"], "wjob-1")
+                self.server.mode = "failed-job"
+                with self.assertRaises(renderers.RenderWorkerError) as raised:
+                    renderers._poll_until_done(
+                        renderer, "wjob-1", time.monotonic() + 30
+                    )
+        self.assertEqual(raised.exception.kind, "worker_failed")
+
+    def test_status_unknown_job_is_404(self):
+        self.server.mode = "async-submit"
+        with renderers.HunyuanRenderer() as renderer:
+            with self.assertRaises(renderers.RenderWorkerError) as raised:
+                renderer.get_render_status("nope")
+        self.assertEqual(raised.exception.kind, "not_found")
+        self.assertFalse(raised.exception.retryable)
+
+    def test_client_rejects_traversal_job_id(self):
+        with renderers.HunyuanRenderer() as renderer:
+            with self.assertRaises(renderers.RenderWorkerError) as raised:
+                renderer.download_render("../../etc/passwd", Path(self.temporary.name) / "x.mp4")
+        self.assertEqual(raised.exception.kind, "validation")
+
+    def test_zero_byte_download_is_rejected(self):
+        self.server.mode = "download-zero"
+        with renderers.HunyuanRenderer() as renderer:
+            with self.assertRaises(renderers.RenderWorkerError) as raised:
+                renderer.download_render("wjob-1", Path(self.temporary.name) / "x.mp4")
+        self.assertEqual(raised.exception.kind, "empty_output")
+
+    def test_truncated_download_is_rejected(self):
+        self.server.mode = "download-short"
+        with renderers.HunyuanRenderer() as renderer:
+            with self.assertRaises(renderers.RenderWorkerError) as raised:
+                renderer.download_render("wjob-1", Path(self.temporary.name) / "x.mp4")
+        self.assertEqual(raised.exception.kind, "incomplete_download")
+
+    def test_checksum_mismatch_is_rejected(self):
+        with renderers.HunyuanRenderer() as renderer:
+            with self.assertRaises(renderers.RenderWorkerError) as raised:
+                renderer.download_render(
+                    "wjob-1", Path(self.temporary.name) / "x.mp4",
+                    expected_sha256="0" * 64,
+                )
+        self.assertEqual(raised.exception.kind, "checksum_mismatch")
+
+    def test_checksum_match_accepted(self):
+        import hashlib as _hashlib
+
+        expected = _hashlib.sha256(self.mp4_bytes).hexdigest()
+        with renderers.HunyuanRenderer() as renderer:
+            downloaded = renderer.download_render(
+                "wjob-1", Path(self.temporary.name) / "x.mp4", expected_sha256=expected
+            )
+        self.assertEqual(downloaded["sha256"], expected)
+        self.assertEqual(downloaded["size_bytes"], len(self.mp4_bytes))
 
     # -- unit checks --------------------------------------------------------
 
