@@ -21,6 +21,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from dotenv import load_dotenv
+
+load_dotenv(REPO / ".env")
+
 
 def _slug_for_script(path: Path) -> str:
     return "".join(char if char.isalnum() else "-" for char in path.stem.lower()).strip("-") or "video"
@@ -99,6 +103,7 @@ def command_profile(_args: argparse.Namespace) -> int:
 
 
 def command_submit(args: argparse.Namespace) -> int:
+    from core import video_store
     from services import renderers
 
     try:
@@ -108,7 +113,13 @@ def command_submit(args: argparse.Namespace) -> int:
         return 2
     except renderers.RenderWorkerError as exc:
         print(f"render failed ({exc.kind}): {exc}", file=sys.stderr)
-        print(f"job recorded as failed; retryable={exc.retryable}", file=sys.stderr)
+        stored = video_store.get_job(args.job_id)
+        if stored is not None:
+            print(
+                f"job {args.job_id} is now {stored['status']} "
+                f"(attempts {stored['attempts']}/{stored['max_attempts']})",
+                file=sys.stderr,
+            )
         return 1
     result = job.get("result") or {}
     print(f"job {job['id']} completed: {result.get('outputPath')}")

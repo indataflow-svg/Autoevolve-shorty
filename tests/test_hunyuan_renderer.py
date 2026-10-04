@@ -106,6 +106,14 @@ class WorkerDouble(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif mode == "completed-local-path":
+            self._json({
+                "status": "completed",
+                "worker_id": "mi300x-01",
+                "job_id": "job_test",
+                "output_path": "/root/video-lab/outputs/shot_001.mp4",
+                "size_bytes": 782773,
+            })
         elif mode == "garbage-video":
             body = os.urandom(2048)
             self.send_response(200)
@@ -182,6 +190,16 @@ class HunyuanRendererTests(unittest.TestCase):
             status = renderers.worker_status()
         self.assertFalse(status["configured"])
 
+    def test_submit_unconfigured_leaves_job_untouched(self):
+        with patch.dict(os.environ, {"RENDER_WORKER_URL": ""}):
+            with self.assertRaises(renderers.RenderWorkerError) as raised:
+                renderers.submit_hunyuan_job(self.hunyuan_job["id"])
+        self.assertEqual(raised.exception.kind, "not_configured")
+        stored = video_store.get_job(self.hunyuan_job["id"])
+        self.assertEqual(stored["status"], "pending")
+        self.assertEqual(stored["attempts"], 0)
+        self.assertIsNone(stored["error"])
+
     # -- submit success ----------------------------------------------------
 
     def test_submit_success_completes_job_with_qa_metadata(self):
@@ -246,6 +264,21 @@ class HunyuanRendererTests(unittest.TestCase):
         self.assertEqual(raised.exception.kind, "malformed")
         stored = video_store.get_job(self.hunyuan_job["id"])
         self.assertEqual(stored["status"], "failed")
+
+    def test_completed_without_download_is_terminal_with_recovery_info(self):
+        # The worker rendered but returned only its local path: resubmitting
+        # would burn GPU again, so the job fails terminally with everything
+        # needed for manual recovery.
+        self.server.mode = "completed-local-path"
+        with self.assertRaises(renderers.RenderWorkerError) as raised:
+            renderers.submit_hunyuan_job(self.hunyuan_job["id"])
+        self.assertEqual(raised.exception.kind, "output_unavailable")
+        self.assertFalse(raised.exception.retryable)
+        stored = video_store.get_job(self.hunyuan_job["id"])
+        self.assertEqual(stored["status"], "failed")
+        self.assertEqual(stored["error"]["code"], "output_unavailable")
+        self.assertIn("/root/video-lab/outputs/shot_001.mp4", stored["error"]["message"])
+        self.assertIn("782773", stored["error"]["message"])
 
     def test_corrupt_video_fails_qa(self):
         self.server.mode = "garbage-video"

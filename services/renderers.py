@@ -286,6 +286,21 @@ class HunyuanRenderer(Renderer):
                 raise RenderWorkerError(
                     "malformed", "worker output_bytes is not valid base64", retryable=False
                 ) from exc
+        if str(body.get("status") or "").lower() == "completed":
+            # The render SUCCEEDED on the worker, but only a worker-local
+            # path came back and no download endpoint exists. Resubmitting
+            # would re-render the same shot, so this is terminal: the
+            # operator recovers the file (see docs/video-pipeline.md) and
+            # completes the job with its metadata. All recovery details are
+            # preserved in the job's error row.
+            raise RenderWorkerError(
+                "output_unavailable",
+                "worker completed the render but returned only a worker-local path "
+                f"(output_path={body.get('output_path')!r}, "
+                f"size_bytes={body.get('size_bytes')!r}); no download endpoint "
+                "exists yet - recover the file manually, then complete the job",
+                retryable=False,
+            )
         raise RenderWorkerError(
             "malformed",
             f"worker 200 carried no downloadable output: {json.dumps(body)[:300]}",
@@ -459,6 +474,9 @@ def submit_hunyuan_job(job_id: str, *, timeout_seconds: int | None = None) -> di
     if not job:
         raise ValueError(f"render job not found: {job_id}")
     timeout = timeout_seconds or render_timeout_seconds()
+    # Resolve configuration BEFORE claiming: usage/config errors (missing
+    # RENDER_WORKER_URL, no submitter for this renderer) must never consume
+    # an attempt or touch the job row.
     renderer = get_renderer(job["renderer"], timeout_seconds=timeout)
     if not isinstance(renderer, HunyuanRenderer):
         raise ValueError(f"renderer {job['renderer']!r} cannot be submitted to the MI300X worker")

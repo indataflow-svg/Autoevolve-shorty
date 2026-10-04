@@ -133,6 +133,27 @@ Implementation is `services/renderers.py`:
   from `RENDER_WORKER_URL`, and nothing render-related is exposed through
   the public UI or compose ports.
 
+### Worker response contract (observed live)
+
+`POST /render` accepts the RenderJob payload (`prompt` required; everything
+else defaulted) and answers, on success, with a completion record — **not**
+the video bytes:
+
+```json
+{"status": "completed", "worker_id": "mi300x-01", "job_id": "...",
+ "output_path": "/root/video-lab/outputs/shot_001.mp4", "size_bytes": 782773}
+```
+
+`output_path` is worker-local: there is currently no download endpoint
+(`GET /outputs/{name}`) and no SSH from the control plane, so a completed
+render whose bytes cannot be fetched is recorded as terminal
+`output_unavailable` (never silently completed, never blindly re-rendered)
+with the worker path + size preserved for manual recovery. For the
+production flow the worker needs one of: return the MP4 bytes directly,
+serve them for download, or accept an upload target. Until then, recover
+the file manually and mark the job complete with its QA metadata
+(`qa_render_output` in `services/renderers.py` validates any local MP4).
+
 ### Phase 2: worker pull (already built, not yet wired to this worker)
 
 The worker only needs the dashboard credentials plus its own identity:
