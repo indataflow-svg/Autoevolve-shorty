@@ -78,6 +78,8 @@ ROUTE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "hunyuan": (
         "cinematic", "camera movement", "camera push", "tracking shot",
         "sunrise", "aerial", "atmospheric", "slow push", "dolly",
+        "cityscape", "skyline", "neon", "metropolis", "futuristic city",
+        "city at night", "aerial city",
     ),
     "stock": (
         "truck", "ship", "port", "warehouse", "document", "people", "driver",
@@ -85,6 +87,26 @@ ROUTE_KEYWORDS: dict[str, tuple[str, ...]] = {
         "crane", "highway", "corridor",
     ),
 }
+
+# Information-display cues: content that must be rendered deterministically
+# (text, diagrams, data, labeled graphics), never generated. When these meet
+# a hunyuan match, deterministic graphics win — generating labeled diagrams
+# or data displays fabricates information.
+INFO_DISPLAY_CUES = (
+    "holographic projection",
+    "projection of",
+    "flowchart",
+    "flow chart",
+    "diagram",
+    "infographic",
+    "screen showing",
+    "screen displaying",
+    "data display",
+    "dashboard",
+    "interface showing",
+    "labeled as",
+    "labels",
+)
 
 # Renderer precedence when a shot mixes production families: generated footage
 # first, then the authored assembly (brand end cards via ffmpeg, graphics via

@@ -30,7 +30,7 @@ export function VideoPage() {
   const queryClient = useQueryClient()
   const [specId, setSpecId] = useState('')
   const [planId, setPlanId] = useState('')
-  const [renderMode, setRenderMode] = useState<RenderMode>('shots')
+  const [renderMode, setRenderMode] = useState<RenderMode>('full')
   const [token, setToken] = useState('')
   const [formError, setFormError] = useState('')
   const [lastQueue, setLastQueue] = useState<{ total: number; already: boolean } | null>(null)

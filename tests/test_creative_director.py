@@ -156,6 +156,16 @@ class PipelineExtensionTests(unittest.TestCase):
         stored = {job["shotId"]: job["hunyuan_mode"] for job in result["jobs"]}
         self.assertEqual(stored["shot_001"], "t2v")
 
+    def test_info_display_never_routes_hunyuan(self):
+        from services.video.shot_planner import route_visual
+
+        visual_type, renderer, _ = route_visual(
+            "bustling cityscape",
+            {"visual": "cityscape with holographic projections of workflows"},
+        )
+        self.assertNotEqual(renderer, "hunyuan")
+        self.assertIn("motion_graphics", visual_type)
+
     def test_shot_record_validation(self):
         result = video_pipeline.plan_video(CORRIDOR, project_id="x")
         spec, plan = result["spec"], result["plan"]
@@ -193,6 +203,46 @@ class PipelineExtensionTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             video_pipeline.direct_brief("A 15-second product film.", project_id="x")
 
+    def test_storyboard_total_validation(self):
+        from services.video.pipeline import assign_durations, StoryboardBeat
+
+        def outline(*word_counts):
+            return [StoryboardBeat(narration=" ".join(["word"] * n)) for n in word_counts]
+
+        durations = assign_durations(outline(10, 10), 60)
+        self.assertAlmostEqual(sum(durations), 60.0)
+        self.assertTrue(all(d >= 2.0 for d in durations))
+        # Weight follows narration: double words, double time.
+        uneven = assign_durations(outline(10, 30), 60)
+        self.assertAlmostEqual(uneven[1], 3 * uneven[0], places=1)
+        with self.assertRaises(ValueError):
+            assign_durations(outline(10), 0)
+
+    def test_storyboard_generatable_validation(self):
+        from services.video.pipeline import (
+            StoryboardBeat,
+            StoryboardOutline,
+            validate_storyboard_generatable,
+        )
+
+        cinematic = StoryboardOutline(beats=[
+            StoryboardBeat(
+                narration="Trucks roll.",
+                visual="Cargo truck highway at sunrise, slow cinematic push.",
+            ),
+        ])
+        abstract = StoryboardOutline(beats=[
+            StoryboardBeat(narration="Synergy.", visual="Text overlay about value."),
+        ])
+        city = StoryboardOutline(beats=[
+            StoryboardBeat(
+                narration="The city never sleeps.",
+                visual="Bustling city at night with neon lights, slow push.",
+            ),
+        ])
+        self.assertIsNone(validate_storyboard_generatable(cinematic))
+        self.assertIsNone(validate_storyboard_generatable(city))
+        self.assertIsNotNone(validate_storyboard_generatable(abstract))
     def test_direct_brief_with_faked_director(self):
         creative = video_pipeline.CreativeBriefResponse(
             objective="Show the record.", message="One record.",
@@ -203,10 +253,10 @@ class PipelineExtensionTests(unittest.TestCase):
         outline = video_pipeline.StoryboardOutline(beats=[
             video_pipeline.StoryboardBeat(
                 narration="Trucks move.", visual="Highway freight at dawn.",
-                duration_seconds=6.0, purpose="Establish corridor."),
+                purpose="Establish corridor."),
             video_pipeline.StoryboardBeat(
                 narration="Records hold.", visual="Documents resolving.",
-                duration_seconds=6.0, purpose="Resolve into CTA."),
+                purpose="Resolve into CTA."),
         ])
         choice = {"source": "ai", "recipe": "footage-plus-graphics", "reason": "test"}
         with patch.object(CreativeDirector, "run", side_effect=[creative, outline]):

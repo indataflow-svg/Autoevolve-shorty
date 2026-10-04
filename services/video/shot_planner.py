@@ -12,6 +12,7 @@ from core.models import is_model_configured
 from services.video.defs import (
     DEFAULT_NEGATIVE_PROMPT,
     HUNYUAN_DEFAULT_PROFILE,
+    INFO_DISPLAY_CUES,
     MIXED_RENDERER_PRECEDENCE,
     RENDERER_FOR_TYPE,
     ROUTE_KEYWORDS,
@@ -43,6 +44,11 @@ def route_visual(beat_text: str, visual: dict[str, Any]) -> tuple[str, str, list
     declared = str(visual.get("type") or "").strip().lower().replace(" ", "_")
     if declared in VISUAL_TYPES and declared != "mixed":
         families = [declared] + [family for family in families if family != declared]
+    if "hunyuan" in families and any(cue in haystack for cue in INFO_DISPLAY_CUES):
+        # Information displays (labeled diagrams, data projections, screens
+        # showing content) must be rendered deterministically even when the
+        # setting sounds cinematic: generating them fabricates information.
+        families = ["motion_graphics"] + [family for family in families if family != "hunyuan"]
     if not families:
         families = ["stock"]  # authentic footage is the safe default, never Hunyuan
     visual_type = families[0] if len(families) == 1 else "mixed"

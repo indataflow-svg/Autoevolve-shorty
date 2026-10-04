@@ -162,10 +162,12 @@ class VideoPipelineTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_launch_no_submit_reports_readiness(self):
+        # Product default is the full-video render: one job, no clip division.
         report = video_pipeline.launch(
             script_path=str(CORRIDOR), project_id="launch-test", submit=False
         )
-        self.assertEqual(report["counts"]["total"], 6)
+        self.assertEqual(report["render_mode"], "full")
+        self.assertEqual(report["counts"]["total"], 1)
         self.assertEqual(report["submissions"], [])
         self.assertTrue(report["passed"])
         self.assertEqual(report["recipe"], "footage-plus-graphics")

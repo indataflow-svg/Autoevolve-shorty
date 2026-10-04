@@ -35,13 +35,36 @@ class CreativeBriefResponse(BaseModel):
 class StoryboardBeat(BaseModel):
     narration: str = Field(min_length=1, max_length=600)
     visual: str = Field(default="", max_length=300)
-    duration_seconds: float = Field(gt=0, le=60)
     purpose: str = Field(default="", max_length=240)
     source_refs: list[str] = Field(default_factory=list)
 
 
 class StoryboardOutline(BaseModel):
     beats: list[StoryboardBeat] = Field(min_length=1, max_length=12)
+
+
+def assign_durations(beats: list[StoryboardBeat], runtime_seconds: float) -> list[float]:
+    """Split the runtime across beats proportional to narration weight.
+
+    Models cannot be trusted with the arithmetic (observed: escalating
+    10,15,20…60s beats totalling 385s against a 60s target), so timing is
+    deterministic: each beat gets a share proportional to its word count,
+    minimum 2s, with rounding drift absorbed by the final beat. The result
+    always sums to exactly ``runtime_seconds``.
+    """
+    if runtime_seconds <= 0:
+        raise ValueError("runtime must be positive")
+    weights = [max(1, len(beat.narration.split())) for beat in beats]
+    total_weight = sum(weights)
+    durations: list[float] = []
+    for index, weight in enumerate(weights):
+        if index + 1 == len(weights):
+            durations.append(round(runtime_seconds - sum(durations), 2))
+        else:
+            durations.append(max(2.0, round(runtime_seconds * weight / total_weight, 2)))
+    drift = round(runtime_seconds - sum(durations), 2)
+    durations[-1] = round(durations[-1] + drift, 2)
+    return durations
 
 def plan_video(
     script_path: str | Path,
@@ -139,6 +162,28 @@ def _finalize_directed_plan(
     }
 
 
+def validate_storyboard_generatable(outline: StoryboardOutline) -> str | None:
+    """Require at least one beat routable to the working renderer.
+
+    Today only hunyuan jobs are submittable (motion/asset/ffmpeg dispatch
+    is not built yet), so a storyboard with zero generatable beats would
+    queue jobs that can never render. Relax this when those submitters land.
+    """
+    from services.video.shot_planner import route_visual
+
+    for beat in outline.beats:
+        _, _, families = route_visual(
+            beat.narration, {"visual": beat.visual}
+        )
+        if "hunyuan" in families:
+            return None
+    return (
+        "Storyboard has no cinematic beat for AI video generation; include at "
+        "least one beat with a concrete physical scene, setting and camera "
+        "movement (pure text/graphic concepts cannot render yet)."
+    )
+
+
 def direct_brief(
     brief: str,
     *,
@@ -146,6 +191,7 @@ def direct_brief(
     campaign_id: str | None = None,
     aspect_ratio: str = "9:16",
     fps: int = 24,
+    runtime_seconds: int | None = None,
 ) -> dict[str, Any]:
     """Direct a video from a human creative brief (template-4 phase 20).
 
@@ -163,6 +209,9 @@ def direct_brief(
     if not brief or not brief.strip():
         raise ValueError("brief must not be empty")
     try:
+        creative_prompt = f"Creative brief:\n{brief[:2000]}"
+        if runtime_seconds is not None:
+            creative_prompt += f"\nTarget runtime: {runtime_seconds} seconds."
         creative = CreativeDirector(
             "creative_direction",
             instructions=(
@@ -170,7 +219,7 @@ def direct_brief(
                 "plan. Preserve the brief's factual claims verbatim; label anything "
                 "you invent as an assumption in the message field."
             ),
-        ).run(f"Creative brief:\n{brief[:2000]}", CreativeBriefResponse)
+        ).run(creative_prompt, CreativeBriefResponse)
     except DirectorUnavailable as exc:
         raise RuntimeError(
             "brief-driven directing needs a model router key (OMNIROUTE_API_KEY). "
@@ -182,12 +231,19 @@ def direct_brief(
     recipe = RECIPES[recipe_id]
     bible = default_bible()
 
+    runtime_target = float(runtime_seconds or creative.runtime_seconds or 48)
+    if runtime_target > 150 and runtime_seconds is None:
+        raise ValueError(
+            f"brief implies a {runtime_target:.0f}s film; pass --runtime to confirm "
+            "long-form, or shorten the brief."
+        )
+
     from pydantic_ai import ModelRetry
 
     def _validate_outline(outline: StoryboardOutline) -> StoryboardOutline:
-        total = sum(beat.duration_seconds for beat in outline.beats)
-        if total <= 0:
-            raise ModelRetry("Storyboard beats must have positive total duration.")
+        error = validate_storyboard_generatable(outline)
+        if error:
+            raise ModelRetry(error)
         return outline
 
     storyteller = CreativeDirector(
@@ -195,24 +251,33 @@ def direct_brief(
         instructions=(
             "You are a storyboard artist. Break the approved direction into an ordered "
             "list of visual beats covering the runtime exactly once, in order. Keep "
-            "narration factual per the brief; every beat needs a concrete visual."
+            "narration factual per the brief; every beat needs a concrete visual. "
+            "Include at least two beats with concrete cinematic visuals (real places, "
+            "atmosphere, camera movement) suitable for AI video generation."
         ),
         output_validator=_validate_outline,
+        retries=4,
     )
 
     direction_text = (
         f"Objective: {creative.objective}\nMessage: {creative.message}\n"
-        f"Audience: {creative.audience}\nRuntime: {creative.runtime_seconds}s\n"
+        f"Audience: {creative.audience}\nRuntime: {runtime_target:.0f}s\n"
         f"Style: {creative.visual_style}\nEmotion: {creative.emotional_direction}"
     )
+    if runtime_seconds is not None:
+        direction_text += (
+            f"\nCover the story in order; do not assign durations, timings are "
+            f"derived from narration weight."
+        )
     outline = storyteller.run(
         f"{direction_text}\n\nOriginal brief:\n{brief[:2000]}", StoryboardOutline
     )
 
     cursor = 0.0
     beats = []
-    for index, beat in enumerate(outline.beats):
-        start, end = cursor, cursor + beat.duration_seconds
+    durations = assign_durations(outline.beats, runtime_target)
+    for index, (beat, duration) in enumerate(zip(outline.beats, durations)):
+        start, end = cursor, cursor + duration
         cursor = end
         beats.append({
             "id": f"beat_{index + 1:02d}",
@@ -385,7 +450,8 @@ def launch(
     references: list[str | Path] | None = None,
     submit: bool = True,
     timeout_seconds: int | None = None,
-    render_mode: str = "shots",
+    render_mode: str = "full",
+    runtime_seconds: int | None = None,
 ) -> dict[str, Any]:
     """Run the product-launch pipeline end to end (motion-designer.md).
 
@@ -401,7 +467,10 @@ def launch(
         raise ValueError("launch needs exactly one of brief= or script_path=")
     extra_assets = [reference_asset(path) for path in (references or [])]
     if brief is not None:
-        planned = direct_brief(brief, project_id=project_id, aspect_ratio=aspect_ratio, fps=fps)
+        planned = direct_brief(
+            brief, project_id=project_id, aspect_ratio=aspect_ratio, fps=fps,
+            runtime_seconds=runtime_seconds,
+        )
         if extra_assets:
             video_store.register_assets(planned["spec"]["id"], extra_assets)
             planned["assets"] = video_store.list_assets(planned["spec"]["id"])
@@ -451,7 +520,9 @@ def launch(
         "renderer": job.get("renderer"),
         "prompt": job.get("prompt"),
     } for job in stored_jobs]
-    gates = quality_gates.run_gates(planned["spec"], planned["plan"], gate_jobs, artifacts=artifacts)
+    gates = quality_gates.run_gates(
+        planned["spec"], planned["plan"], gate_jobs, artifacts=artifacts, render_mode=render_mode
+    )
     submitted_ok = [item.get("ok", True) for item in submissions if item.get("submitted")]
     return {
         "spec_id": planned["spec"]["id"],

@@ -158,6 +158,7 @@ def command_launch(args: argparse.Namespace) -> int:
             submit=not args.no_submit,
             timeout_seconds=args.timeout,
             render_mode=args.mode,
+            runtime_seconds=args.runtime,
         )
     except (ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -198,6 +199,7 @@ def command_direct(args: argparse.Namespace) -> int:
             project_id=args.project_id or _slug_for_script(Path(args.brief_file or "brief")),
             aspect_ratio=args.format,
             fps=args.fps,
+            runtime_seconds=args.runtime,
         )
     except (ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -254,6 +256,8 @@ def main(argv: list[str] | None = None) -> int:
     direct.add_argument("--project-id", default=None)
     direct.add_argument("--format", default="9:16", choices=["4:5", "9:16", "16:9", "1:1"])
     direct.add_argument("--fps", type=int, default=24)
+    direct.add_argument("--runtime", type=int, default=None,
+                        help="target total runtime in seconds (storyboard is validated against it)")
     direct.add_argument("--manifest-out", default=None)
     direct.set_defaults(func=command_direct)
 
@@ -265,12 +269,14 @@ def main(argv: list[str] | None = None) -> int:
     launch.add_argument("--campaign-id", default=None)
     launch.add_argument("--format", default="9:16", choices=["4:5", "9:16", "16:9", "1:1"])
     launch.add_argument("--fps", type=int, default=24)
+    launch.add_argument("--runtime", type=int, default=None,
+                        help="target total runtime in seconds (storyboard is validated against it)")
     launch.add_argument("--reference", action="append", default=[],
                         help="product footage/screenshot to register (repeatable)")
     launch.add_argument("--no-submit", action="store_true",
                         help="stop after queueing; do not submit hunyuan jobs")
-    launch.add_argument("--mode", default="shots", choices=["shots", "full"],
-                        help="shots: one job per clip; full: single whole-video job")
+    launch.add_argument("--mode", default="full", choices=["shots", "full"],
+                        help="full: single whole-video job (product default); shots: one job per clip")
     launch.add_argument("--timeout", type=int, default=None)
     launch.add_argument("--manifest-out", default=None)
     launch.set_defaults(func=command_launch)
