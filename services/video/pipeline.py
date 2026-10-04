@@ -540,6 +540,31 @@ def reference_asset(path: str | Path) -> dict[str, Any]:
     }
 
 
+def assemble_plan(plan_id: str, destination: str | Path | None = None) -> dict[str, Any]:
+    """Concatenate a plan's completed render chunks into one full video.
+
+    A full-video plan is a sequence of windowed chunk jobs; this is the step
+    that turns them into the single deliverable the operator asked for. Purely
+    deterministic: an FFmpeg stream copy, no generation, no re-encode.
+    """
+    from core import video_store
+    from services.video.assembly import assemble_full_video
+
+    plan = video_store.get_shot_plan(plan_id)
+    if not plan:
+        raise ValueError(f"shot plan not found: {plan_id}")
+    jobs = video_store.list_jobs(shot_plan_id=plan_id)
+    if not jobs:
+        raise ValueError(f"shot plan {plan_id} has no render jobs")
+    spec = video_store.get_spec(plan["video_spec_id"])
+    project_id = (spec or {}).get("project_id") or "project"
+    target = Path(destination or f"videos/{project_id}/full.mp4")
+    report = assemble_full_video(jobs, target)
+    report["shot_plan_id"] = plan_id
+    report["video_spec_id"] = plan.get("video_spec_id")
+    return report
+
+
 def launch(
     *,
     brief: str | None = None,

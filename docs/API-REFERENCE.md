@@ -1,6 +1,6 @@
 # AutoEvolve locked API reference
 
-Generated from source by `scripts/gen_api_reference.py` at commit `3b7311b` on 2026-10-04T13:44:46Z.
+Generated from source by `scripts/gen_api_reference.py` at commit `83c9208` on 2026-10-04T16:20:33Z.
 
 Every public constant, function, class and method in the shipped packages, with its real signature. Read this as the contract: if a name here disagrees with the code, the code is authoritative and this file must be regenerated.
 
@@ -8,15 +8,15 @@ Every public constant, function, class and method in the shipped packages, with 
 
 | subsystem | modules | functions | classes | methods | constants |
 |---|---|---|---|---|---|
-| Core state and models | 18 | 174 | 25 | 4 | 54 |
-| Support services | 26 | 93 | 23 | 37 | 57 |
-| Video pipeline package | 7 | 32 | 5 | 0 | 18 |
-| Agents | 8 | 62 | 9 | 0 | 35 |
-| HTTP surface | 17 | 156 | 117 | 0 | 49 |
-| Operations scripts | 13 | 49 | 1 | 25 | 61 |
-| **all** | **89** | **566** | **180** | **66** | **274** |
+| Core state and models | 20 | 193 | 38 | 5 | 63 |
+| Support services | 26 | 94 | 23 | 37 | 60 |
+| Video pipeline package | 8 | 40 | 6 | 0 | 19 |
+| Agents | 9 | 65 | 12 | 0 | 43 |
+| HTTP surface | 18 | 162 | 120 | 0 | 50 |
+| Operations scripts | 13 | 50 | 1 | 25 | 61 |
+| **all** | **94** | **604** | **200** | **67** | **296** |
 
-Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the end.
+Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the end.
 
 ## Core state and models
 
@@ -158,6 +158,25 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 - `get_incident(incident_id: str) -> dict[str, Any] | None`
 - `list_incidents(limit: int=50) -> list[dict[str, Any]]`
 
+### `core/plan_governance.py`
+
+- const `SUPPORTED_CHANNELS`
+- const `METHOD_ACTIONS`
+- `normalize_channel(value: str | None) -> str` — Fold founder wording onto a channel key: 'Email' and 'e-mail' -> 'email'
+- `normalize_method(value: str | None) -> str`
+- class `GovernanceLimits`(BaseModel) — Caps the operator has agreed to. Defaults refuse anything costly
+  - `load(cls) -> 'GovernanceLimits'`
+- class `ResolvedAction`(BaseModel) — One workflow step governance is willing to authorize
+- class `GovernanceDecision`(BaseModel) — The structured result of validating one plan. Always persisted
+- `validate_plan(plan: ValidationPlan | dict[str, Any], context: CompanyContext, *, plan_id: str='', limits: GovernanceLimits | None=None) -> tuple[GovernanceDecision, ValidationPlan]` — Decide whether a plan may become a workflow. Returns (decision, plan)
+- class `GovernanceRecord`(BaseModel) — A persisted governance decision plus the lifecycle it has reached
+- `new_governance_id() -> str`
+- `record_from_decision(decision: GovernanceDecision, record_id: str | None=None) -> GovernanceRecord`
+- `init_governance_db() -> None` — Create the governance table (idempotent, in the existing company database)
+- `save_governance(record: GovernanceRecord) -> GovernanceRecord`
+- `get_governance(governance_id: str) -> GovernanceRecord | None`
+- `latest_governance() -> GovernanceRecord | None` — The most recent decision, so the lifecycle survives a reload
+
 ### `core/projects.py`
 
 - const `PROJECTS_ROOT`
@@ -257,6 +276,31 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 - `fail_task(task_id: int, error: str) -> None`
 - `get_recent_tasks(limit: int=20) -> list[dict]`
 
+### `core/validation_plan.py`
+
+- const `WORKFLOW_TEMPLATE`
+- const `PLAN_STATUS`
+- const `GROUNDING_THRESHOLD`
+- class `CommercialHypothesis`(BaseModel) — One primary hypothesis, stated as a testable claim
+- class `MarketView`(BaseModel) — Who, what problem, why now, and what they do instead
+- class `ValidationStrategy`(BaseModel) — The smallest experiment that can produce the validation event
+- class `EvidenceLedger`(BaseModel) — Facts the founder gave, assumptions we made, and what we still need
+- class `PlanLimits`(BaseModel) — Limits the plan proposes. A later phase enforces them before any action
+- class `ValidationPlan`(BaseModel) — The structured output of one market-validation pass. A plan, not a run
+- class `PlanProvenance`(BaseModel) — Where the plan came from, so a stored plan is never anonymous
+- class `ValidationPlanRecord`(BaseModel) — A persisted plan. ``planned`` never implies the experiment happened
+- class `GroundingReport`(BaseModel) — What the grounding rule did, so the demotion is never silent
+- `grounding_ratio(statement: str, context_text: str) -> float` — Share of a statement's meaningful words that appear in the context
+- `is_grounded(statement: str, context_text: str) -> bool` — True when a claimed fact is recognisably the founder's own wording
+- `context_text(context: CompanyContext) -> str` — Flatten a context into the text a claim must be traceable to
+- `enforce_grounding(plan: ValidationPlan, context: CompanyContext) -> tuple[ValidationPlan, GroundingReport]` — Demote untraceable "facts" to assumptions and report exactly what moved
+- `new_plan_id() -> str`
+- `init_validation_db() -> None` — Create the plan table (idempotent, in the existing company database)
+- `save_validation_plan(record: ValidationPlanRecord) -> ValidationPlanRecord` — Persist a planned record and return exactly what was stored
+- `build_plan_record(plan: ValidationPlan, provenance: PlanProvenance, grounding: GroundingReport) -> ValidationPlanRecord`
+- `get_validation_plan(plan_id: str) -> ValidationPlanRecord | None`
+- `get_latest_validation_plan() -> ValidationPlanRecord | None` — The newest plan, so the UI can show the current thinking after a reload
+
 ### `core/video_store.py`
 
 - const `RENDERERS`
@@ -294,6 +338,7 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 - const `ROOT`
 - const `DB_PATH`
 - const `WORKFLOW_ACTIONS`
+- const `SIMULATION_ACTIONS`
 - const `TERMINAL_STATUSES`
 - `now_iso() -> str`
 - `new_id(prefix: str='wf') -> str`
@@ -477,7 +522,10 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 - const `HEALTH_TIMEOUT_SECONDS`
 - const `PRE_SUBMIT_ATTEMPTS`
 - const `WORKER_ERROR_MAX_CHARS`
+- const `FRAME_SHORTFALL_BASE`
 - const `FRAME_COUNT_TOLERANCE`
+- const `DEFAULT_CHUNK_FRAMES`
+- const `DISTILLED_STEPS`
 - const `DEFAULT_POLL_INTERVAL_SECONDS`
 - const `ASYNC_STATUSES`
 - const `TERMINAL_WORKER_STATUSES`
@@ -506,7 +554,7 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
   - `download_by_name(self, output_name: str, dest_path: str | Path, *, expected_sha256: str | None=None, timeout_seconds: int | None=None) -> dict[str, Any]` — Stream the observed ``GET /video/{output_name}`` worker shape
   - `download_url(self, url: str, dest_path: str | Path, *, expected_sha256: str | None=None, timeout_seconds: int | None=None) -> dict[str, Any]` — Stream an absolute http(s) output URL to disk (same guards)
 - `get_renderer(name: str, **kwargs: Any) -> Renderer` — Return the submitter for a renderer tag. Only hunyuan has a worker
-- `qa_render_output(path: str | Path, *, expected_frames: int | None=None, expected_fps: int | None=None, frame_tolerance: float=FRAME_COUNT_TOLERANCE) -> dict[str, Any]` — Validate a worker MP4. Raises RenderQAError with a useful reason
+- `qa_render_output(path: str | Path, *, expected_frames: int | None=None, expected_fps: int | None=None, frame_tolerance: float=FRAME_COUNT_TOLERANCE, frame_shortfall_base: int=FRAME_SHORTFALL_BASE) -> dict[str, Any]` — Validate a worker MP4. Raises RenderQAError with a useful reason
 - const `CONTROL_PLANE_WORKER_ID`
 - `worker_status() -> dict[str, Any]` — Failure-tolerant health/capacity snapshot (never raises)
 - `submit_hunyuan_job(job_id: str, *, timeout_seconds: int | None=None) -> dict[str, Any]` — Submit one queued hunyuan job to the MI300X worker
@@ -580,6 +628,7 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 - `publish(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Hand the selected asset to the existing G3 draft-publishing pipeline
 - `collect_results(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Collect available campaign + sales outcomes from the existing stores
 - `evaluate(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Score the hypotheses and store the winner for the evolution loop
+- `simulate_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Simulate one validation outreach step. Nothing leaves this process
 
 ### `services/workflow_runner.py`
 
@@ -606,6 +655,17 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 
 - (no public module-level names)
 
+### `services/video/assembly.py`
+
+- class `AssemblyError`(RuntimeError) — Raised when a full video cannot be assembled from its chunks
+- `has_ffmpeg() -> bool`
+- `chunk_order(job: dict[str, Any]) -> int` — Zero-based position of a chunk job, from its persisted shot id
+- `plan_chunks(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]` — Return the chunk jobs for a plan, ordered for concatenation
+- `completed_chunk_paths(jobs: list[dict[str, Any]]) -> list[Path]` — Local MP4 paths of the completed chunks, in assembly order
+- `probe_frame_count(path: str | Path) -> int | None` — Count decodable frames with ffprobe, or None if it cannot be read
+- `probe_stream(path: str | Path) -> dict[str, Any]` — Codec, size, frame rate and duration of a file's first video stream
+- `assemble_full_video(jobs: list[dict[str, Any]], destination: str | Path) -> dict[str, Any]` — Concatenate completed chunks into ``destination`` and describe the result
+
 ### `services/video/defs.py`
 
 - `invalid(errors: list[str]) -> None`
@@ -622,6 +682,7 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 
 ### `services/video/job_builder.py`
 
+- const `MAX_FRAMES_PER_RENDER`
 - const `GRAPHIC_STYLE`
 - `build_render_jobs(spec: dict[str, Any], plan: dict[str, Any], *, priority: int=100, render_mode: str='shots', bible: dict[str, Any] | None=None, recipe: dict[str, Any] | None=None) -> list[dict[str, Any]]` — Build RenderJob dicts (unsaved) in the requested render mode
 - `validate_jobs(spec: dict[str, Any], plan: dict[str, Any], jobs: list[dict[str, Any]], *, render_mode: str='shots') -> None`
@@ -643,6 +704,7 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 - `hunyuan_profile() -> dict[str, Any]` — The default MI300X render profile (prompt.md section 9)
 - `worker_env_example() -> dict[str, str]`
 - `reference_asset(path: str | Path) -> dict[str, Any]` — Build a product-reference registry entry for a user-supplied file
+- `assemble_plan(plan_id: str, destination: str | Path | None=None) -> dict[str, Any]` — Concatenate a plan's completed render chunks into one full video
 - `launch(*, brief: str | None=None, script_path: str | Path | None=None, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, references: list[str | Path] | None=None, submit: bool=True, timeout_seconds: int | None=None, render_mode: str='full', runtime_seconds: int | None=None) -> dict[str, Any]` — Run the product-launch pipeline end to end (motion-designer.md)
 
 ### `services/video/script_parser.py`
@@ -772,6 +834,23 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 - class `CampaignBrief`(BaseModel)
 - const `PROMPT`
 - `async prepare_campaign_brief(request: str, brand: str | None=None) -> CampaignBrief`
+
+### `agents/hermes.py`
+
+- const `PROMPT_DIR`
+- const `PROMPT_PATH`
+- const `PROMPT_VERSION`
+- const `CONTEXT_TOKEN`
+- const `MODEL_ROUTE`
+- const `PROVIDER_NAME`
+- const `PLAN_TIMEOUT_SECONDS`
+- const `REQUEST`
+- class `HermesError`(RuntimeError) — Hermes could not produce a plan
+- class `HermesOutputError`(HermesError) — The model returned something that is not a valid structured plan
+- class `HermesPlanResult`(BaseModel) — A plan plus the provenance needed to judge where it came from
+- `load_prompt_template() -> str` — Read the versioned prompt file. Prompts are data, not Python strings
+- `build_instructions(context: CompanyContext) -> str` — Render the base prompt with the canonical context substituted in
+- `async plan_market_validation(context: CompanyContext) -> HermesPlanResult` — Run one market-validation pass and return a validated, grounded plan
 
 ### `agents/linkedin.py`
 
@@ -1065,6 +1144,18 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 - class `SetupStepPayload`(BaseModel)
 - `set_setup_step_route(payload: SetupStepPayload, _: None=Depends(verify_founder_action))` [router.post('/step')]
 
+### `app/validation_api.py`
+
+- class `WorkflowFromPlan`(BaseModel) — Optional plan to govern. Defaults to the most recent generated plan
+- class `ApprovalPayload`(BaseModel)
+- class `SimulationRun`(BaseModel) — Simulation-only execution request. `targets` are identifiers, never people
+- `async create_validation_plan()` [router.post('/plan', response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])] — Plan the first market-validation experiment. Nothing is executed
+- `read_validation_plan()` [router.get('/plan', response_model=ValidationPlanRecord)] — The most recent plan, or 404 when none has been generated yet
+- `read_governance()` [router.get('/workflow', response_model=GovernanceRecord)] — The latest governance decision and the lifecycle it has reached
+- `create_workflow_from_plan(payload: WorkflowFromPlan | None=None)` [router.post('/workflow', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])] — Validate a plan and, only if governance allows it, create the workflow
+- `approve_workflow(payload: ApprovalPayload | None=None)` [router.post('/workflow/approve', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])] — Record the founder's approval. Execution stays locked until this exists
+- `run_workflow_from_plan(payload: SimulationRun | None=None)` [router.post('/workflow/run', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])] — Run the approved workflow through the existing runner
+
 ### `app/video_api.py`
 
 - class `SpecCreate`(BaseModel)
@@ -1288,12 +1379,15 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 - `command_queue(args: argparse.Namespace) -> int`
 - `command_profile(_args: argparse.Namespace) -> int`
 - `command_submit(args: argparse.Namespace) -> int`
+- `command_assemble(args: argparse.Namespace) -> int`
 - `command_worker_status(_args: argparse.Namespace) -> int`
 - `command_launch(args: argparse.Namespace) -> int`
 - `command_direct(args: argparse.Namespace) -> int`
 - `main(argv: list[str] | None=None) -> int`
 
 ## HTTP routes
+
+Extracted from route decorators, so a path served by two routers is listed once per router. The authoritative operation count is the OpenAPI contract (`/openapi.json`), which collapses these to unique path+method pairs.
 
 | route | module |
 |---|---|
@@ -1370,6 +1464,7 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 | `GET /outreach/{draft_id}` | `app/workflow_views_api.py` |
 | `GET /outreach` | `app/api.py` |
 | `GET /outreach` | `app/workflow_views_api.py` |
+| `GET /plan` | `app/validation_api.py` |
 | `GET /plans/{plan_id}` | `app/video_api.py` |
 | `GET /plans` | `app/video_api.py` |
 | `GET /providers` | `app/setup_api.py` |
@@ -1389,6 +1484,9 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 | `GET /specs/{spec_id}` | `app/video_api.py` |
 | `GET /specs` | `app/video_api.py` |
 | `GET /step` | `app/setup_api.py` |
+| `GET /validation/` | `app/api.py` |
+| `GET /validation` | `app/api.py` |
+| `GET /workflow` | `app/validation_api.py` |
 | `GET /{company_id:path}` | `app/companies_api.py` |
 | `GET /{contact_id}` | `app/contacts_api.py` |
 | `GET /{path:path}` | `app/api.py` |
@@ -1445,6 +1543,7 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 | `POST /orgs/active` | `app/marketing_api.py` |
 | `POST /orgs/{org_id}/capabilities` | `app/marketing_api.py` |
 | `POST /orgs` | `app/marketing_api.py` |
+| `POST /plan` | `app/validation_api.py` |
 | `POST /plans/{plan_id}/queue` | `app/video_api.py` |
 | `POST /plans` | `app/video_api.py` |
 | `POST /prospect/domain` | `app/sales_api.py` |
@@ -1462,6 +1561,9 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 | `POST /step` | `app/setup_api.py` |
 | `POST /strategy/draft` | `app/onboarding_api.py` |
 | `POST /strategy` | `app/onboarding_api.py` |
+| `POST /workflow/approve` | `app/validation_api.py` |
+| `POST /workflow/run` | `app/validation_api.py` |
+| `POST /workflow` | `app/validation_api.py` |
 | `POST /{run_id}/search` | `app/service_discovery_api.py` |
 | `POST /{workflow_id}/pause` | `app/workflows_api.py` |
 | `POST /{workflow_id}/run` | `app/workflows_api.py` |
@@ -1471,6 +1573,7 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 
 | verb | module |
 |---|---|
+| `assemble` | `scripts/video.py` |
 | `direct` | `scripts/video.py` |
 | `launch` | `scripts/video.py` |
 | `plan` | `scripts/video.py` |
@@ -1503,6 +1606,8 @@ Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the en
 | `service_provider_requests` | `core/state.py` |
 | `settings` | `core/state.py` |
 | `tasks` | `core/state.py` |
+| `validation_plans` | `core/validation_plan.py` |
+| `validation_workflows` | `core/plan_governance.py` |
 | `video_assets` | `core/video_store.py` |
 | `video_render_jobs` | `core/video_store.py` |
 | `video_shot_plans` | `core/video_store.py` |

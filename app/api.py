@@ -33,6 +33,8 @@ def _on_startup():
     _seed_orgs_from_env()
     from core.video_store import init_video_db
     init_video_db()
+    from core.workflow_store import init_db as init_workflow_db
+    init_workflow_db()
     _reconcile_stranded_sends()
 
 
@@ -230,7 +232,10 @@ async def health():
 
 
 from app.company_ops_api import router as company_ops_router
+from app.company_context_api import router as company_context_router
 from app.marketing_api import router as marketing_router
+from app.validation_api import router as validation_router
+from app.workflows_api import router as workflows_router
 from app.sales_api import action_router as sales_action_router
 from app.sales_api import intake_router as sales_intake_router
 from app.sales_api import router as sales_router
@@ -240,12 +245,15 @@ from app.video_api import router as video_router
 from app.video_api import worker_router as video_worker_router
 
 app.include_router(company_ops_router, dependencies=[Depends(authenticate)])
+app.include_router(company_context_router, dependencies=[Depends(authenticate)])
 app.include_router(marketing_router, dependencies=[Depends(authenticate)])
+app.include_router(validation_router, dependencies=[Depends(authenticate)])
 app.include_router(sales_router, dependencies=[Depends(authenticate)])
 app.include_router(contacts_router, dependencies=[Depends(authenticate)])
 app.include_router(companies_router, dependencies=[Depends(authenticate)])
 app.include_router(workspace_router, dependencies=[Depends(authenticate)])
 app.include_router(workflow_views_router, dependencies=[Depends(authenticate)])
+app.include_router(workflows_router, dependencies=[Depends(authenticate)])
 app.include_router(onboarding_read_router, dependencies=[Depends(authenticate)])
 app.include_router(service_discovery_read_router, dependencies=[Depends(authenticate)])
 app.include_router(sales_action_router, dependencies=[Depends(authenticate)])
@@ -290,6 +298,8 @@ if _ui_dist.is_dir():
 @app.get("/content/", include_in_schema=False)
 @app.get("/onboarding", include_in_schema=False)
 @app.get("/onboarding/", include_in_schema=False)
+@app.get("/validation", include_in_schema=False)
+@app.get("/validation/", include_in_schema=False)
 def ui_app(request: Request):
     if request.url.path.endswith("/"):
         return _ui_redirect(request, request.url.path.rstrip("/"), status_code=308)

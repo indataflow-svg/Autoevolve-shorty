@@ -3,10 +3,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, CheckCircle2, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { companyDetail } from '../api/companies'
+import { companyContext, MARKETING_STAGES, type MarketingStage } from '../api/companyContext'
 import {
   activateProgram, confirmCompany, confirmStrategy, createFirstDraft, decideRefinement,
   onboardingView, recordCalibration, researchOwnCompany, resolveBuyer, searchFirstCompanies, suggestStrategy,
-  startCompany, type CompanyContext, type OnboardingView, type StrategyInput,
+  startCompany, type CompanyConfirm, type OnboardingView, type StrategyInput,
 } from '../api/onboarding'
 import { useCredentials } from '../app/Auth'
 import { AppShell } from '../components/Shell'
@@ -46,6 +47,33 @@ function CompanyStartForm({ program, run, token }: { program: Program | null; ru
   </form></Section>
 }
 
+type ConfirmExtras = Pick<CompanyConfirm,
+  'geography' | 'product_name' | 'product_description' | 'product_category' | 'ideal_customer'
+  | 'company_sizes' | 'customer_geography' | 'buyer_roles' | 'segment' | 'problem' | 'urgency'
+  | 'alternatives' | 'existing_customers' | 'existing_demand' | 'previous_marketing' | 'testimonials'
+  | 'traction' | 'other_evidence' | 'pricing' | 'business_model' | 'channels' | 'assets' | 'team'
+  | 'budget' | 'geographic_constraints' | 'brand_constraints' | 'budget_constraints'
+  | 'regulatory_constraints' | 'operational_constraints' | 'desired_outcome'>
+
+const emptyExtras: ConfirmExtras = {
+  geography: '', product_name: '', product_description: '', product_category: '', ideal_customer: '',
+  company_sizes: [], customer_geography: [], buyer_roles: [], segment: '', problem: '', urgency: '',
+  alternatives: [], existing_customers: [], existing_demand: [], previous_marketing: [], testimonials: [],
+  traction: [], other_evidence: [], pricing: '', business_model: '', channels: [], assets: [], team: [],
+  budget: '', geographic_constraints: [], brand_constraints: [], budget_constraints: [],
+  regulatory_constraints: [], operational_constraints: [], desired_outcome: '',
+}
+const listKeys = ['company_sizes', 'customer_geography', 'buyer_roles', 'alternatives', 'existing_customers', 'existing_demand', 'previous_marketing', 'testimonials', 'traction', 'other_evidence', 'channels', 'assets', 'team', 'geographic_constraints', 'brand_constraints', 'budget_constraints', 'regulatory_constraints', 'operational_constraints'] as const
+type ListKey = (typeof listKeys)[number]
+
+function savedExtras(program: Program): ConfirmExtras {
+  const confirmed = program.company_context as Partial<ConfirmExtras> | null | undefined
+  if (!confirmed) return emptyExtras
+  return { ...emptyExtras, ...Object.fromEntries(
+    Object.entries(confirmed).map(([key, value]) => [key, value ?? (listKeys.includes(key as ListKey) ? [] : '')]),
+  ) as Partial<ConfirmExtras> }
+}
+
 function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: Program; run: Run; token: string; onEditCompany: () => void }) {
   const credentials = useCredentials()
   const research = program.company_research as Record<string, unknown> | null
@@ -57,7 +85,20 @@ function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: P
   const [industry, setIndustry] = useState(program.company_context?.industry || fact(research, 'industry'))
   const [positioning, setPositioning] = useState(program.company_context?.positioning || fact(signals, 'summary_line'))
   const [offerSummary, setOfferSummary] = useState(program.company_context?.offer_summary || (Array.isArray(research?.specialties) ? research.specialties.filter((item): item is string => typeof item === 'string').join(', ') : ''))
-  function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void run('confirm company', () => confirmCompany(credentials, { name, website, description, industry, positioning, offer_summary: offerSummary } satisfies CompanyContext, token)) }
+  // Optional answers. Anything left blank is stored as unknown, never guessed.
+  const [extras, setExtras] = useState<ConfirmExtras>(() => savedExtras(program))
+  const [stage, setStage] = useState<MarketingStage>(program.company_context?.marketing_stage || 'starting_from_zero')
+  const setExtra = <K extends keyof ConfirmExtras>(key: K, value: ConfirmExtras[K]) => setExtras(current => ({ ...current, [key]: value }))
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    void run('confirm company', () => confirmCompany(credentials, {
+      name, website, description, industry, positioning, offer_summary: offerSummary,
+      marketing_stage: stage, ...extras,
+    } satisfies CompanyConfirm, token))
+  }
+  const text = (label: string, key: keyof ConfirmExtras, hint?: string) => <label>{label}<input value={String(extras[key] ?? '')} onChange={event => setExtra(key, event.target.value as never)} placeholder={hint} /></label>
+  const area = (label: string, key: keyof ConfirmExtras, hint?: string) => <label>{label}<textarea value={String(extras[key] ?? '')} onChange={event => setExtra(key, event.target.value as never)} placeholder={hint} /></label>
+  const perLine = (label: string, key: ListKey, hint?: string) => <label>{label} · one per line<textarea value={asLines(extras[key] as string[])} onChange={event => setExtra(key, lines(event.target.value) as never)} placeholder={hint} /></label>
   return <Section title="2. Research and confirm your company" detail="Research checks your website first, then configured data providers. Check and edit every fact before it becomes strategy context.">
     <div className="onboarding-inline-actions"><button className="button secondary" onClick={() => void run('research company', () => researchOwnCompany(credentials, token))}><RefreshCw size={15} />{research ? 'Refresh company research' : 'Research website'}</button><button className="button secondary" onClick={onEditCompany}>Change company or website</button><span>{research ? `Source: ${program.research_provider?.replaceAll('+', ' + ')}` : 'No inferred facts saved. You may enter verified facts manually.'}</span></div>
     {sources.length > 0 && <p className="operational-note">Website evidence: {sources.map((source, index) => <span key={`${source.url}-${index}`}>{index > 0 ? ', ' : ''}<a href={source.url} target="_blank" rel="noopener noreferrer">{source.field}</a></span>)}</p>}
@@ -69,6 +110,18 @@ function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: P
       <label>Industry<input value={industry} onChange={event => setIndustry(event.target.value)} minLength={2} maxLength={120} required /></label>
       <label>Positioning<textarea value={positioning} onChange={event => setPositioning(event.target.value)} minLength={5} maxLength={1000} required /></label>
       <label>Offer summary<textarea value={offerSummary} onChange={event => setOfferSummary(event.target.value)} minLength={5} maxLength={1000} required /></label>
+      <fieldset className="onboarding-choice"><legend>Where are you starting from?</legend>{MARKETING_STAGES.map(option => <label key={option.value}><input type="radio" name="marketing-stage" checked={stage === option.value} onChange={() => setStage(option.value)} />{option.label}</label>)}</fieldset>
+      <p className="operational-note">Your primary goal from step 1 is already saved: <strong>{program.company.objective}</strong>. Anything you leave blank stays unknown.</p>
+      <details className="onboarding-extra"><summary>More about your business <small>optional · leave anything blank you do not know yet</small></summary>
+        <fieldset className="onboarding-questions"><legend>What are you selling?</legend>{text('Product or service', 'product_name', 'e.g. Managed operations audit')}{area('What it does', 'product_description')}{text('Category', 'product_category', 'e.g. Operations software')}</fieldset>
+        <fieldset className="onboarding-questions"><legend>Who is it for?</legend>{area('Ideal customer', 'ideal_customer', 'Who you sell to, in plain words')}{perLine('Company sizes', 'company_sizes')}{perLine('Customer geography', 'customer_geography')}{perLine('Likely buyer', 'buyer_roles', 'e.g. Operations Director')}</fieldset>
+        <fieldset className="onboarding-questions"><legend>What problem does it solve?</legend>{area('Problem', 'problem', 'The pain you remove')}{area('Why it matters', 'urgency')}{perLine('Alternatives or competitors', 'alternatives', 'Only if you know them')}</fieldset>
+        <fieldset className="onboarding-questions"><legend>What do you already have?</legend>{perLine('Customers', 'existing_customers')}{perLine('Demand', 'existing_demand', 'Inbound interest, waitlist, pilots')}{perLine('Previous marketing or sales', 'previous_marketing')}{perLine('Testimonials', 'testimonials')}{perLine('Traction', 'traction', 'Revenue, growth, usage numbers')}{perLine('Other evidence', 'other_evidence')}</fieldset>
+        <fieldset className="onboarding-questions"><legend>How do you charge?</legend>{text('Pricing', 'pricing', 'e.g. $2k per month')}{text('Business model', 'business_model', 'e.g. subscription, project')}</fieldset>
+        <fieldset className="onboarding-questions"><legend>What can you use?</legend>{perLine('Channels', 'channels', 'e.g. Email, LinkedIn')}{perLine('Marketing assets', 'assets')}{perLine('Team', 'team')}{text('Budget', 'budget', 'If relevant')}</fieldset>
+        <fieldset className="onboarding-questions"><legend>Limits to respect</legend>{perLine('Geographic limits', 'geographic_constraints')}{perLine('Brand limits', 'brand_constraints')}{perLine('Budget limits', 'budget_constraints')}{perLine('Regulatory limits', 'regulatory_constraints')}{perLine('Operational limits', 'operational_constraints')}</fieldset>
+        <fieldset className="onboarding-questions"><legend>Business and goal</legend>{text('Company geography', 'geography')}{text('Target market', 'segment')}{area('Desired outcome', 'desired_outcome', 'e.g. first customers, qualified leads, booked meetings')}</fieldset>
+      </details>
       <button className="button primary">Confirm company context <ArrowRight size={16} /></button>
     </form>
   </Section>
@@ -139,12 +192,14 @@ export function OnboardingPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const query = useQuery({ queryKey: ['onboarding'], queryFn: () => onboardingView(credentials) })
+  const context = useQuery({ queryKey: ['company-context'], queryFn: () => companyContext(credentials) })
   const [token, setToken] = useState('')
   const [editingCompany, setEditingCompany] = useState(false)
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
   const view = query.data
   const program = view?.program || null
+  const companyContext_ = context.data
   const step = view?.next_step || 'company'
   async function run(label: string, action: () => Promise<OnboardingView>) {
     if (!token.trim()) { setError('Enter the founder action token before saving this step.'); return }
@@ -160,6 +215,7 @@ export function OnboardingPage() {
         queryClient.setQueryData(['onboarding'], drafted)
       }
       if (label === 'save strategy') sessionStorage.removeItem(strategyEditKey(confirmed.program!.id))
+      if (label === 'confirm company') await queryClient.invalidateQueries({ queryKey: ['company-context'] })
       await queryClient.invalidateQueries({ queryKey: ['onboarding'] })
       if (label === 'activate') {
         await queryClient.invalidateQueries({ queryKey: ['home'] })
@@ -174,6 +230,7 @@ export function OnboardingPage() {
     {query.isError && view && <div className="operational-error" role="alert">Refresh failed: {query.error.message} <button onClick={() => query.refetch()}>Retry</button></div>}
     {query.isPending ? <LoadingRows label="Loading onboarding" /> : query.isError && !view ? <DataState title="Setup could not be loaded" detail={query.error.message} retry={() => query.refetch()} /> : view && <>
       <div className="onboarding-progress"><span>Program: <strong>{program?.strategy?.name || program?.company.name || 'Not started'}</strong></span><StateBadge tone={step === 'home' ? 'green' : 'blue'}>{program?.status || 'not_started'}</StateBadge><span>Next: {step.replaceAll('_', ' ')}</span></div>
+      {program && companyContext_ && <p className="operational-note">Company context: <StateBadge tone={companyContext_.status === 'context_complete' ? 'green' : 'yellow'}>{companyContext_.status === 'context_complete' ? 'context complete' : 'context incomplete'}</StateBadge>{(companyContext_.context?.missing?.length ?? 0) > 0 && <> Still unknown: {(companyContext_.context?.missing || []).join(', ').replaceAll('_', ' ')}.</>} Answers stay as given; nothing is inferred.</p>}
       {step !== 'home' && <label className="onboarding-token">Founder action token<input type="password" autoComplete="off" aria-label="Founder action token" value={token} onChange={event => setToken(event.target.value)} /><small>Required by the existing action gate; held only in this page's memory.</small></label>}
       {pending && <p role="status" className="operational-note">{pending}… Waiting for backend confirmation.</p>}
       {error && <p className="form-error" role="alert">{error}</p>}

@@ -29,3 +29,8 @@ company-sales-email-ingress/.wrangler/
 *.sqlite*
 *.log
 .DS_Store
+
+# Rendered video artifacts. Regenerable from the queue, and far too large for git:
+# a 30s render is a few MB, a batch is tens.
+videos/
+data/renders/

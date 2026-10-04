@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, ArrowRight, Building2, ContactRound, FileImage, Mail, Megaphone, ShieldAlert } from 'lucide-react'
+import { Activity, ArrowRight, Building2, Compass, ContactRound, FileImage, Mail, Megaphone, ShieldAlert } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { homeView } from '../api/workflows'
 import { useCredentials } from '../app/Auth'
@@ -19,6 +19,9 @@ export function HomePage() {
     {query.isPending ? <LoadingRows label="Loading home" /> : query.isError && !data ? <DataState title="Home could not be loaded" detail={query.error.message} retry={() => query.refetch()} /> : data && <>
       <WorkflowMetrics items={[{ label: 'Drafts to review', value: data.drafts_waiting_approval, icon: <Mail /> }, { label: 'Campaigns to review', value: data.campaigns_awaiting_review, icon: <Megaphone /> }, { label: 'Latest replies', value: data.latest_replies, icon: <Activity /> }, { label: 'Open incidents', value: data.open_provider_incidents, icon: <ShieldAlert /> }]} />
       <div className="home-alerts">
+        {data.routing_error
+          ? <div className="home-stage warning"><ShieldAlert size={18} /><span><strong>Starting state not recognised</strong><small>{data.routing_error}</small></span></div>
+          : data.next_stage && <div className="home-stage"><Compass size={18} /><span><strong>{data.route_label}</strong><small>{data.route_summary}</small></span></div>}
         {data.onboarding_status !== 'activated' && <Link to="/onboarding" className="home-alert"><Building2 size={18} /><span><strong>Finish first-run setup</strong><small>Resume the saved company, strategy, and calibration steps</small></span><ArrowRight size={17} /></Link>}
         {data.drafts_waiting_approval > 0 && <Link to="/outreach?status=draft" className="home-alert"><Mail size={18} /><span><strong>{data.drafts_waiting_approval} drafts awaiting review</strong><small>Approve only after checking claims and recipient</small></span><ArrowRight size={17} /></Link>}
         {data.campaigns_awaiting_review > 0 && <Link to="/campaigns?status=needs_campaign_review" className="home-alert"><Megaphone size={18} /><span><strong>{data.campaigns_awaiting_review} campaigns awaiting review</strong><small>Review the generated campaign before advancing it</small></span><ArrowRight size={17} /></Link>}

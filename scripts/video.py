@@ -129,6 +129,19 @@ def command_submit(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_assemble(args: argparse.Namespace) -> int:
+    from services.video import pipeline as video_pipeline
+    from services.video.assembly import AssemblyError
+
+    try:
+        report = video_pipeline.assemble_plan(args.plan_id, args.out)
+    except (ValueError, AssemblyError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 def command_worker_status(_args: argparse.Namespace) -> int:
     from services import renderers
 
@@ -246,6 +259,14 @@ def main(argv: list[str] | None = None) -> int:
     submit.add_argument("--timeout", type=int, default=None,
                         help="sync render budget in seconds (default RENDER_WORKER_TIMEOUT_SECONDS)")
     submit.set_defaults(func=command_submit)
+
+    assemble = sub.add_parser(
+        "assemble", help="concatenate a plan's completed render chunks into one full MP4"
+    )
+    assemble.add_argument("plan_id")
+    assemble.add_argument("--out", default=None,
+                          help="destination MP4 (default videos/<project>/full.mp4)")
+    assemble.set_defaults(func=command_assemble)
 
     worker_status = sub.add_parser("worker-status", help="check MI300X worker health/capacity")
     worker_status.set_defaults(func=command_worker_status)

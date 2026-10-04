@@ -11,10 +11,10 @@ the protagonist's attention. All text lands in the deterministic finishing layer
 never in a generated frame.
 """
 
-# Every brief renders at 15s / 360 frames. The MI300X worker's proven ceiling is
-# 240 frames (10s); 360 frames is 1.5x that, whereas 480 frames (20s) is 2x and
-# 720 frames (30s) already failed after 31 minutes of GPU work.
-RUNTIME_SECONDS = 15
+# Every brief renders at 30s. The chunker splits this into six 120-frame renders
+# inside Hunyuan's 129-frame window, so runtime is no longer limited by the
+# model's temporal window or the worker's 60-minute wall.
+RUNTIME_SECONDS = 30
 
 BRIEFS: dict[str, dict[str, object]] = {
     "teaser": {

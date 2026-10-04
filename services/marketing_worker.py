@@ -308,16 +308,26 @@ def _stage(campaign_id: str, stage: str, status: str = "running") -> None:
     add_event(campaign_id, f"stage.{stage}", {"status": status})
 
 
-def run_pipeline(campaign_id: str) -> None:
+def run_g1(
+    campaign_id: str,
+    *,
+    config: MarketingConfig | None = None,
+    root: Path | None = None,
+    logs: Path | None = None,
+    fresh_research: bool = True,
+) -> dict:
+    """Execute only the G1 strategy stage and persist the campaign package.
+
+    Shared by ``run_pipeline`` and the workflow runner so both invoke the same
+    G1 command with the same persistence, events and return shape (the parsed
+    G1 result including its three ``concepts`` and the ``campaign`` package).
+    """
     campaign = get_campaign(campaign_id)
     if not campaign:
         raise RuntimeError(f"campaign not found: {campaign_id}")
-    config = MarketingConfig.load()
-    failed_checks = [name for name, item in config.diagnostics().items() if not item["ok"] and name != "g3_bin"]
-    if failed_checks:
-        raise RuntimeError(f"marketing tools are not configured: {', '.join(failed_checks)}")
-    root = _work_root(campaign)
-    logs = root / "logs"
+    config = config or MarketingConfig.load()
+    root = root or _work_root(campaign)
+    logs = logs or root / "logs"
     update_task_status(int(campaign["task_id"]), "running")
 
     _stage(campaign_id, "g1_campaign")
@@ -331,6 +341,10 @@ def run_pipeline(campaign_id: str) -> None:
     ]
     for platform in campaign["social_platforms"]:
         command.extend(["--platform", platform])
+    if not fresh_research:
+        # G1's existing offline mode: skip external research, use its
+        # deterministic concept/draft fallbacks (same as `--no-research`).
+        command.append("--no-research")
     g1_result = _last_json(_run(
         command, cwd=config.g1_root, env_file=config.g1_env_file,
         timeout=config.stage_timeout, log_path=logs / "g1.log",
@@ -359,6 +373,27 @@ def run_pipeline(campaign_id: str) -> None:
         "campaign_id": package.get("campaign_id"),
         "scene_count": len(package.get("scenes") or package.get("slides") or []),
     })
+    result = dict(g1_result) if isinstance(g1_result, dict) else {}
+    result["campaign"] = package
+    result.setdefault("concepts", [])
+    result.setdefault("selected_concept", None)
+    result["package_path"] = str(package_path)
+    return result
+
+
+def run_pipeline(campaign_id: str) -> None:
+    campaign = get_campaign(campaign_id)
+    if not campaign:
+        raise RuntimeError(f"campaign not found: {campaign_id}")
+    config = MarketingConfig.load()
+    failed_checks = [name for name, item in config.diagnostics().items() if not item["ok"] and name != "g3_bin"]
+    if failed_checks:
+        raise RuntimeError(f"marketing tools are not configured: {', '.join(failed_checks)}")
+    root = _work_root(campaign)
+    logs = root / "logs"
+
+    g1_result = run_g1(campaign_id, config=config, root=root, logs=logs)
+    package = g1_result["campaign"]
     quality = package.get("quality") or {}
     if package.get("status") != "ready_for_media":
         update_campaign(
@@ -372,11 +407,11 @@ def run_pipeline(campaign_id: str) -> None:
         return
     if quality.get("warnings"):
         add_event(campaign_id, "campaign.advisory_warnings", {"warnings": quality["warnings"]})
-    campaign = dict(campaign)
-    campaign["g1_output_path"] = str(package_path)
-    campaign["g1_campaign_id"] = package.get("campaign_id")
+    approved = dict(get_campaign(campaign_id) or campaign)
+    approved["g1_output_path"] = g1_result["package_path"]
+    approved["g1_campaign_id"] = package.get("campaign_id")
     run_media_pipeline(
-        campaign_id, campaign=campaign, package=package, config=config, root=root, logs=logs,
+        campaign_id, campaign=approved, package=package, config=config, root=root, logs=logs,
     )
 
 

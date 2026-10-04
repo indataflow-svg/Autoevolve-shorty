@@ -532,19 +532,31 @@ class RenderQATests(unittest.TestCase):
         return out
 
     def test_small_frame_shortfall_is_accepted_and_reported(self):
-        path = self._write(237)
-        qa = renderers.qa_render_output(path, expected_frames=240, expected_fps=24)
-        self.assertEqual(qa["frames"], 237)
-        self.assertEqual(qa["requested_frames"], 240)
-        self.assertEqual(qa["frame_shortfall"], 3)
-        # The real count is preserved, never silently rewritten.
-        self.assertAlmostEqual(qa["duration_seconds"], 237 / 24, places=2)
+        # The worker loses a constant 3 frames: 141/144, 237/240, 117/120.
+        for requested, delivered in ((144, 141), (240, 237), (120, 117)):
+            path = self._write(delivered)
+            qa = renderers.qa_render_output(
+                path, expected_frames=requested, expected_fps=24
+            )
+            self.assertEqual(qa["frames"], delivered)
+            self.assertEqual(qa["requested_frames"], requested)
+            self.assertEqual(qa["frame_shortfall"], 3)
+            # The real count is preserved, never silently rewritten.
+            self.assertAlmostEqual(qa["duration_seconds"], delivered / 24, places=2)
 
     def test_large_shortfall_still_fails(self):
         path = self._write(120)
         with self.assertRaises(renderers.RenderQAError) as caught:
             renderers.qa_render_output(path, expected_frames=240, expected_fps=24)
-        self.assertIn("tolerance", str(caught.exception))
+        self.assertIn("allowed shortfall", str(caught.exception))
+
+    def test_shortfall_base_is_configurable(self):
+        path = self._write(117)
+        # Refusing the known 3-frame encoder loss must fail.
+        with self.assertRaises(renderers.RenderQAError):
+            renderers.qa_render_output(
+                path, expected_frames=120, expected_fps=24, frame_shortfall_base=0
+            )
 
     def test_extra_frames_still_fails(self):
         path = self._write(260)

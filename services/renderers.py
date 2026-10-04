@@ -67,9 +67,18 @@ PRE_SUBMIT_ATTEMPTS = 3
 # A failed render's diagnostic tail (stdout + traceback) is the only evidence of
 # why the GPU job died, so keep enough of it to reach the traceback.
 WORKER_ERROR_MAX_CHARS = 8000
-# The worker under-delivers a few frames on long encodes (observed 237/240 and
-# 141/144). Accept that as drift; reject anything larger as a truncated render.
+# The worker loses a CONSTANT number of frames, not a constant fraction: three
+# observed renders delivered 141/144, 237/240 and 117/120. That is an encoder or
+# tail-handling loss, not proportional drift, so the allowance has a fixed base
+# plus a small proportional margin. Anything beyond that is a truncated render.
+FRAME_SHORTFALL_BASE = 3
 FRAME_COUNT_TOLERANCE = 0.02
+# HunyuanVideo-1.5 is a fixed-window clip generator: its native temporal window
+# is 129 frames (~5.4s at 24fps). Asking one denoise pass for more than that is
+# an out-of-distribution request, which is what the 480/720-frame failures were.
+DEFAULT_CHUNK_FRAMES = 129
+# Step-distilled sampling replaces the full denoise loop. Cheapest large win.
+DISTILLED_STEPS = 8
 DEFAULT_POLL_INTERVAL_SECONDS = 15
 
 ASYNC_STATUSES = {"queued", "running", "accepted", "pending", "leased"}
@@ -696,14 +705,15 @@ def qa_render_output(
     expected_frames: int | None = None,
     expected_fps: int | None = None,
     frame_tolerance: float = FRAME_COUNT_TOLERANCE,
+    frame_shortfall_base: int = FRAME_SHORTFALL_BASE,
 ) -> dict[str, Any]:
     """Validate a worker MP4. Raises RenderQAError with a useful reason.
 
-    ``frame_tolerance`` is a fraction of the requested frame count. The worker
-    is observed to deliver slightly short encodes (237/240 and 141/144 on
-    live runs), which is cosmetically irrelevant, so a small shortfall is
-    accepted and the real count is reported instead of failing the job. A
-    larger shortfall still fails: that means a truncated render, not drift.
+    The worker loses a fixed number of frames per render (observed 141/144,
+    237/240, 117/120), so a small shortfall is accepted and the real count is
+    reported instead of failing the job. ``frame_shortfall_base`` is that fixed
+    allowance and ``frame_tolerance`` adds a proportional margin. A larger
+    shortfall still fails: that means a truncated render, not encoder loss.
     """
     file_path = Path(path)
     if not file_path.is_file():
@@ -723,14 +733,14 @@ def qa_render_output(
     shortfall = 0
     if expected_frames and frames and frames != expected_frames:
         shortfall = expected_frames - frames
-        allowed = int(expected_frames * frame_tolerance)
+        allowed = frame_shortfall_base + int(expected_frames * frame_tolerance)
         if shortfall > 0 and shortfall <= allowed:
-            # Acceptable worker drift: keep going and report the true count.
+            # Acceptable worker loss: keep going and report the true count.
             pass
         else:
             raise RenderQAError(
                 f"frame count {frames} != expected {expected_frames} "
-                f"(tolerance {allowed} frames): {file_path}"
+                f"(allowed shortfall {allowed} frames): {file_path}"
             )
     duration_s: float | None = None
     if expected_fps:
@@ -831,18 +841,33 @@ def submit_hunyuan_job(job_id: str, *, timeout_seconds: int | None = None) -> di
         raise ValueError(f"renderer {job['renderer']!r} cannot be submitted to the MI300X worker")
     video_store.claim_job(job_id, CONTROL_PLANE_WORKER_ID, lease_seconds=timeout + 300)
     output_name = Path(job["output_path"]).name or f"{job_id}.mp4"
+    from services.video.defs import HUNYUAN_DEFAULT_PROFILE
+
+    profile = dict(HUNYUAN_DEFAULT_PROFILE)
+    steps = job.get("steps") or profile["steps"]
+    if profile["enable_step_distill"]:
+        steps = DISTILLED_STEPS
     payload = {
         "job_id": job["id"],
         "renderer": "hunyuan",
         "prompt": job["prompt"],
         "negative_prompt": job.get("negative_prompt") or "",
-        "resolution": job.get("resolution") or "480p",
+        "resolution": job.get("resolution") or profile["resolution"],
         "aspect_ratio": aspect_ratio_for(job.get("width"), job.get("height")),
-        "frames": job.get("frames") or 81,
-        "fps": job.get("fps") or 24,
-        "steps": job.get("steps") or 20,
-        "seed": job.get("seed") if job.get("seed") is not None else 42,
-        "dtype": job.get("dtype") or "bf16",
+        "frames": job.get("frames") or DEFAULT_CHUNK_FRAMES,
+        "fps": job.get("fps") or profile["fps"],
+        # Sampling effort and memory strategy. Step distillation is the single
+        # biggest lever: it cuts the denoise loop from ~20 steps to a handful.
+        # These five flags were defined in the profile and then never
+        # transmitted, so every render so far paid full sampling cost.
+        "steps": steps,
+        "enable_step_distill": bool(profile["enable_step_distill"]),
+        "cfg_distilled": bool(profile["cfg_distilled"]),
+        "offloading": bool(profile["offloading"]),
+        "sr": bool(profile["sr"]),
+        "rewrite": bool(profile["rewrite"]),
+        "seed": job["seed"] if job.get("seed") is not None else profile["seed"],
+        "dtype": job.get("dtype") or profile["dtype"],
         "output_name": output_name,
     }
     deadline = time.monotonic() + timeout

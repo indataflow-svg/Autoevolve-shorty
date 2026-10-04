@@ -28,7 +28,7 @@ PLAIN_PATTERNS = ("*.db", "*.sqlite", "*.sqlite3", "*-wal", "*-shm", "*-journal"
 # Tables the restore report always calls out when they exist.
 REPORT_TABLES = (
     "sales_leads", "sales_drafts", "marketing_campaigns",
-    "marketing_manual_posts", "coding_tasks", "incidents",
+    "marketing_manual_posts", "coding_tasks", "incidents", "company_context",
 )
 
 

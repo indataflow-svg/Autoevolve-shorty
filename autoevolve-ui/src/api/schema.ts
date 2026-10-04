@@ -192,6 +192,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/company/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Company Context */
+        get: operations["read_company_context_company_context_get"];
+        /**
+         * Replace Company Context
+         * @description Replace the canonical context with the submitted sections.
+         *
+         *     Omitted fields become explicitly unknown: this is a full replacement, so a
+         *     founder never keeps a claim they just removed.
+         */
+        put: operations["replace_company_context_company_context_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/company/marketing/doctor": {
         parameters: {
             query?: never;
@@ -662,6 +686,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/company/marketing/validation/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Validation Plan
+         * @description The most recent plan, or 404 when none has been generated yet.
+         */
+        get: operations["read_validation_plan_company_marketing_validation_plan_get"];
+        put?: never;
+        /**
+         * Create Validation Plan
+         * @description Plan the first market-validation experiment. Nothing is executed.
+         */
+        post: operations["create_validation_plan_company_marketing_validation_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/marketing/validation/workflow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Governance
+         * @description The latest governance decision and the lifecycle it has reached.
+         */
+        get: operations["read_governance_company_marketing_validation_workflow_get"];
+        put?: never;
+        /**
+         * Create Workflow From Plan
+         * @description Validate a plan and, only if governance allows it, create the workflow.
+         *
+         *     A blocked plan is still persisted with its reasons and creates no workflow,
+         *     so a refusal is auditable rather than a silent no-op.
+         */
+        post: operations["create_workflow_from_plan_company_marketing_validation_workflow_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/marketing/validation/workflow/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Workflow
+         * @description Record the founder's approval. Execution stays locked until this exists.
+         */
+        post: operations["approve_workflow_company_marketing_validation_workflow_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/marketing/validation/workflow/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Workflow From Plan
+         * @description Run the approved workflow through the existing runner.
+         *
+         *     The only authorized action is ``simulate_outreach``: it returns a simulated
+         *     result and performs no external side effect.
+         */
+        post: operations["run_workflow_from_plan_company_marketing_validation_workflow_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/company/sales/doctor": {
         parameters: {
             query?: never;
@@ -1035,6 +1153,92 @@ export interface paths {
         };
         /** Home View */
         get: operations["home_view_company_ui_home_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workflows */
+        get: operations["list_workflows_company_workflows_get"];
+        put?: never;
+        /** Create Workflow */
+        post: operations["create_workflow_company_workflows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/workflows/{workflow_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workflow */
+        get: operations["get_workflow_company_workflows__workflow_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/workflows/{workflow_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run */
+        post: operations["run_company_workflows__workflow_id__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/workflows/{workflow_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause */
+        post: operations["pause_company_workflows__workflow_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/workflows/{workflow_id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get State */
+        get: operations["get_state_company_workflows__workflow_id__state_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1985,6 +2189,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ApprovalPayload */
+        ApprovalPayload: {
+            /**
+             * Approved
+             * @default true
+             */
+            approved: boolean;
+        };
         /** ApprovalPolicy */
         ApprovalPolicy: {
             /**
@@ -2361,6 +2573,24 @@ export interface components {
             /** Model */
             model?: string | null;
         };
+        /**
+         * CommercialHypothesis
+         * @description One primary hypothesis, stated as a testable claim.
+         */
+        CommercialHypothesis: {
+            /** Customer */
+            customer: string;
+            /** Problem */
+            problem: string;
+            /** Trigger */
+            trigger: string;
+            /** Offer */
+            offer: string;
+            /** Reason To Believe */
+            reason_to_believe: string;
+            /** Desired Action */
+            desired_action: string;
+        };
         /** CompaniesPage */
         CompaniesPage: {
             /** Items */
@@ -2373,21 +2603,16 @@ export interface components {
             page_size: number;
             metrics: components["schemas"]["CompanyMetrics"];
         };
-        /** CompanyContact */
-        CompanyContact: {
-            /** Id */
-            id: string;
-            /** Full Name */
-            full_name?: string | null;
-            /** Job Title */
-            job_title?: string | null;
-            /** Email */
-            email?: string | null;
-            /** Stage */
-            stage: string;
-        };
-        /** CompanyContext */
-        CompanyContext: {
+        /**
+         * CompanyConfirm
+         * @description Founder-confirmed company answers from the research/confirm step.
+         *
+         *     The first six fields stay required because the existing flow depends on them.
+         *     Everything else is optional on purpose: an answer the founder does not have
+         *     must stay unknown rather than be invented. These values are projected onto
+         *     the canonical company context (core.company_context), not stored twice.
+         */
+        CompanyConfirm: {
             /** Name */
             name: string;
             /**
@@ -2403,6 +2628,158 @@ export interface components {
             positioning: string;
             /** Offer Summary */
             offer_summary: string;
+            /** Geography */
+            geography?: string | null;
+            /** Product Name */
+            product_name?: string | null;
+            /** Product Description */
+            product_description?: string | null;
+            /** Product Category */
+            product_category?: string | null;
+            /** Ideal Customer */
+            ideal_customer?: string | null;
+            /** Company Sizes */
+            company_sizes?: string[];
+            /** Customer Geography */
+            customer_geography?: string[];
+            /** Buyer Roles */
+            buyer_roles?: string[];
+            /** Segment */
+            segment?: string | null;
+            /** Problem */
+            problem?: string | null;
+            /** Urgency */
+            urgency?: string | null;
+            /** Alternatives */
+            alternatives?: string[];
+            /** Existing Customers */
+            existing_customers?: string[];
+            /** Existing Demand */
+            existing_demand?: string[];
+            /** Previous Marketing */
+            previous_marketing?: string[];
+            /** Testimonials */
+            testimonials?: string[];
+            /** Traction */
+            traction?: string[];
+            /** Other Evidence */
+            other_evidence?: string[];
+            /** Pricing */
+            pricing?: string | null;
+            /** Business Model */
+            business_model?: string | null;
+            /** Channels */
+            channels?: string[];
+            /** Assets */
+            assets?: string[];
+            /** Team */
+            team?: string[];
+            /** Budget */
+            budget?: string | null;
+            /** Geographic Constraints */
+            geographic_constraints?: string[];
+            /** Brand Constraints */
+            brand_constraints?: string[];
+            /** Budget Constraints */
+            budget_constraints?: string[];
+            /** Regulatory Constraints */
+            regulatory_constraints?: string[];
+            /** Operational Constraints */
+            operational_constraints?: string[];
+            /** Desired Outcome */
+            desired_outcome?: string | null;
+            /**
+             * Marketing Stage
+             * @default starting_from_zero
+             * @constant
+             */
+            marketing_stage: "starting_from_zero";
+        };
+        /** CompanyContact */
+        CompanyContact: {
+            /** Id */
+            id: string;
+            /** Full Name */
+            full_name?: string | null;
+            /** Job Title */
+            job_title?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Stage */
+            stage: string;
+        };
+        /**
+         * CompanyContext
+         * @description The canonical company context.
+         *
+         *     Every field is optional and every field is normalized on the way in, so this
+         *     object can be built from raw onboarding answers, from an API payload, or from
+         *     the stored record without behaving differently.
+         */
+        CompanyContext: {
+            company?: components["schemas"]["CompanyFacts"];
+            product?: components["schemas"]["ProductFacts"];
+            customer?: components["schemas"]["CustomerFacts"];
+            market?: components["schemas"]["MarketFacts"];
+            evidence?: components["schemas"]["EvidenceFacts"];
+            offer?: components["schemas"]["OfferFacts"];
+            resources?: components["schemas"]["ResourceFacts"];
+            constraints?: components["schemas"]["ConstraintFacts"];
+            objective?: components["schemas"]["ObjectiveFacts"];
+            state?: components["schemas"]["ContextState"];
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Status
+             * @default context_incomplete
+             * @enum {string}
+             */
+            status: "context_complete" | "context_incomplete";
+            /** Missing */
+            missing?: string[];
+        };
+        /**
+         * CompanyContextSections
+         * @description The founder-confirmed facts, grouped the way later consumers read them.
+         */
+        CompanyContextSections: {
+            company?: components["schemas"]["CompanyFacts"];
+            product?: components["schemas"]["ProductFacts"];
+            customer?: components["schemas"]["CustomerFacts"];
+            market?: components["schemas"]["MarketFacts"];
+            evidence?: components["schemas"]["EvidenceFacts"];
+            offer?: components["schemas"]["OfferFacts"];
+            resources?: components["schemas"]["ResourceFacts"];
+            constraints?: components["schemas"]["ConstraintFacts"];
+            objective?: components["schemas"]["ObjectiveFacts"];
+            state?: components["schemas"]["ContextState"];
+        };
+        /**
+         * CompanyContextView
+         * @description The founder's canonical context plus the route resolved from its state.
+         */
+        CompanyContextView: {
+            /** Marketing Stage */
+            marketing_stage?: "starting_from_zero" | null;
+            /** Next Stage */
+            next_stage?: "market_validation" | null;
+            /** Route Label */
+            route_label?: string | null;
+            /** Route Summary */
+            route_summary?: string | null;
+            /** Routing Error */
+            routing_error?: string | null;
+            context: components["schemas"]["CompanyContext"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "context_complete" | "context_incomplete";
         };
         /** CompanyDetail */
         CompanyDetail: {
@@ -2459,6 +2836,20 @@ export interface components {
             profile_fetched_at?: string | null;
             /** Contacts */
             contacts: components["schemas"]["CompanyContact"][];
+        };
+        /**
+         * CompanyFacts
+         * @description Who the company is.
+         */
+        CompanyFacts: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Website */
+            website?: string | null;
+            /** Geography */
+            geography?: string | null;
         };
         /** CompanyMetrics */
         CompanyMetrics: {
@@ -2573,6 +2964,22 @@ export interface components {
             candidate_lead_id?: string | null;
             /** Has Profile */
             has_profile: boolean;
+        };
+        /**
+         * ConstraintFacts
+         * @description Limits a future workflow must respect.
+         */
+        ConstraintFacts: {
+            /** Geographic */
+            geographic?: string[];
+            /** Brand */
+            brand?: string[];
+            /** Budget */
+            budget?: string[];
+            /** Regulatory */
+            regulatory?: string[];
+            /** Operational */
+            operational?: string[];
         };
         /** Contact */
         Contact: {
@@ -2764,6 +3171,30 @@ export interface components {
             /** Asset Packs Truncated */
             asset_packs_truncated: boolean;
         };
+        /**
+         * ContextState
+         * @description Where the company starts from. Phase 1 records the stage only.
+         */
+        ContextState: {
+            /** Marketing Stage */
+            marketing_stage?: "starting_from_zero" | null;
+        };
+        /**
+         * CustomerFacts
+         * @description Who buys.
+         */
+        CustomerFacts: {
+            /** Ideal Customer */
+            ideal_customer?: string | null;
+            /** Industry */
+            industry?: string | null;
+            /** Company Size */
+            company_size?: string[];
+            /** Geography */
+            geography?: string[];
+            /** Buyer Roles */
+            buyer_roles?: string[];
+        };
         /** DraftRequest */
         DraftRequest: {
             /** Candidate Lead Id */
@@ -2796,6 +3227,36 @@ export interface components {
             /** Created At */
             created_at: string;
         };
+        /**
+         * EvidenceFacts
+         * @description Proof the founder already has. Empty lists mean "none yet", not "none exist".
+         */
+        EvidenceFacts: {
+            /** Existing Customers */
+            existing_customers?: string[];
+            /** Existing Demand */
+            existing_demand?: string[];
+            /** Previous Marketing */
+            previous_marketing?: string[];
+            /** Testimonials */
+            testimonials?: string[];
+            /** Traction */
+            traction?: string[];
+            /** Other */
+            other?: string[];
+        };
+        /**
+         * EvidenceLedger
+         * @description Facts the founder gave, assumptions we made, and what we still need.
+         */
+        EvidenceLedger: {
+            /** Known Facts */
+            known_facts?: string[];
+            /** Assumptions */
+            assumptions?: string[];
+            /** Unknowns */
+            unknowns?: string[];
+        };
         /** Feedback */
         Feedback: {
             /**
@@ -2818,6 +3279,93 @@ export interface components {
             /** Lead Id */
             lead_id: string;
         };
+        /**
+         * GovernanceLimits
+         * @description Caps the operator has agreed to. Defaults refuse anything costly.
+         */
+        GovernanceLimits: {
+            /**
+             * Max Spend Usd
+             * @default 0
+             */
+            max_spend_usd: number;
+            /**
+             * Max Actions
+             * @default 1
+             */
+            max_actions: number;
+            /**
+             * Max Outreach Contacts
+             * @default 50
+             */
+            max_outreach_contacts: number;
+            /**
+             * Max Duration Days
+             * @default 30
+             */
+            max_duration_days: number;
+        };
+        /**
+         * GovernanceRecord
+         * @description A persisted governance decision plus the lifecycle it has reached.
+         */
+        GovernanceRecord: {
+            /** Id */
+            id: string;
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "valid" | "blocked";
+            /** Reasons */
+            reasons?: string[];
+            /** Warnings */
+            warnings?: string[];
+            /**
+             * Required Approval
+             * @default true
+             */
+            required_approval: boolean;
+            /** Resolved Actions */
+            resolved_actions?: components["schemas"]["ResolvedAction"][];
+            grounding?: components["schemas"]["GroundingReport"];
+            limits?: components["schemas"]["GovernanceLimits"];
+            /** Workflow Id */
+            workflow_id?: string | null;
+            /** Approved At */
+            approved_at?: string | null;
+            /** Executed At */
+            executed_at?: string | null;
+            /** Execution */
+            execution?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Lifecycle
+             * @default validated
+             * @enum {string}
+             */
+            lifecycle: "blocked" | "validated" | "workflow_created" | "approved" | "executed";
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * GroundingReport
+         * @description What the grounding rule did, so the demotion is never silent.
+         */
+        GroundingReport: {
+            /**
+             * Checked Facts
+             * @default 0
+             */
+            checked_facts: number;
+            /** Moved To Assumptions */
+            moved_to_assumptions?: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2825,6 +3373,16 @@ export interface components {
         };
         /** HomeView */
         HomeView: {
+            /** Marketing Stage */
+            marketing_stage?: "starting_from_zero" | null;
+            /** Next Stage */
+            next_stage?: "market_validation" | null;
+            /** Route Label */
+            route_label?: string | null;
+            /** Route Summary */
+            route_summary?: string | null;
+            /** Routing Error */
+            routing_error?: string | null;
             /** Contacts Total */
             contacts_total: number;
             /** Outreach Drafts Total */
@@ -3080,6 +3638,36 @@ export interface components {
             /** Org Id */
             org_id?: number | null;
         };
+        /**
+         * MarketFacts
+         * @description The market, the problem, and what else is out there.
+         */
+        MarketFacts: {
+            /** Market */
+            market?: string | null;
+            /** Segment */
+            segment?: string | null;
+            /** Problem */
+            problem?: string | null;
+            /** Urgency */
+            urgency?: string | null;
+            /** Alternatives */
+            alternatives?: string[];
+        };
+        /**
+         * MarketView
+         * @description Who, what problem, why now, and what they do instead.
+         */
+        MarketView: {
+            /** Target Customer */
+            target_customer: string;
+            /** Problem */
+            problem: string;
+            /** Trigger */
+            trigger: string;
+            /** Alternatives */
+            alternatives: string;
+        };
         /** MarketingOrgActionRecord */
         MarketingOrgActionRecord: {
             /** Id */
@@ -3197,8 +3785,43 @@ export interface components {
                 [key: string]: number;
             };
         };
-        /** OnboardingView */
+        /**
+         * ObjectiveFacts
+         * @description The business outcome the founder is working towards.
+         */
+        ObjectiveFacts: {
+            /** Primary Goal */
+            primary_goal?: string | null;
+            /** Desired Outcome */
+            desired_outcome?: string | null;
+        };
+        /**
+         * OfferFacts
+         * @description The commercial offer.
+         */
+        OfferFacts: {
+            /** Description */
+            description?: string | null;
+            /** Pricing */
+            pricing?: string | null;
+            /** Business Model */
+            business_model?: string | null;
+        };
+        /**
+         * OnboardingView
+         * @description The onboarding projection plus the initial route from the saved context.
+         */
         OnboardingView: {
+            /** Marketing Stage */
+            marketing_stage?: "starting_from_zero" | null;
+            /** Next Stage */
+            next_stage?: "market_validation" | null;
+            /** Route Label */
+            route_label?: string | null;
+            /** Route Summary */
+            route_summary?: string | null;
+            /** Routing Error */
+            routing_error?: string | null;
             program: components["schemas"]["ProgramState"] | null;
             /** Next Step */
             next_step: string;
@@ -3209,6 +3832,11 @@ export interface components {
              * @default Existing lead_score only; not a verified ICP fit score.
              */
             confidence_basis: string;
+            /**
+             * Onboarding Complete
+             * @default false
+             */
+            onboarding_complete: boolean;
         };
         /** OrgCapabilitiesRequest */
         OrgCapabilitiesRequest: {
@@ -3283,6 +3911,69 @@ export interface components {
             /** Spec Id */
             spec_id: string;
         };
+        /**
+         * PlanLimits
+         * @description Limits the plan proposes. A later phase enforces them before any action.
+         */
+        PlanLimits: {
+            /** Max Spend Usd */
+            max_spend_usd?: number | null;
+            /** Max Outreach Contacts */
+            max_outreach_contacts?: number | null;
+            /** Channel */
+            channel?: string | null;
+            /** Duration Days */
+            duration_days?: number | null;
+            /** Target Events */
+            target_events?: number | null;
+            /**
+             * Requires Approval
+             * @default true
+             */
+            requires_approval: boolean;
+        };
+        /**
+         * PlanProvenance
+         * @description Where the plan came from, so a stored plan is never anonymous.
+         */
+        PlanProvenance: {
+            /**
+             * Generated By
+             * @default hermes
+             */
+            generated_by: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Prompt Path */
+            prompt_path: string;
+            /**
+             * Context Schema Version
+             * @default 1
+             */
+            context_schema_version: number;
+            /** Context Updated At */
+            context_updated_at?: string | null;
+            /** Model Route */
+            model_route: string;
+            /** Model Name */
+            model_name: string;
+            /** Model Provider */
+            model_provider: string;
+        };
+        /**
+         * ProductFacts
+         * @description What the company sells.
+         */
+        ProductFacts: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Value Proposition */
+            value_proposition?: string | null;
+        };
         /** ProgramState */
         ProgramState: {
             /** Id */
@@ -3298,7 +3989,7 @@ export interface components {
             research_provider?: string | null;
             /** Research Error */
             research_error?: string | null;
-            company_context?: components["schemas"]["CompanyContext"] | null;
+            company_context?: components["schemas"]["CompanyConfirm"] | null;
             strategy_draft?: components["schemas"]["StrategyInput"] | null;
             strategy?: components["schemas"]["StrategyInput"] | null;
             approval_policy?: components["schemas"]["ApprovalPolicy"];
@@ -3512,6 +4203,36 @@ export interface components {
             requested: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ResolvedAction
+         * @description One workflow step governance is willing to authorize.
+         */
+        ResolvedAction: {
+            /** Step Id */
+            step_id: string;
+            /** Action */
+            action: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** Rationale */
+            rationale: string;
+        };
+        /**
+         * ResourceFacts
+         * @description What is already available to market with.
+         */
+        ResourceFacts: {
+            /** Channels */
+            channels?: string[];
+            /** Assets */
+            assets?: string[];
+            /** Team */
+            team?: string[];
+            /** Budget */
+            budget?: string | null;
         };
         /** SalesDraftRecord */
         SalesDraftRecord: {
@@ -3732,6 +4453,14 @@ export interface components {
             /** Step */
             step: string;
         };
+        /**
+         * SimulationRun
+         * @description Simulation-only execution request. `targets` are identifiers, never people.
+         */
+        SimulationRun: {
+            /** Targets */
+            targets?: string[];
+        };
         /** SpecCreate */
         SpecCreate: {
             /** Script Text */
@@ -3755,6 +4484,43 @@ export interface components {
              * @default script
              */
             source_name: string;
+        };
+        /**
+         * StepExecution
+         * @description A persisted StepResult plus the observability envelope for it.
+         */
+        StepExecution: {
+            /** Step Id */
+            step_id: string;
+            /** Action */
+            action: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "completed" | "failed" | "skipped";
+            /** Output */
+            output?: {
+                [key: string]: unknown;
+            };
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            };
+            /** Artifacts */
+            artifacts?: {
+                [key: string]: unknown;
+            }[];
+            /** Error */
+            error?: string | null;
+            /** Next Step */
+            next_step?: string | null;
+            /** Started At */
+            started_at: string;
+            /** Finished At */
+            finished_at: string;
+            /** Duration Ms */
+            duration_ms: number;
         };
         /** StrategyInput */
         StrategyInput: {
@@ -3784,6 +4550,20 @@ export interface components {
             /** Channels */
             channels: ("email" | "linkedin" | "social")[];
         };
+        /** SuccessMetric */
+        SuccessMetric: {
+            /**
+             * Type
+             * @default leads
+             * @enum {string}
+             */
+            type: "engagement" | "leads" | "qualified_leads" | "meetings" | "conversion";
+            /**
+             * Target
+             * @default 0
+             */
+            target: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -3796,6 +4576,191 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * ValidationPlan
+         * @description The structured output of one market-validation pass. A plan, not a run.
+         */
+        ValidationPlan: {
+            /**
+             * Workflow Template
+             * @default market_validation_v1
+             * @constant
+             */
+            workflow_template: "market_validation_v1";
+            hypothesis: components["schemas"]["CommercialHypothesis"];
+            market: components["schemas"]["MarketView"];
+            validation: components["schemas"]["ValidationStrategy"];
+            evidence: components["schemas"]["EvidenceLedger"];
+            /** Reasoning */
+            reasoning: string;
+            /** Next Action */
+            next_action: string;
+            limits?: components["schemas"]["PlanLimits"];
+        };
+        /**
+         * ValidationPlanRecord
+         * @description A persisted plan. ``planned`` never implies the experiment happened.
+         */
+        ValidationPlanRecord: {
+            /** Id */
+            id: string;
+            /**
+             * Status
+             * @default planned
+             * @constant
+             */
+            status: "planned";
+            plan: components["schemas"]["ValidationPlan"];
+            provenance: components["schemas"]["PlanProvenance"];
+            grounding?: components["schemas"]["GroundingReport"];
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * ValidationStrategy
+         * @description The smallest experiment that can produce the validation event.
+         *
+         *     ``method`` is free text on purpose: the candidate list is a set of examples,
+         *     not a menu, so the model may justify a method nobody enumerated.
+         */
+        ValidationStrategy: {
+            /** Method */
+            method: string;
+            /** Channel */
+            channel: string;
+            /** Message */
+            message: string;
+            /** Offer */
+            offer: string;
+            /** Call To Action */
+            call_to_action: string;
+            /** Validation Event */
+            validation_event: string;
+            /** Success Threshold */
+            success_threshold: string;
+            /** Time Window */
+            time_window: string;
+        };
+        /** Workflow */
+        Workflow: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Objective
+             * @default
+             */
+            objective: string;
+            trigger?: components["schemas"]["WorkflowTrigger"];
+            /** Steps */
+            steps?: components["schemas"]["WorkflowStep"][];
+            success_metric?: components["schemas"]["SuccessMetric"];
+            state?: components["schemas"]["WorkflowState"];
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** WorkflowCreateRequest */
+        WorkflowCreateRequest: {
+            /** Name */
+            name: string;
+            /**
+             * Objective
+             * @default
+             */
+            objective: string;
+            /** Trigger */
+            trigger?: {
+                [key: string]: unknown;
+            };
+            /** Steps */
+            steps?: {
+                [key: string]: unknown;
+            }[];
+            /** Success Metric */
+            success_metric?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * WorkflowEvaluation
+         * @description The evolution hook (implementation.md §12).
+         */
+        WorkflowEvaluation: {
+            /** Winner */
+            winner?: string | null;
+            /** Losers */
+            losers?: string[];
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Next Action */
+            next_action?: string | null;
+        };
+        /**
+         * WorkflowFromPlan
+         * @description Optional plan to govern. Defaults to the most recent generated plan.
+         */
+        WorkflowFromPlan: {
+            /** Plan Id */
+            plan_id?: string | null;
+        };
+        /** WorkflowRunRequest */
+        WorkflowRunRequest: {
+            /**
+             * Resume
+             * @default false
+             */
+            resume: boolean;
+        };
+        /** WorkflowState */
+        WorkflowState: {
+            /**
+             * Status
+             * @default draft
+             * @enum {string}
+             */
+            status: "draft" | "ready" | "running" | "paused" | "completed" | "failed";
+            /** Current Step */
+            current_step?: string | null;
+            /** Results */
+            results?: components["schemas"]["StepExecution"][];
+            evaluation?: components["schemas"]["WorkflowEvaluation"] | null;
+            /** Error */
+            error?: string | null;
+        };
+        /** WorkflowStep */
+        WorkflowStep: {
+            /** Id */
+            id: string;
+            /** Action */
+            action: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+        };
+        /** WorkflowTrigger */
+        WorkflowTrigger: {
+            /**
+             * Type
+             * @default manual
+             * @enum {string}
+             */
+            type: "manual" | "schedule" | "event";
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
         };
         /** WorkspaceOrg */
         WorkspaceOrg: {
@@ -4155,6 +5120,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    read_company_context_company_context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyContextView"];
+                };
+            };
+        };
+    };
+    replace_company_context_company_context_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyContextSections"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyContextView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -5178,6 +6198,182 @@ export interface operations {
             };
         };
     };
+    read_validation_plan_company_marketing_validation_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationPlanRecord"];
+                };
+            };
+        };
+    };
+    create_validation_plan_company_marketing_validation_plan_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationPlanRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_governance_company_marketing_validation_workflow_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRecord"];
+                };
+            };
+        };
+    };
+    create_workflow_from_plan_company_marketing_validation_workflow_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WorkflowFromPlan"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_workflow_company_marketing_validation_workflow_approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApprovalPayload"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_workflow_from_plan_company_marketing_validation_workflow_run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SimulationRun"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     doctor_company_sales_doctor_get: {
         parameters: {
             query?: never;
@@ -5831,6 +7027,199 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HomeView"];
+                };
+            };
+        };
+    };
+    list_workflows_company_workflows_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_workflow_company_workflows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_company_workflows__workflow_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_company_workflows__workflow_id__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WorkflowRunRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_company_workflows__workflow_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_state_company_workflows__workflow_id__state_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -7265,7 +8654,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CompanyContext"];
+                "application/json": components["schemas"]["CompanyConfirm"];
             };
         };
         responses: {

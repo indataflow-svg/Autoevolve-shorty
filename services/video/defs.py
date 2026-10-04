@@ -11,14 +11,21 @@ def invalid(errors: list[str]) -> None:
 HUNYUAN_DEFAULT_PROFILE: dict[str, Any] = {
     "resolution": "480p",
     "fps": 24,
+    # Ignored when enable_step_distill is on: the distilled path substitutes
+    # DISTILLED_STEPS (services.renderers) for the full denoise loop.
     "steps": 20,
     "dtype": "bf16",
     "seed": 42,
     "rewrite": False,
-    "offloading": False,
+    # Offloading trades a little speed for VRAM headroom. Enabled because the
+    # observed failures at 480/720 frames died mid-sampling rather than at load.
+    "offloading": True,
     "sr": False,
     "cfg_distilled": False,
-    "enable_step_distill": False,
+    # Step distillation collapses ~20 sampling steps into a handful. This is the
+    # single largest speed lever available and it was previously defined here but
+    # never transmitted to the worker, so every render paid full sampling cost.
+    "enable_step_distill": True,
 }
 
 FORMAT_SIZES = {

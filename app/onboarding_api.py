@@ -11,13 +11,21 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, BeforeValidator, Field, HttpUrl
 
 from app.sales_api import verify_founder_action
+from core.company_context import (
+    MarketingStage,
+    answer_lines,
+    context_from_onboarding,
+    normalize_marketing_stage,
+    save_company_context,
+)
 from core.company_read import get_company_record
+from core.marketing_routing import RouteState, stored_route_state
 from core.sales_store import get_draft, get_lead, merge_lead_metadata, normalize_company_domain
 from core.state import get_onboarding_program, save_onboarding_program
 from services.sales_service import build_draft, import_domain, research_market_leads
@@ -41,13 +49,56 @@ class CompanyStart(BaseModel):
     market: str = Field(min_length=2, max_length=120)
 
 
-class CompanyContext(BaseModel):
+class CompanyConfirm(BaseModel):
+    """Founder-confirmed company answers from the research/confirm step.
+
+    The first six fields stay required because the existing flow depends on them.
+    Everything else is optional on purpose: an answer the founder does not have
+    must stay unknown rather than be invented. These values are projected onto
+    the canonical company context (core.company_context), not stored twice.
+    """
+
     name: str = Field(min_length=2, max_length=120)
     website: HttpUrl
     description: str = Field(min_length=10, max_length=3000)
     industry: str = Field(min_length=2, max_length=120)
     positioning: str = Field(min_length=5, max_length=1000)
     offer_summary: str = Field(min_length=5, max_length=1000)
+    geography: str | None = Field(default=None, max_length=200)
+    product_name: str | None = Field(default=None, max_length=160)
+    product_description: str | None = Field(default=None, max_length=3000)
+    product_category: str | None = Field(default=None, max_length=160)
+    ideal_customer: str | None = Field(default=None, max_length=2000)
+    company_sizes: answer_lines(10)
+    customer_geography: answer_lines(10)
+    buyer_roles: answer_lines(12)
+    segment: str | None = Field(default=None, max_length=500)
+    problem: str | None = Field(default=None, max_length=2000)
+    urgency: str | None = Field(default=None, max_length=1000)
+    alternatives: answer_lines(20)
+    existing_customers: answer_lines(20)
+    existing_demand: answer_lines(20)
+    previous_marketing: answer_lines(20)
+    testimonials: answer_lines(20)
+    traction: answer_lines(20)
+    other_evidence: answer_lines(20)
+    pricing: str | None = Field(default=None, max_length=500)
+    business_model: str | None = Field(default=None, max_length=500)
+    channels: answer_lines(20)
+    assets: answer_lines(20)
+    team: answer_lines(20)
+    budget: str | None = Field(default=None, max_length=500)
+    geographic_constraints: answer_lines(20)
+    brand_constraints: answer_lines(20)
+    budget_constraints: answer_lines(20)
+    regulatory_constraints: answer_lines(20)
+    operational_constraints: answer_lines(20)
+    desired_outcome: str | None = Field(default=None, max_length=2000)
+    marketing_stage: Annotated[
+        MarketingStage,
+        BeforeValidator(normalize_marketing_stage),
+        Field(default="starting_from_zero"),
+    ] = "starting_from_zero"
 
 
 class Icp(BaseModel):
@@ -140,7 +191,7 @@ class ProgramState(BaseModel):
     company_research: dict | None = None
     research_provider: str | None = None
     research_error: str | None = None
-    company_context: CompanyContext | None = None
+    company_context: CompanyConfirm | None = None
     strategy_draft: StrategyInput | None = None
     strategy: StrategyInput | None = None
     approval_policy: ApprovalPolicy = Field(default_factory=ApprovalPolicy)
@@ -170,11 +221,14 @@ class CalibrationCandidate(BaseModel):
     draft_id: str | None = None
 
 
-class OnboardingView(BaseModel):
+class OnboardingView(RouteState):
+    """The onboarding projection plus the initial route from the saved context."""
+
     program: ProgramState | None
     next_step: str
     sample: list[CalibrationCandidate]
     confidence_basis: str = "Existing lead_score only; not a verified ICP fit score."
+    onboarding_complete: bool = False
 
 
 def _now() -> str:
@@ -256,7 +310,15 @@ def _view(program: ProgramState | None) -> OnboardingView:
                 buyer_lead_id=program.buyer_leads.get(lead_id),
                 draft_id=program.draft_ids.get(lead_id),
             ))
-    return OnboardingView(program=program, next_step=_next_step(program), sample=sample)
+    return OnboardingView(
+        program=program,
+        next_step=_next_step(program),
+        sample=sample,
+        onboarding_complete=bool(program and program.activated_at),
+        # The route is derived from the canonical context, never from the
+        # onboarding program's own fields, so there is one decision point.
+        **stored_route_state().model_dump(),
+    )
 
 
 @read_router.get("/onboarding", response_model=OnboardingView)
@@ -364,12 +426,21 @@ def research_company():
 
 
 @write_router.post("/company/confirm", response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])
-def confirm_company(payload: CompanyContext):
+def confirm_company(payload: CompanyConfirm):
     program = _required()
     requested = normalize_company_domain(str(program.company.website))
     confirmed = normalize_company_domain(str(payload.website))
     if requested != confirmed:
         raise HTTPException(422, "confirmed website must match the company being researched")
+    # Confirming the company is the one point where onboarding becomes the
+    # canonical company context, so the canonical record is written here.
+    try:
+        save_company_context(context_from_onboarding(
+            start=program.company.model_dump(mode="json"),
+            confirm=payload.model_dump(mode="json"),
+        ))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     program.company_context = payload
     program.strategy_draft = None
     program.status = "company_confirmed"

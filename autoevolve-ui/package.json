@@ -13,6 +13,8 @@
     "test:e2e:workflows": "playwright test --config playwright.workflows.config.ts",
     "test:e2e:sales-workflow": "playwright test --config playwright.sales.config.ts",
     "test:e2e:onboarding": "playwright test --config playwright.onboarding.config.ts",
+    "test:e2e:company-context": "playwright test --config playwright.company-context.config.ts",
+    "test:e2e:market-validation": "playwright test --config playwright.market-validation.config.ts",
     "generate:api": "../.venv/bin/python ../scripts/export_openapi.py openapi.json && openapi-typescript openapi.json -o src/api/schema.ts"
   },
   "dependencies": {

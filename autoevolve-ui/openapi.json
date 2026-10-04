@@ -499,6 +499,95 @@
         ]
       }
     },
+    "/company/context": {
+      "get": {
+        "tags": [
+          "company-context"
+        ],
+        "summary": "Read Company Context",
+        "operationId": "read_company_context_company_context_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyContextView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "company-context"
+        ],
+        "summary": "Replace Company Context",
+        "description": "Replace the canonical context with the submitted sections.\n\nOmitted fields become explicitly unknown: this is a full replacement, so a\nfounder never keeps a claim they just removed.",
+        "operationId": "replace_company_context_company_context_put",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompanyContextSections"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyContextView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/company/marketing/doctor": {
       "get": {
         "tags": [
@@ -2129,6 +2218,327 @@
         }
       }
     },
+    "/company/marketing/validation/plan": {
+      "post": {
+        "tags": [
+          "market-validation"
+        ],
+        "summary": "Create Validation Plan",
+        "description": "Plan the first market-validation experiment. Nothing is executed.",
+        "operationId": "create_validation_plan_company_marketing_validation_plan_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationPlanRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "market-validation"
+        ],
+        "summary": "Read Validation Plan",
+        "description": "The most recent plan, or 404 when none has been generated yet.",
+        "operationId": "read_validation_plan_company_marketing_validation_plan_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationPlanRecord"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/marketing/validation/workflow": {
+      "get": {
+        "tags": [
+          "market-validation"
+        ],
+        "summary": "Read Governance",
+        "description": "The latest governance decision and the lifecycle it has reached.",
+        "operationId": "read_governance_company_marketing_validation_workflow_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceRecord"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "market-validation"
+        ],
+        "summary": "Create Workflow From Plan",
+        "description": "Validate a plan and, only if governance allows it, create the workflow.\n\nA blocked plan is still persisted with its reasons and creates no workflow,\nso a refusal is auditable rather than a silent no-op.",
+        "operationId": "create_workflow_from_plan_company_marketing_validation_workflow_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/WorkflowFromPlan"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/marketing/validation/workflow/approve": {
+      "post": {
+        "tags": [
+          "market-validation"
+        ],
+        "summary": "Approve Workflow",
+        "description": "Record the founder's approval. Execution stays locked until this exists.",
+        "operationId": "approve_workflow_company_marketing_validation_workflow_approve_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApprovalPayload"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/marketing/validation/workflow/run": {
+      "post": {
+        "tags": [
+          "market-validation"
+        ],
+        "summary": "Run Workflow From Plan",
+        "description": "Run the approved workflow through the existing runner.\n\nThe only authorized action is ``simulate_outreach``: it returns a simulated\nresult and performs no external side effect.",
+        "operationId": "run_workflow_from_plan_company_marketing_validation_workflow_run_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SimulationRun"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/company/sales/doctor": {
       "get": {
         "tags": [
@@ -3442,6 +3852,325 @@
             "HTTPBasic": []
           }
         ]
+      }
+    },
+    "/company/workflows": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Create Workflow",
+        "operationId": "create_workflow_company_workflows_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "List Workflows",
+        "operationId": "list_workflows_company_workflows_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Workflow"
+                  },
+                  "title": "Response List Workflows Company Workflows Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/workflows/{workflow_id}": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Get Workflow",
+        "operationId": "get_workflow_company_workflows__workflow_id__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/workflows/{workflow_id}/run": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Run",
+        "operationId": "run_company_workflows__workflow_id__run_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/WorkflowRunRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/workflows/{workflow_id}/pause": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Pause",
+        "operationId": "pause_company_workflows__workflow_id__pause_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/workflows/{workflow_id}/state": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Get State",
+        "operationId": "get_state_company_workflows__workflow_id__state_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/company/ui/onboarding": {
@@ -6072,7 +6801,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CompanyContext"
+                "$ref": "#/components/schemas/CompanyConfirm"
               }
             }
           }
@@ -6919,6 +7648,17 @@
   },
   "components": {
     "schemas": {
+      "ApprovalPayload": {
+        "properties": {
+          "approved": {
+            "type": "boolean",
+            "title": "Approved",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "ApprovalPayload"
+      },
       "ApprovalPolicy": {
         "properties": {
           "outbound_send_requires_approval": {
@@ -8010,6 +8750,57 @@
         ],
         "title": "CodingTaskRequest"
       },
+      "CommercialHypothesis": {
+        "properties": {
+          "customer": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 3,
+            "title": "Customer"
+          },
+          "problem": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 3,
+            "title": "Problem"
+          },
+          "trigger": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 3,
+            "title": "Trigger"
+          },
+          "offer": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 3,
+            "title": "Offer"
+          },
+          "reason_to_believe": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 3,
+            "title": "Reason To Believe"
+          },
+          "desired_action": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Desired Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "customer",
+          "problem",
+          "trigger",
+          "offer",
+          "reason_to_believe",
+          "desired_action"
+        ],
+        "title": "CommercialHypothesis",
+        "description": "One primary hypothesis, stated as a testable claim."
+      },
       "CompaniesPage": {
         "properties": {
           "items": {
@@ -8044,6 +8835,352 @@
           "metrics"
         ],
         "title": "CompaniesPage"
+      },
+      "CompanyConfirm": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "website": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Website"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 3000,
+            "minLength": 10,
+            "title": "Description"
+          },
+          "industry": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Industry"
+          },
+          "positioning": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 5,
+            "title": "Positioning"
+          },
+          "offer_summary": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 5,
+            "title": "Offer Summary"
+          },
+          "geography": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geography"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "product_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Description"
+          },
+          "product_category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Category"
+          },
+          "ideal_customer": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ideal Customer"
+          },
+          "company_sizes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Company Sizes"
+          },
+          "customer_geography": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Customer Geography"
+          },
+          "buyer_roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Buyer Roles"
+          },
+          "segment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "urgency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Urgency"
+          },
+          "alternatives": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Alternatives"
+          },
+          "existing_customers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Existing Customers"
+          },
+          "existing_demand": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Existing Demand"
+          },
+          "previous_marketing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Previous Marketing"
+          },
+          "testimonials": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Testimonials"
+          },
+          "traction": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Traction"
+          },
+          "other_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Other Evidence"
+          },
+          "pricing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing"
+          },
+          "business_model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Model"
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Channels"
+          },
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Assets"
+          },
+          "team": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Team"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget"
+          },
+          "geographic_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Geographic Constraints"
+          },
+          "brand_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Brand Constraints"
+          },
+          "budget_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Budget Constraints"
+          },
+          "regulatory_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Regulatory Constraints"
+          },
+          "operational_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Operational Constraints"
+          },
+          "desired_outcome": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desired Outcome"
+          },
+          "marketing_stage": {
+            "type": "string",
+            "const": "starting_from_zero",
+            "title": "Marketing Stage",
+            "default": "starting_from_zero"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "website",
+          "description",
+          "industry",
+          "positioning",
+          "offer_summary"
+        ],
+        "title": "CompanyConfirm",
+        "description": "Founder-confirmed company answers from the research/confirm step.\n\nThe first six fields stay required because the existing flow depends on them.\nEverything else is optional on purpose: an answer the founder does not have\nmust stay unknown rather than be invented. These values are projected onto\nthe canonical company context (core.company_context), not stored twice."
       },
       "CompanyContact": {
         "properties": {
@@ -8098,54 +9235,189 @@
       },
       "CompanyContext": {
         "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
-            "title": "Name"
+          "company": {
+            "$ref": "#/components/schemas/CompanyFacts"
           },
-          "website": {
-            "type": "string",
-            "maxLength": 2083,
-            "minLength": 1,
-            "format": "uri",
-            "title": "Website"
+          "product": {
+            "$ref": "#/components/schemas/ProductFacts"
           },
-          "description": {
-            "type": "string",
-            "maxLength": 3000,
-            "minLength": 10,
-            "title": "Description"
+          "customer": {
+            "$ref": "#/components/schemas/CustomerFacts"
           },
-          "industry": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
-            "title": "Industry"
+          "market": {
+            "$ref": "#/components/schemas/MarketFacts"
           },
-          "positioning": {
-            "type": "string",
-            "maxLength": 1000,
-            "minLength": 5,
-            "title": "Positioning"
+          "evidence": {
+            "$ref": "#/components/schemas/EvidenceFacts"
           },
-          "offer_summary": {
+          "offer": {
+            "$ref": "#/components/schemas/OfferFacts"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourceFacts"
+          },
+          "constraints": {
+            "$ref": "#/components/schemas/ConstraintFacts"
+          },
+          "objective": {
+            "$ref": "#/components/schemas/ObjectiveFacts"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContextState"
+          },
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version",
+            "default": 1
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 60,
+            "title": "Updated At"
+          },
+          "status": {
             "type": "string",
-            "maxLength": 1000,
-            "minLength": 5,
-            "title": "Offer Summary"
+            "enum": [
+              "context_complete",
+              "context_incomplete"
+            ],
+            "title": "Status",
+            "default": "context_incomplete"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing"
+          }
+        },
+        "type": "object",
+        "title": "CompanyContext",
+        "description": "The canonical company context.\n\nEvery field is optional and every field is normalized on the way in, so this\nobject can be built from raw onboarding answers, from an API payload, or from\nthe stored record without behaving differently."
+      },
+      "CompanyContextSections": {
+        "properties": {
+          "company": {
+            "$ref": "#/components/schemas/CompanyFacts"
+          },
+          "product": {
+            "$ref": "#/components/schemas/ProductFacts"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerFacts"
+          },
+          "market": {
+            "$ref": "#/components/schemas/MarketFacts"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/EvidenceFacts"
+          },
+          "offer": {
+            "$ref": "#/components/schemas/OfferFacts"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourceFacts"
+          },
+          "constraints": {
+            "$ref": "#/components/schemas/ConstraintFacts"
+          },
+          "objective": {
+            "$ref": "#/components/schemas/ObjectiveFacts"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContextState"
+          }
+        },
+        "type": "object",
+        "title": "CompanyContextSections",
+        "description": "The founder-confirmed facts, grouped the way later consumers read them."
+      },
+      "CompanyContextView": {
+        "properties": {
+          "marketing_stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "starting_from_zero"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marketing Stage"
+          },
+          "next_stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "market_validation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Stage"
+          },
+          "route_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Label"
+          },
+          "route_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Summary"
+          },
+          "routing_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routing Error"
+          },
+          "context": {
+            "$ref": "#/components/schemas/CompanyContext"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "context_complete",
+              "context_incomplete"
+            ],
+            "title": "Status"
           }
         },
         "type": "object",
         "required": [
-          "name",
-          "website",
-          "description",
-          "industry",
-          "positioning",
-          "offer_summary"
+          "context",
+          "status"
         ],
-        "title": "CompanyContext"
+        "title": "CompanyContextView",
+        "description": "The founder's canonical context plus the route resolved from its state."
       },
       "CompanyDetail": {
         "properties": {
@@ -8382,6 +9654,60 @@
           "contacts"
         ],
         "title": "CompanyDetail"
+      },
+      "CompanyFacts": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 120,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 3000,
+            "title": "Description"
+          },
+          "website": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website"
+          },
+          "geography": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 200,
+            "title": "Geography"
+          }
+        },
+        "type": "object",
+        "title": "CompanyFacts",
+        "description": "Who the company is."
       },
       "CompanyMetrics": {
         "properties": {
@@ -8730,6 +10056,53 @@
           "has_profile"
         ],
         "title": "CompanySummary"
+      },
+      "ConstraintFacts": {
+        "properties": {
+          "geographic": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Geographic"
+          },
+          "brand": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Brand"
+          },
+          "budget": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Budget"
+          },
+          "regulatory": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Regulatory"
+          },
+          "operational": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Operational"
+          }
+        },
+        "type": "object",
+        "title": "ConstraintFacts",
+        "description": "Limits a future workflow must respect."
       },
       "Contact": {
         "properties": {
@@ -9457,6 +10830,80 @@
         ],
         "title": "ContentView"
       },
+      "ContextState": {
+        "properties": {
+          "marketing_stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "starting_from_zero"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marketing Stage"
+          }
+        },
+        "type": "object",
+        "title": "ContextState",
+        "description": "Where the company starts from. Phase 1 records the stage only."
+      },
+      "CustomerFacts": {
+        "properties": {
+          "ideal_customer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 2000,
+            "title": "Ideal Customer"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 200,
+            "title": "Industry"
+          },
+          "company_size": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Company Size"
+          },
+          "geography": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Geography"
+          },
+          "buyer_roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Buyer Roles"
+          }
+        },
+        "type": "object",
+        "title": "CustomerFacts",
+        "description": "Who buys."
+      },
       "DraftRequest": {
         "properties": {
           "candidate_lead_id": {
@@ -9553,6 +11000,92 @@
         ],
         "title": "EventSummary"
       },
+      "EvidenceFacts": {
+        "properties": {
+          "existing_customers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Existing Customers"
+          },
+          "existing_demand": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Existing Demand"
+          },
+          "previous_marketing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Previous Marketing"
+          },
+          "testimonials": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Testimonials"
+          },
+          "traction": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Traction"
+          },
+          "other": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Other"
+          }
+        },
+        "type": "object",
+        "title": "EvidenceFacts",
+        "description": "Proof the founder already has. Empty lists mean \"none yet\", not \"none exist\"."
+      },
+      "EvidenceLedger": {
+        "properties": {
+          "known_facts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 40,
+            "title": "Known Facts"
+          },
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 40,
+            "title": "Assumptions"
+          },
+          "unknowns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 40,
+            "title": "Unknowns"
+          }
+        },
+        "type": "object",
+        "title": "EvidenceLedger",
+        "description": "Facts the founder gave, assumptions we made, and what we still need."
+      },
       "Feedback": {
         "properties": {
           "rating": {
@@ -9636,6 +11169,179 @@
         ],
         "title": "FeedbackEntry"
       },
+      "GovernanceLimits": {
+        "properties": {
+          "max_spend_usd": {
+            "type": "number",
+            "title": "Max Spend Usd",
+            "default": 0.0
+          },
+          "max_actions": {
+            "type": "integer",
+            "title": "Max Actions",
+            "default": 1
+          },
+          "max_outreach_contacts": {
+            "type": "integer",
+            "title": "Max Outreach Contacts",
+            "default": 50
+          },
+          "max_duration_days": {
+            "type": "integer",
+            "title": "Max Duration Days",
+            "default": 30
+          }
+        },
+        "type": "object",
+        "title": "GovernanceLimits",
+        "description": "Caps the operator has agreed to. Defaults refuse anything costly."
+      },
+      "GovernanceRecord": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "blocked"
+            ],
+            "title": "Status"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "required_approval": {
+            "type": "boolean",
+            "title": "Required Approval",
+            "default": true
+          },
+          "resolved_actions": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedAction"
+            },
+            "type": "array",
+            "title": "Resolved Actions"
+          },
+          "grounding": {
+            "$ref": "#/components/schemas/GroundingReport"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/GovernanceLimits"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Id"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "executed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executed At"
+          },
+          "execution": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution"
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "blocked",
+              "validated",
+              "workflow_created",
+              "approved",
+              "executed"
+            ],
+            "title": "Lifecycle",
+            "default": "validated"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "plan_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "GovernanceRecord",
+        "description": "A persisted governance decision plus the lifecycle it has reached."
+      },
+      "GroundingReport": {
+        "properties": {
+          "checked_facts": {
+            "type": "integer",
+            "title": "Checked Facts",
+            "default": 0
+          },
+          "moved_to_assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Moved To Assumptions"
+          }
+        },
+        "type": "object",
+        "title": "GroundingReport",
+        "description": "What the grounding rule did, so the demotion is never silent."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -9651,6 +11357,63 @@
       },
       "HomeView": {
         "properties": {
+          "marketing_stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "starting_from_zero"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marketing Stage"
+          },
+          "next_stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "market_validation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Stage"
+          },
+          "route_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Label"
+          },
+          "route_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Summary"
+          },
+          "routing_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routing Error"
+          },
           "contacts_total": {
             "type": "integer",
             "title": "Contacts Total"
@@ -10463,6 +12226,106 @@
         ],
         "title": "ManualPostSessionRequest"
       },
+      "MarketFacts": {
+        "properties": {
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 200,
+            "title": "Market"
+          },
+          "segment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 500,
+            "title": "Segment"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 2000,
+            "title": "Problem"
+          },
+          "urgency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 1000,
+            "title": "Urgency"
+          },
+          "alternatives": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Alternatives"
+          }
+        },
+        "type": "object",
+        "title": "MarketFacts",
+        "description": "The market, the problem, and what else is out there."
+      },
+      "MarketView": {
+        "properties": {
+          "target_customer": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 3,
+            "title": "Target Customer"
+          },
+          "problem": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 3,
+            "title": "Problem"
+          },
+          "trigger": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 3,
+            "title": "Trigger"
+          },
+          "alternatives": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 3,
+            "title": "Alternatives"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_customer",
+          "problem",
+          "trigger",
+          "alternatives"
+        ],
+        "title": "MarketView",
+        "description": "Who, what problem, why now, and what they do instead."
+      },
       "MarketingOrgActionRecord": {
         "properties": {
           "id": {
@@ -10851,8 +12714,139 @@
         ],
         "title": "MeetingsPage"
       },
+      "ObjectiveFacts": {
+        "properties": {
+          "primary_goal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 1000,
+            "title": "Primary Goal"
+          },
+          "desired_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 2000,
+            "title": "Desired Outcome"
+          }
+        },
+        "type": "object",
+        "title": "ObjectiveFacts",
+        "description": "The business outcome the founder is working towards."
+      },
+      "OfferFacts": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 2000,
+            "title": "Description"
+          },
+          "pricing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 500,
+            "title": "Pricing"
+          },
+          "business_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 500,
+            "title": "Business Model"
+          }
+        },
+        "type": "object",
+        "title": "OfferFacts",
+        "description": "The commercial offer."
+      },
       "OnboardingView": {
         "properties": {
+          "marketing_stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "starting_from_zero"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marketing Stage"
+          },
+          "next_stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "market_validation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Stage"
+          },
+          "route_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Label"
+          },
+          "route_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Summary"
+          },
+          "routing_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routing Error"
+          },
           "program": {
             "anyOf": [
               {
@@ -10878,6 +12872,11 @@
             "type": "string",
             "title": "Confidence Basis",
             "default": "Existing lead_score only; not a verified ICP fit score."
+          },
+          "onboarding_complete": {
+            "type": "boolean",
+            "title": "Onboarding Complete",
+            "default": false
           }
         },
         "type": "object",
@@ -10886,7 +12885,8 @@
           "next_step",
           "sample"
         ],
-        "title": "OnboardingView"
+        "title": "OnboardingView",
+        "description": "The onboarding projection plus the initial route from the saved context."
       },
       "OrgCapabilitiesRequest": {
         "properties": {
@@ -11128,6 +13128,188 @@
         ],
         "title": "PlanCreate"
       },
+      "PlanLimits": {
+        "properties": {
+          "max_spend_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Spend Usd"
+          },
+          "max_outreach_contacts": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Outreach Contacts"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "duration_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Days"
+          },
+          "target_events": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Events"
+          },
+          "requires_approval": {
+            "type": "boolean",
+            "title": "Requires Approval",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "PlanLimits",
+        "description": "Limits the plan proposes. A later phase enforces them before any action."
+      },
+      "PlanProvenance": {
+        "properties": {
+          "generated_by": {
+            "type": "string",
+            "title": "Generated By",
+            "default": "hermes"
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "prompt_path": {
+            "type": "string",
+            "title": "Prompt Path"
+          },
+          "context_schema_version": {
+            "type": "integer",
+            "title": "Context Schema Version",
+            "default": 1
+          },
+          "context_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Updated At"
+          },
+          "model_route": {
+            "type": "string",
+            "title": "Model Route"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "model_provider": {
+            "type": "string",
+            "title": "Model Provider"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt_version",
+          "prompt_path",
+          "model_route",
+          "model_name",
+          "model_provider"
+        ],
+        "title": "PlanProvenance",
+        "description": "Where the plan came from, so a stored plan is never anonymous."
+      },
+      "ProductFacts": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 160,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 3000,
+            "title": "Description"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 160,
+            "title": "Category"
+          },
+          "value_proposition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 2000,
+            "title": "Value Proposition"
+          }
+        },
+        "type": "object",
+        "title": "ProductFacts",
+        "description": "What the company sells."
+      },
       "ProgramState": {
         "properties": {
           "id": {
@@ -11178,7 +13360,7 @@
           "company_context": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CompanyContext"
+                "$ref": "#/components/schemas/CompanyConfirm"
               },
               {
                 "type": "null"
@@ -11808,6 +13990,78 @@
           "requested"
         ],
         "title": "ResearchActionResult"
+      },
+      "ResolvedAction": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "step_id",
+          "action",
+          "rationale"
+        ],
+        "title": "ResolvedAction",
+        "description": "One workflow step governance is willing to authorize."
+      },
+      "ResourceFacts": {
+        "properties": {
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Channels"
+          },
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Assets"
+          },
+          "team": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Team"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 500,
+            "title": "Budget"
+          }
+        },
+        "type": "object",
+        "title": "ResourceFacts",
+        "description": "What is already available to market with."
       },
       "SalesDraftRecord": {
         "properties": {
@@ -12513,6 +14767,21 @@
         ],
         "title": "SetupStepPayload"
       },
+      "SimulationRun": {
+        "properties": {
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Targets"
+          }
+        },
+        "type": "object",
+        "title": "SimulationRun",
+        "description": "Simulation-only execution request. `targets` are identifiers, never people."
+      },
       "SpecCreate": {
         "properties": {
           "script_text": {
@@ -12565,6 +14834,91 @@
           "project_id"
         ],
         "title": "SpecCreate"
+      },
+      "StepExecution": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status"
+          },
+          "output": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics"
+          },
+          "artifacts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Artifacts"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "next_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Step"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "type": "string",
+            "title": "Finished At"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "step_id",
+          "action",
+          "status",
+          "started_at",
+          "finished_at",
+          "duration_ms"
+        ],
+        "title": "StepExecution",
+        "description": "A persisted StepResult plus the observability envelope for it."
       },
       "StrategyInput": {
         "properties": {
@@ -12685,6 +15039,30 @@
         ],
         "title": "StrategyInput"
       },
+      "SuccessMetric": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "engagement",
+              "leads",
+              "qualified_leads",
+              "meetings",
+              "conversion"
+            ],
+            "title": "Type",
+            "default": "leads"
+          },
+          "target": {
+            "type": "number",
+            "title": "Target",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SuccessMetric"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -12724,6 +15102,422 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "ValidationPlan": {
+        "properties": {
+          "workflow_template": {
+            "type": "string",
+            "const": "market_validation_v1",
+            "title": "Workflow Template",
+            "default": "market_validation_v1"
+          },
+          "hypothesis": {
+            "$ref": "#/components/schemas/CommercialHypothesis"
+          },
+          "market": {
+            "$ref": "#/components/schemas/MarketView"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationStrategy"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/EvidenceLedger"
+          },
+          "reasoning": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 20,
+            "title": "Reasoning"
+          },
+          "next_action": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 5,
+            "title": "Next Action"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/PlanLimits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hypothesis",
+          "market",
+          "validation",
+          "evidence",
+          "reasoning",
+          "next_action"
+        ],
+        "title": "ValidationPlan",
+        "description": "The structured output of one market-validation pass. A plan, not a run."
+      },
+      "ValidationPlanRecord": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "const": "planned",
+            "title": "Status",
+            "default": "planned"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ValidationPlan"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/PlanProvenance"
+          },
+          "grounding": {
+            "$ref": "#/components/schemas/GroundingReport"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "plan",
+          "provenance",
+          "created_at"
+        ],
+        "title": "ValidationPlanRecord",
+        "description": "A persisted plan. ``planned`` never implies the experiment happened."
+      },
+      "ValidationStrategy": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Method"
+          },
+          "channel": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Channel"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 1200,
+            "minLength": 3,
+            "title": "Message"
+          },
+          "offer": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 3,
+            "title": "Offer"
+          },
+          "call_to_action": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Call To Action"
+          },
+          "validation_event": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 3,
+            "title": "Validation Event"
+          },
+          "success_threshold": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 3,
+            "title": "Success Threshold"
+          },
+          "time_window": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Time Window"
+          }
+        },
+        "type": "object",
+        "required": [
+          "method",
+          "channel",
+          "message",
+          "offer",
+          "call_to_action",
+          "validation_event",
+          "success_threshold",
+          "time_window"
+        ],
+        "title": "ValidationStrategy",
+        "description": "The smallest experiment that can produce the validation event.\n\n``method`` is free text on purpose: the candidate list is a set of examples,\nnot a menu, so the model may justify a method nobody enumerated."
+      },
+      "Workflow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "objective": {
+            "type": "string",
+            "title": "Objective",
+            "default": ""
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/WorkflowTrigger"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStep"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "success_metric": {
+            "$ref": "#/components/schemas/SuccessMetric"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WorkflowState"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Workflow"
+      },
+      "WorkflowCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "objective": {
+            "type": "string",
+            "title": "Objective",
+            "default": ""
+          },
+          "trigger": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Trigger"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "success_metric": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Success Metric"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "WorkflowCreateRequest"
+      },
+      "WorkflowEvaluation": {
+        "properties": {
+          "winner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner"
+          },
+          "losers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Losers"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WorkflowEvaluation",
+        "description": "The evolution hook (implementation.md \u00a712)."
+      },
+      "WorkflowFromPlan": {
+        "properties": {
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          }
+        },
+        "type": "object",
+        "title": "WorkflowFromPlan",
+        "description": "Optional plan to govern. Defaults to the most recent generated plan."
+      },
+      "WorkflowRunRequest": {
+        "properties": {
+          "resume": {
+            "type": "boolean",
+            "title": "Resume",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "WorkflowRunRequest"
+      },
+      "WorkflowState": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "ready",
+              "running",
+              "paused",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "default": "draft"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/StepExecution"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WorkflowState"
+      },
+      "WorkflowStep": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "action"
+        ],
+        "title": "WorkflowStep"
+      },
+      "WorkflowTrigger": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "schedule",
+              "event"
+            ],
+            "title": "Type",
+            "default": "manual"
+          },
+          "config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WorkflowTrigger"
       },
       "WorkspaceOrg": {
         "properties": {

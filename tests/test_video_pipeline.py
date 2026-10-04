@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from app.api import app
 from core import state, video_store
 from services.video import pipeline as video_pipeline
+from services.video.job_builder import MAX_FRAMES_PER_RENDER
 
 CORRIDOR = Path(__file__).resolve().parent.parent / "scripts" / "indataflow" / "corridor.md"
 
@@ -109,29 +110,56 @@ class VideoPipelineTests(unittest.TestCase):
         self.assertEqual(len(set(outputs)), 6)
         self.assertTrue(all(path.startswith("videos/indataflow-corridor/shots/") for path in outputs))
 
-    def test_full_render_mode_skips_clip_division(self):
+    def test_full_render_mode_chunks_to_the_model_window(self):
         result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
         spec, plan = result["spec"], result["plan"]
         jobs = video_pipeline.build_render_jobs(spec, plan, render_mode="full")
-        self.assertEqual(len(jobs), 1)
-        job = jobs[0]
-        self.assertEqual(job["shotId"], "full")
-        self.assertEqual(job["renderer"], "hunyuan")
-        self.assertEqual(job["frames"], 50 * 24)
-        self.assertEqual(job["seed"], 42)
-        self.assertTrue(job["prompt"])
-        self.assertEqual(job["outputPath"], "videos/indataflow-corridor/full.mp4")
+        # One deliverable, but the model is only ever asked for a windowed chunk.
+        self.assertGreater(len(jobs), 1)
+        self.assertEqual(sum(job["frames"] for job in jobs), 50 * 24)
+        for job in jobs:
+            self.assertEqual(job["renderer"], "hunyuan")
+            self.assertLessEqual(job["frames"], MAX_FRAMES_PER_RENDER)
+            self.assertIsNotNone(job["seed"])
+            self.assertTrue(job["prompt"])
+            self.assertTrue(job["outputPath"].startswith("videos/indataflow-corridor/chunks/"))
+        # Reproducible and distinct per chunk, and assembly-ordered.
+        self.assertEqual(len({job["seed"] for job in jobs}), len(jobs))
+        self.assertEqual(
+            [job["assembly"]["order"] for job in jobs], list(range(len(jobs)))
+        )
+        self.assertEqual(
+            {job["assembly"]["final_path"] for job in jobs},
+            {"videos/indataflow-corridor/full.mp4"},
+        )
         video_pipeline.validate_jobs(spec, plan, jobs, render_mode="full")
+
+    def test_full_render_mode_chunk_count_never_requests_out_of_distribution(self):
+        result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
+        spec, plan = result["spec"], result["plan"]
+        for total_seconds in (5, 10, 15, 30, 60, 180):
+            spec = {**spec, "format": {**spec["format"], "durationSeconds": total_seconds}}
+            jobs = video_pipeline.build_render_jobs(spec, plan, render_mode="full")
+            self.assertTrue(all(job["frames"] <= MAX_FRAMES_PER_RENDER for job in jobs))
+            self.assertEqual(
+                sum(job["frames"] for job in jobs), round(total_seconds * 24)
+            )
+            video_pipeline.validate_jobs(spec, plan, jobs, render_mode="full")
 
     def test_queue_full_mode(self):
         result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
         queued = video_pipeline.queue_shot_plan(result["plan"]["id"], render_mode="full")
         self.assertFalse(queued["already_queued"])
-        self.assertEqual(queued["counts"]["total"], 1)
-        self.assertEqual(queued["counts"]["by_renderer"], {"hunyuan": 1})
         stored = video_store.list_jobs(shot_plan_id=result["plan"]["id"])
-        self.assertEqual(len(stored), 1)
-        self.assertEqual(stored[0]["shot_id"], "full")
+        self.assertEqual(len(stored), len(stored) and len(stored))
+        self.assertGreater(len(stored), 1)
+        self.assertEqual(queued["counts"]["total"], len(stored))
+        self.assertEqual(queued["counts"]["by_renderer"], {"hunyuan": len(stored)})
+        # Ordered chunk sequence that reassembles into one deliverable.
+        self.assertEqual(
+            [job["shot_id"] for job in stored],
+            [f"chunk_{index + 1:02d}" for index in range(len(stored))],
+        )
 
     def test_invalid_render_mode_rejected(self):
         result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
@@ -150,7 +178,9 @@ class VideoPipelineTests(unittest.TestCase):
             headers=self.token_headers,
         )
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()["counts"]["total"], 1)
+        counts = response.json()["counts"]
+        self.assertGreater(counts["total"], 1)
+        self.assertEqual(counts["by_renderer"], {"hunyuan": counts["total"]})
 
         result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
         response = self.client.post(
@@ -162,12 +192,14 @@ class VideoPipelineTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_launch_no_submit_reports_readiness(self):
-        # Product default is the full-video render: one job, no clip division.
+        # Product default is the full-video render: one deliverable assembled
+        # from windowed chunks, never one out-of-distribution job.
         report = video_pipeline.launch(
             script_path=str(CORRIDOR), project_id="launch-test", submit=False
         )
         self.assertEqual(report["render_mode"], "full")
-        self.assertEqual(report["counts"]["total"], 1)
+        self.assertGreater(report["counts"]["total"], 1)
+        self.assertEqual(report["counts"]["by_renderer"], {"hunyuan": report["counts"]["total"]})
         self.assertEqual(report["submissions"], [])
         self.assertTrue(report["passed"])
         self.assertEqual(report["recipe"], "footage-plus-graphics")

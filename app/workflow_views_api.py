@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from core import marketing_store, sales_store
+from core.marketing_routing import RouteState, stored_route_state
 from core.state import get_active_org, get_org
 
 router = APIRouter(prefix="/company/ui", tags=["workflow-views"])
@@ -452,7 +453,7 @@ class RecentContact(BaseModel):
     updated_at: str
 
 
-class HomeView(BaseModel):
+class HomeView(RouteState):
     contacts_total: int
     outreach_drafts_total: int
     outreach_approved_total: int
@@ -504,4 +505,6 @@ def home_view():
         "latest_replies": latest_replies,
         "open_provider_incidents": sum(1 for item in incidents if item and item["status"] not in {"resolved", "closed"}),
         "onboarding_status": "not_started" if not program else "activated" if program.get("activated_at") else program.get("status", "setup_started"),
+        # Home shows which initial route the saved company state resolved to.
+        **stored_route_state().model_dump(),
     }

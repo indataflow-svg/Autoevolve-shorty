@@ -3,7 +3,7 @@ import { api, type Credentials } from './client'
 
 export type OnboardingView = components['schemas']['OnboardingView']
 export type CompanyStart = components['schemas']['CompanyStart']
-export type CompanyContext = components['schemas']['CompanyContext']
+export type CompanyConfirm = components['schemas']['CompanyConfirm']
 export type StrategyInput = components['schemas']['StrategyInput']
 export type CalibrationInput = components['schemas']['CalibrationInput']
 export type BuyerRequest = components['schemas']['BuyerRequest']
@@ -17,7 +17,7 @@ const write = (credentials: Credentials, path: string, token: string, body?: unk
 export const onboardingView = (credentials: Credentials) => api<OnboardingView>('/company/ui/onboarding', credentials)
 export const startCompany = (credentials: Credentials, value: CompanyStart, token: string) => write(credentials, '/company', token, value)
 export const researchOwnCompany = (credentials: Credentials, token: string) => write(credentials, '/research-company', token)
-export const confirmCompany = (credentials: Credentials, value: CompanyContext, token: string) => write(credentials, '/company/confirm', token, value)
+export const confirmCompany = (credentials: Credentials, value: CompanyConfirm, token: string) => write(credentials, '/company/confirm', token, value)
 export const suggestStrategy = (credentials: Credentials, token: string) => write(credentials, '/strategy/draft', token)
 export const confirmStrategy = (credentials: Credentials, value: StrategyInput, token: string) => write(credentials, '/strategy', token, value)
 export const searchFirstCompanies = (credentials: Credentials, token: string) => write(credentials, '/search', token)
