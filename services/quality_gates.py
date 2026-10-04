@@ -19,7 +19,12 @@ def run_gates(
     artifacts: dict[str, str] | None = None,
     context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run all quality gates. ``artifacts`` maps shot_id -> local MP4 path."""
+    """Run all quality gates. ``artifacts`` maps shot_id -> local MP4 path.
+
+    Jobs are expected in pipeline (camelCase) shape, as built by
+    :func:`video_pipeline.build_render_jobs`; normalize store rows at the
+    boundary before calling.
+    """
     from services import review
     from services import video_pipeline
 

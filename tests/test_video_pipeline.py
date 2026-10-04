@@ -161,6 +161,54 @@ class VideoPipelineTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
 
+    def test_launch_no_submit_reports_readiness(self):
+        report = video_pipeline.launch(
+            script_path=str(CORRIDOR), project_id="launch-test", submit=False
+        )
+        self.assertEqual(report["counts"]["total"], 6)
+        self.assertEqual(report["submissions"], [])
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["recipe"], "footage-plus-graphics")
+
+    def test_launch_registers_references(self):
+        footage = Path(self.temporary.name) / "indataflow-dashboard-tour.mp4"
+        still = Path(self.temporary.name) / "ops-desk.png"
+        footage.write_bytes(b"\x00" * 16)
+        still.write_bytes(b"\x00" * 16)
+        report = video_pipeline.launch(
+            script_path=str(CORRIDOR), project_id="launch-refs",
+            references=[footage, still], submit=False,
+        )
+        self.assertIn(str(footage), report["references"])
+        self.assertIn(str(still), report["references"])
+        assets = video_store.list_assets(report["spec_id"])
+        self.assertTrue(any(a["path"] == str(footage) for a in assets))
+        plan = video_store.get_shot_plan(report["shot_plan_id"])
+        linked = [s["id"] for s in plan["shots"] if s["reference_assets"]]
+        self.assertTrue(linked)
+
+    def test_launch_rejects_bad_inputs(self):
+        with self.assertRaises(ValueError):
+            video_pipeline.launch(project_id="x", submit=False)
+        with self.assertRaises(ValueError):
+            video_pipeline.launch(
+                brief="b", script_path=str(CORRIDOR), project_id="x", submit=False
+            )
+        with self.assertRaises(ValueError):
+            video_pipeline.launch(
+                script_path=str(CORRIDOR), project_id="x",
+                references=["/nonexistent/ref.mp4"], submit=False,
+            )
+
+    def test_launch_submit_failure_recorded(self):
+        with patch.dict(os.environ, {"RENDER_WORKER_URL": "http://127.0.0.1:1"}):
+            report = video_pipeline.launch(
+                script_path=str(CORRIDOR), project_id="launch-fail", submit=True
+            )
+        failed = [s for s in report["submissions"] if s.get("submitted") and not s.get("ok")]
+        self.assertTrue(failed)
+        self.assertFalse(report["passed"])
+
     def test_broken_timestamps_are_rejected(self):
         parsed = video_pipeline.parse_script("## 0:10–0:05\nBackwards beat.\n", source_name="bad.md")
         spec = video_pipeline.build_spec(parsed, project_id="bad", context={})

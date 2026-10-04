@@ -136,6 +136,48 @@ def command_worker_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def command_launch(args: argparse.Namespace) -> int:
+    from services import video_pipeline
+
+    brief = args.brief
+    if args.brief_file:
+        brief_path = Path(args.brief_file)
+        if not brief_path.is_file():
+            print(f"error: brief file not found: {brief_path}", file=sys.stderr)
+            return 2
+        brief = brief_path.read_text(encoding="utf-8")
+    try:
+        report = video_pipeline.launch(
+            brief=brief,
+            script_path=args.script,
+            project_id=args.project_id,
+            campaign_id=args.campaign_id,
+            aspect_ratio=args.format,
+            fps=args.fps,
+            references=args.reference,
+            submit=not args.no_submit,
+            timeout_seconds=args.timeout,
+        )
+    except (ValueError, RuntimeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"Spec {report['spec_id']} / plan {report['shot_plan_id']} / recipe {report['recipe']}")
+    print(f"Queued: {report['counts']['total']} jobs")
+    for item in report["submissions"]:
+        if not item.get("submitted"):
+            print(f"  {item['job_id']}: skipped ({item.get('reason')})")
+        elif item.get("ok"):
+            print(f"  {item['job_id']}: rendered -> {item.get('output')}")
+        else:
+            print(f"  {item['job_id']}: FAILED ({item.get('kind')})")
+    print(f"Gates passed: {report['passed']}")
+    print(f"Launch {'PASSED' if report['passed'] else 'did not pass'}")
+    if args.manifest_out:
+        Path(args.manifest_out).write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"report written: {args.manifest_out}")
+    return 0 if report["passed"] else 1
+
+
 def command_direct(args: argparse.Namespace) -> int:
     from services import video_pipeline
 
@@ -213,6 +255,22 @@ def main(argv: list[str] | None = None) -> int:
     direct.add_argument("--fps", type=int, default=24)
     direct.add_argument("--manifest-out", default=None)
     direct.set_defaults(func=command_direct)
+
+    launch = sub.add_parser("launch", help="run the product-launch pipeline end to end (motion-designer.md)")
+    launch.add_argument("--brief", default=None)
+    launch.add_argument("--brief-file", default=None)
+    launch.add_argument("--script", default=None)
+    launch.add_argument("--project-id", required=True)
+    launch.add_argument("--campaign-id", default=None)
+    launch.add_argument("--format", default="9:16", choices=["4:5", "9:16", "16:9", "1:1"])
+    launch.add_argument("--fps", type=int, default=24)
+    launch.add_argument("--reference", action="append", default=[],
+                        help="product footage/screenshot to register (repeatable)")
+    launch.add_argument("--no-submit", action="store_true",
+                        help="stop after queueing; do not submit hunyuan jobs")
+    launch.add_argument("--timeout", type=int, default=None)
+    launch.add_argument("--manifest-out", default=None)
+    launch.set_defaults(func=command_launch)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

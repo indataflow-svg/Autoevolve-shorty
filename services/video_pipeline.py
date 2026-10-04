@@ -1082,11 +1082,15 @@ def plan_video(
     aspect_ratio: str = "9:16",
     fps: int = 24,
     use_ai: bool = True,
+    extra_assets: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Parse a script file, validate, plan and persist spec + shot plan.
 
     Render jobs are built and validated but NOT enqueued; call
     :func:`queue_shot_plan` (or the ``queue`` CLI command) to enqueue.
+    ``extra_assets`` (e.g. user-supplied product footage) are registered
+    alongside script-derived assets before shot planning, so reference
+    resolution sees them.
     """
     from core import video_store
 
@@ -1113,6 +1117,8 @@ def plan_video(
     ])
     recipe_id, recipe = select_recipe(brief_text)
     bible = default_bible(brand_name=spec_payload.get("brand", {}).get("name", "InDataFlow"))
+    if extra_assets:
+        spec_payload["assets"] = (spec_payload.get("assets") or []) + list(extra_assets)
     return _finalize_directed_plan(
         spec_payload, context, use_ai=use_ai,
         recipe_id=recipe_id, recipe=recipe, bible=bible,
@@ -1388,3 +1394,111 @@ def _env_int(name: str, default: int) -> int:
         return max(1, int(os.getenv(name, "") or default))
     except ValueError:
         return default
+
+
+def reference_asset(path: str | Path) -> dict[str, Any]:
+    """Build a product-reference registry entry for a user-supplied file."""
+    file_path = Path(path)
+    if not file_path.is_file():
+        raise ValueError(f"reference not found: {path}")
+    return {
+        "id": f"ref_{file_path.stem[:24]}",
+        "type": "product_capture",
+        "path": str(file_path),
+        "purpose": f"approved product reference: {file_path.name}",
+        "identity_priority": 10,
+        "preserve": ["product_shape", "product_color", "typography"],
+        "allowed_changes": ["crop", "caption overlay"],
+    }
+
+
+def launch(
+    *,
+    brief: str | None = None,
+    script_path: str | Path | None = None,
+    project_id: str,
+    campaign_id: str | None = None,
+    aspect_ratio: str = "9:16",
+    fps: int = 24,
+    references: list[str | Path] | None = None,
+    submit: bool = True,
+    timeout_seconds: int | None = None,
+) -> dict[str, Any]:
+    """Run the product-launch pipeline end to end (motion-designer.md).
+
+    Plan (brief or script) -> queue -> submit hunyuan jobs -> gates, then
+    return the launch report. Non-hunyuan jobs are recorded pending (their
+    renderers are not dispatched in this phase). Exactly one of ``brief``
+    and ``script_path`` is required.
+    """
+    from core import video_store
+    from services import quality_gates, renderers
+
+    if bool(brief) == bool(script_path):
+        raise ValueError("launch needs exactly one of brief= or script_path=")
+    extra_assets = [reference_asset(path) for path in (references or [])]
+    if brief is not None:
+        planned = direct_brief(brief, project_id=project_id, aspect_ratio=aspect_ratio, fps=fps)
+        if extra_assets:
+            video_store.register_assets(planned["spec"]["id"], extra_assets)
+            planned["assets"] = video_store.list_assets(planned["spec"]["id"])
+    else:
+        assert script_path is not None
+        planned = plan_video(
+            script_path, project_id=project_id, campaign_id=campaign_id,
+            aspect_ratio=aspect_ratio, fps=fps,
+            extra_assets=extra_assets or None,
+        )
+    plan_id = planned["plan"]["id"]
+    queued = queue_shot_plan(plan_id)
+    submissions: list[dict[str, Any]] = []
+    if submit:
+        for job in queued["queued"]:
+            if job["renderer"] != "hunyuan" or job["status"] != "pending":
+                submissions.append({
+                    "job_id": job["id"], "submitted": False,
+                    "reason": f"renderer {job['renderer']} is not dispatched in this phase",
+                })
+                continue
+            try:
+                completed = renderers.submit_hunyuan_job(job["id"], timeout_seconds=timeout_seconds)
+                result = completed.get("result") or {}
+                submissions.append({
+                    "job_id": job["id"], "submitted": True, "ok": True,
+                    "output": result.get("outputPath"),
+                    "sha256": (result.get("metadata") or {}).get("sha256"),
+                })
+            except renderers.RenderWorkerError as exc:
+                submissions.append({
+                    "job_id": job["id"], "submitted": True, "ok": False,
+                    "kind": exc.kind, "retryable": exc.retryable, "message": str(exc)[:300],
+                })
+    stored_jobs = video_store.list_jobs(shot_plan_id=plan_id)
+    artifacts = {
+        job["shot_id"]: (job.get("result") or {}).get("outputPath")
+        for job in stored_jobs
+        if job["status"] == "completed" and (job.get("result") or {}).get("outputPath")
+    }
+    # Gates take pipeline-shape (camelCase) jobs; normalize at the boundary.
+    gate_jobs = [{
+        "shotId": job.get("shot_id"),
+        "outputPath": job.get("output_path"),
+        "frames": job.get("frames"),
+        "seed": job.get("seed"),
+        "renderer": job.get("renderer"),
+        "prompt": job.get("prompt"),
+    } for job in stored_jobs]
+    gates = quality_gates.run_gates(planned["spec"], planned["plan"], gate_jobs, artifacts=artifacts)
+    submitted_ok = [item.get("ok", True) for item in submissions if item.get("submitted")]
+    return {
+        "spec_id": planned["spec"]["id"],
+        "shot_plan_id": plan_id,
+        "recipe": planned.get("recipe"),
+        "counts": queued["counts"],
+        "already_queued": queued["already_queued"],
+        "references": [asset["path"] for asset in planned.get("assets") or []],
+        "submissions": submissions,
+        "artifacts": artifacts,
+        "gates": gates["gates"],
+        "passed": gates["passed"] and all(submitted_ok),
+    }
