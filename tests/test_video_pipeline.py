@@ -109,6 +109,38 @@ class VideoPipelineTests(unittest.TestCase):
         self.assertEqual(len(set(outputs)), 6)
         self.assertTrue(all(path.startswith("videos/indataflow-corridor/shots/") for path in outputs))
 
+    def test_full_render_mode_skips_clip_division(self):
+        result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
+        spec, plan = result["spec"], result["plan"]
+        jobs = video_pipeline.build_render_jobs(spec, plan, render_mode="full")
+        self.assertEqual(len(jobs), 1)
+        job = jobs[0]
+        self.assertEqual(job["shotId"], "full")
+        self.assertEqual(job["renderer"], "hunyuan")
+        self.assertEqual(job["frames"], 50 * 24)
+        self.assertEqual(job["seed"], 42)
+        self.assertTrue(job["prompt"])
+        self.assertEqual(job["outputPath"], "videos/indataflow-corridor/full.mp4")
+        video_pipeline.validate_jobs(spec, plan, jobs, render_mode="full")
+
+    def test_queue_full_mode(self):
+        result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
+        queued = video_pipeline.queue_shot_plan(result["plan"]["id"], render_mode="full")
+        self.assertFalse(queued["already_queued"])
+        self.assertEqual(queued["counts"]["total"], 1)
+        self.assertEqual(queued["counts"]["by_renderer"], {"hunyuan": 1})
+        stored = video_store.list_jobs(shot_plan_id=result["plan"]["id"])
+        self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[0]["shot_id"], "full")
+
+    def test_invalid_render_mode_rejected(self):
+        result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
+        spec, plan = result["spec"], result["plan"]
+        with self.assertRaises(ValueError):
+            video_pipeline.build_render_jobs(spec, plan, render_mode="everything")
+        with self.assertRaises(ValueError):
+            video_pipeline.queue_shot_plan(result["plan"]["id"], render_mode="everything")
+
     def test_broken_timestamps_are_rejected(self):
         parsed = video_pipeline.parse_script("## 0:10–0:05\nBackwards beat.\n", source_name="bad.md")
         spec = video_pipeline.build_spec(parsed, project_id="bad", context={})
@@ -245,6 +277,26 @@ class VideoPipelineTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["counts"]["total"], 6)
+
+    def test_queue_api_accepts_render_mode(self):
+        result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
+        response = self.client.post(
+            f"/company/video/plans/{result['plan']['id']}/queue",
+            params={"render_mode": "full"},
+            auth=self.auth,
+            headers=self.token_headers,
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["counts"]["total"], 1)
+
+        result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
+        response = self.client.post(
+            f"/company/video/plans/{result['plan']['id']}/queue",
+            params={"render_mode": "everything"},
+            auth=self.auth,
+            headers=self.token_headers,
+        )
+        self.assertEqual(response.status_code, 422)
 
     def test_hunyuan_profile_endpoint(self):
         response = self.client.get("/company/video/hunyuan/profile", auth=self.auth)

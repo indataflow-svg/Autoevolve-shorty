@@ -164,9 +164,11 @@ def create_plan(payload: PlanCreate) -> dict[str, Any]:
 
 
 @action_router.post("/plans/{plan_id}/queue", dependencies=[Depends(verify_founder_action)])
-def queue_plan(plan_id: str) -> dict[str, Any]:
+def queue_plan(plan_id: str, render_mode: str = Query(default="shots", max_length=16)) -> dict[str, Any]:
+    if render_mode not in ("shots", "full"):
+        raise HTTPException(422, "render_mode must be 'shots' or 'full'")
     try:
-        result = video_pipeline.queue_shot_plan(plan_id)
+        result = video_pipeline.queue_shot_plan(plan_id, render_mode=render_mode)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return {"ok": True, **result}

@@ -31,9 +31,26 @@ make video-queue PLAN=<shot-plan-id>
 
 # Lower level equivalents:
 .venv/bin/python scripts/video.py plan --script scripts/indataflow/corridor.md --manifest-out /tmp/manifest.json
-.venv/bin/python scripts/video.py queue <shot-plan-id>
+.venv/bin/python scripts/video.py plan --script scripts/indataflow/corridor.md --mode full --manifest-out /tmp/manifest.json
+.venv/bin/python scripts/video.py queue <shot-plan-id> [--mode shots|full]
 .venv/bin/python scripts/video.py profile   # default Hunyuan render profile
 ```
+
+## Render modes (user-chosen, no automatic clip division)
+
+Queueing decides the job shape; planning always produces the ShotPlan as the
+timing/visual reference. The mode will be a UI dropdown; the API and CLI
+already accept it (`POST /plans/{id}/queue?render_mode=…`,
+`queue --mode …`):
+
+| Mode | Queue holds | Use when |
+| --- | --- | --- |
+| `shots` (default) | one RenderJob per clip | validated path: short jobs fit the ~81-frame worker envelope, per-shot retry, per-shot renderer routing |
+| `full` | a single whole-video Hunyuan job (`shotId: "full"`, `videos/<project>/full.mp4`, frames = total × fps) | the user explicitly wants one render; note it exceeds the validated worker envelope and the worker may reject it |
+
+The UI dropdown calls `POST /company/video/plans/{id}/queue` with
+`render_mode` (`shots`/`full`; anything else is `422`), then the existing
+`GET /company/video/jobs?shot_plan_id=…` lists what was created.
 
 Planning is deterministic. When `OMNIROUTE_API_KEY` is set, the AI layer
 refines shot purposes and visual prompts (and adds continuity notes); when it
