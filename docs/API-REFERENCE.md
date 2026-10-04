@@ -1,14 +1,22 @@
 # AutoEvolve locked API reference
 
-Generated from source by `scripts/gen_api_reference.py` at commit `96d6c8b` on 2026-10-04T05:09:37Z.
+Generated from source by `scripts/gen_api_reference.py` at commit `3b7311b` on 2026-10-04T13:44:46Z.
 
 Every public constant, function, class and method in the shipped packages, with its real signature. Read this as the contract: if a name here disagrees with the code, the code is authoritative and this file must be regenerated.
 
 ## Totals
 
-| modules | public functions | classes | public methods | module constants | HTTP routes | DB tables | CLI verbs |
-|---|---|---|---|---|---|---|
-| 80 | 803 | 153 | 64 | 236 | 163 | 24 | 7 |
+| subsystem | modules | functions | classes | methods | constants |
+|---|---|---|---|---|---|
+| Core state and models | 18 | 174 | 25 | 4 | 54 |
+| Support services | 26 | 93 | 23 | 37 | 57 |
+| Video pipeline package | 7 | 32 | 5 | 0 | 18 |
+| Agents | 8 | 62 | 9 | 0 | 35 |
+| HTTP surface | 17 | 156 | 117 | 0 | 49 |
+| Operations scripts | 13 | 49 | 1 | 25 | 61 |
+| **all** | **89** | **566** | **180** | **66** | **274** |
+
+Plus 169 HTTP routes, 26 database tables and 7 CLI subcommands, listed at the end.
 
 ## Core state and models
 
@@ -22,6 +30,40 @@ Every public constant, function, class and method in the shipped packages, with 
 - `company_public_url() -> str`
 - `company_forms_url() -> str`
 - `company_logo_url() -> str`
+
+### `core/company_context.py`
+
+- const `MARKETING_STAGES`
+- const `SCHEMA_VERSION`
+- const `CONTEXT_ROW_ID`
+- `clean_text(value: Any, *, max_length: int | None=None) -> str | None` — Collapse whitespace and trim. Empty, blank, or non-text input is unknown
+- `clean_lines(value: Any, *, max_items: int | None=None) -> list[str]` — Accept a pasted one-per-line block or a list, dropping blanks and repeats
+- `normalize_website(value: Any) -> str | None` — Return a clean public URL, or raise when the value is not an address
+- `normalize_marketing_stage(value: Any) -> str | None` — Map founder wording onto a known stage, or raise instead of guessing
+- `answer_text(max_length: int) -> Any` — A trimmed free-text field. Blank input becomes unknown, never invented
+- `answer_lines(max_items: int) -> Any` — A bounded list field that accepts a pasted one-per-line block
+- class `CompanyFacts`(BaseModel) — Who the company is
+- class `ProductFacts`(BaseModel) — What the company sells
+- class `CustomerFacts`(BaseModel) — Who buys
+- class `MarketFacts`(BaseModel) — The market, the problem, and what else is out there
+- class `EvidenceFacts`(BaseModel) — Proof the founder already has. Empty lists mean "none yet", not "none exist"
+- class `OfferFacts`(BaseModel) — The commercial offer
+- class `ResourceFacts`(BaseModel) — What is already available to market with
+- class `ConstraintFacts`(BaseModel) — Limits a future workflow must respect
+- class `ObjectiveFacts`(BaseModel) — The business outcome the founder is working towards
+- class `ContextState`(BaseModel) — Where the company starts from. Phase 1 records the stage only
+- const `REQUIRED_GROUPS`
+- `missing_required(context: 'CompanyContextSections') -> list[str]` — Label every required group that is still unknown, in requirement order
+- class `CompanyContextSections`(BaseModel) — The founder-confirmed facts, grouped the way later consumers read them
+- class `CompanyContext`(CompanyContextSections) — The canonical company context
+- `normalize_company_context(raw: Mapping[str, Any] | None) -> CompanyContext` — Turn raw onboarding or API answers into the canonical context
+- `has_any_fact(context: CompanyContextSections) -> bool` — True when at least one founder answer is known
+- `context_from_onboarding(*, start: Mapping[str, Any], confirm: Mapping[str, Any]) -> CompanyContext` — Project confirmed onboarding answers onto the canonical sections
+- `init_context_db() -> None` — Create the single-row company context table (idempotent, as elsewhere)
+- `get_company_context() -> CompanyContext | None` — Load the stored context, or ``None`` when onboarding has not produced one
+- `save_company_context(context: CompanyContextSections) -> CompanyContext` — Persist the canonical context and return exactly what was stored
+- `clear_company_context() -> None` — Remove the stored record. Used by tests and future "start over" flows
+- `get_recorded_marketing_stage() -> str | None` — The stored stage exactly as written, even if it no longer normalizes
 
 ### `core/company_read.py`
 
@@ -48,6 +90,19 @@ Every public constant, function, class and method in the shipped packages, with 
 - class `MarketingConfig`
   - `load(cls) -> 'MarketingConfig'`
   - `diagnostics(self) -> dict`
+
+### `core/marketing_routing.py`
+
+- class `UnsupportedMarketingStage`(ValueError) — Raised when a company state has no route. Never replaced by a default
+- class `InitialRoute`(BaseModel) — A resolved route: the founder's starting stage and the next state
+- const `INITIAL_ROUTES`
+- class `RouteState`(BaseModel) — Flat routing fields for typed API views (context route, onboarding, home)
+  - `resolved(cls, route: InitialRoute) -> 'RouteState'`
+  - `unresolved(cls, error: str | None=None) -> 'RouteState'` — No route is claimed. Either nothing is decided yet, or it failed
+- `route_for_stage(stage: str | None) -> InitialRoute` — Return the route for one starting stage, or explain why there is none
+- `resolve_initial_route(context: object | None) -> InitialRoute` — Route a stored company context. Raises instead of guessing a branch
+- `route_state_for(context: object | None) -> RouteState` — Resolve a context into flat routing fields, or state why there is no route
+- `stored_route_state() -> RouteState` — Routing state for the persisted company
 
 ### `core/marketing_store.py`
 
@@ -234,6 +289,31 @@ Every public constant, function, class and method in the shipped packages, with 
 - `register_assets(spec_id: str, assets: list[dict[str, Any]]) -> list[dict[str, Any]]`
 - `list_assets(spec_id: str) -> list[dict[str, Any]]`
 
+### `core/workflow_store.py`
+
+- const `ROOT`
+- const `DB_PATH`
+- const `WORKFLOW_ACTIONS`
+- const `TERMINAL_STATUSES`
+- `now_iso() -> str`
+- `new_id(prefix: str='wf') -> str`
+- class `StrictModel`(BaseModel)
+- class `WorkflowTrigger`(StrictModel)
+- class `WorkflowStep`(StrictModel)
+- class `SuccessMetric`(StrictModel)
+- class `StepResult`(StrictModel) — Structured result of one executed step (implementation.md §4)
+- class `StepExecution`(StrictModel) — A persisted StepResult plus the observability envelope for it
+- class `WorkflowEvaluation`(StrictModel) — The evolution hook (implementation.md §12)
+- class `WorkflowState`(StrictModel)
+- class `Workflow`(StrictModel)
+- `connect() -> sqlite3.Connection`
+- `init_db() -> None`
+- `save_workflow(workflow: Workflow) -> Workflow` — Persist (insert or replace) a workflow document
+- `build_workflow(*, name: str, objective: str='', steps: list[dict[str, Any]] | None=None, trigger: dict[str, Any] | None=None, success_metric: dict[str, Any] | None=None, workflow_id: str | None=None) -> Workflow` — Construct (but do not persist) a workflow document; raises ValueError if malformed
+- `create_workflow(*, name: str, objective: str='', steps: list[dict[str, Any]] | None=None, trigger: dict[str, Any] | None=None, success_metric: dict[str, Any] | None=None, workflow_id: str | None=None) -> Workflow`
+- `get_workflow(workflow_id: str) -> Workflow | None`
+- `list_workflows(limit: int=50, *, status: str | None=None) -> list[Workflow]`
+
 ## Support services
 
 ### `services/__init__.py`
@@ -340,6 +420,7 @@ Every public constant, function, class and method in the shipped packages, with 
 - const `G2_CAMPAIGN_FIELDS`
 - const `G2_SLIDE_FIELDS`
 - const `G2_NESTED_FIELDS`
+- `run_g1(campaign_id: str, *, config: MarketingConfig | None=None, root: Path | None=None, logs: Path | None=None, fresh_research: bool=True) -> dict` — Execute only the G1 strategy stage and persist the campaign package
 - `run_pipeline(campaign_id: str) -> None`
 - `run_media_pipeline(campaign_id: str, *, campaign: dict | None=None, package: dict | None=None, config: MarketingConfig | None=None, root: Path | None=None, logs: Path | None=None) -> None`
 - `run_real_voice_render(campaign_id: str) -> None`
@@ -395,6 +476,8 @@ Every public constant, function, class and method in the shipped packages, with 
 - const `DEFAULT_CONNECT_TIMEOUT_SECONDS`
 - const `HEALTH_TIMEOUT_SECONDS`
 - const `PRE_SUBMIT_ATTEMPTS`
+- const `WORKER_ERROR_MAX_CHARS`
+- const `FRAME_COUNT_TOLERANCE`
 - const `DEFAULT_POLL_INTERVAL_SECONDS`
 - const `ASYNC_STATUSES`
 - const `TERMINAL_WORKER_STATUSES`
@@ -423,7 +506,7 @@ Every public constant, function, class and method in the shipped packages, with 
   - `download_by_name(self, output_name: str, dest_path: str | Path, *, expected_sha256: str | None=None, timeout_seconds: int | None=None) -> dict[str, Any]` — Stream the observed ``GET /video/{output_name}`` worker shape
   - `download_url(self, url: str, dest_path: str | Path, *, expected_sha256: str | None=None, timeout_seconds: int | None=None) -> dict[str, Any]` — Stream an absolute http(s) output URL to disk (same guards)
 - `get_renderer(name: str, **kwargs: Any) -> Renderer` — Return the submitter for a renderer tag. Only hunyuan has a worker
-- `qa_render_output(path: str | Path, *, expected_frames: int | None=None, expected_fps: int | None=None) -> dict[str, Any]` — Validate a worker MP4. Raises RenderQAError with a useful reason
+- `qa_render_output(path: str | Path, *, expected_frames: int | None=None, expected_fps: int | None=None, frame_tolerance: float=FRAME_COUNT_TOLERANCE) -> dict[str, Any]` — Validate a worker MP4. Raises RenderQAError with a useful reason
 - const `CONTROL_PLANE_WORKER_ID`
 - `worker_status() -> dict[str, Any]` — Failure-tolerant health/capacity snapshot (never raises)
 - `submit_hunyuan_job(job_id: str, *, timeout_seconds: int | None=None) -> dict[str, Any]` — Submit one queued hunyuan job to the MI300X worker
@@ -485,6 +568,26 @@ Every public constant, function, class and method in the shipped packages, with 
 - `adapt_bible(bible: dict[str, Any], brief_text: str) -> dict[str, Any]` — Adapt the default bible environment to the brief's domain
 - `inherit_for_shot(bible: dict[str, Any], shot: dict[str, Any]) -> dict[str, str]` — Render the bible sections a shot prompt needs as short strings
 
+### `services/workflow_actions.py`
+
+- const `HYPOTHESIS_FIELDS`
+- const `G1_OBJECTIVES`
+- const `DEFAULT_G1_OBJECTIVE`
+- `hypotheses_from_g1(result: dict[str, Any]) -> list[dict[str, Any]]` — Map the existing G1 ``concepts`` (exactly three) into experiment hypotheses
+- `evaluate_hypotheses(hypotheses: list[dict[str, Any]], metrics: dict[str, Any], *, selected_id: str | None) -> dict[str, Any]` — Deterministic v1 evaluation: seed the feedback loop, no optimizer yet
+- `g1_strategy(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Create a Company Core campaign record and run the existing G1 strategy
+- `generate_assets(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Run the existing G2 media pipeline and record the ready assets
+- `publish(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Hand the selected asset to the existing G3 draft-publishing pipeline
+- `collect_results(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Collect available campaign + sales outcomes from the existing stores
+- `evaluate(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Score the hypotheses and store the winner for the evolution loop
+
+### `services/workflow_runner.py`
+
+- class `WorkflowValidationError`(ValueError) — Raised when a workflow cannot be executed as defined
+- `validate_workflow(workflow: Workflow) -> list[str]` — Return the list of problems that block execution (empty means valid)
+- `run_workflow(workflow_id: str, *, resume: bool=False) -> Workflow` — Execute a workflow in order, persisting after every step
+- `pause_workflow(workflow_id: str) -> Workflow`
+
 ### `services/worktrees.py`
 
 - const `ROOT`
@@ -508,6 +611,8 @@ Every public constant, function, class and method in the shipped packages, with 
 - `invalid(errors: list[str]) -> None`
 - const `HUNYUAN_DEFAULT_PROFILE`
 - const `FORMAT_SIZES`
+- const `GRAPHIC_STYLE_DIRECTION`
+- const `GRAPHIC_MOTION_DIRECTION`
 - const `DEFAULT_NEGATIVE_PROMPT`
 - const `VISUAL_TYPES`
 - const `RENDERER_FOR_TYPE`
@@ -517,6 +622,7 @@ Every public constant, function, class and method in the shipped packages, with 
 
 ### `services/video/job_builder.py`
 
+- const `GRAPHIC_STYLE`
 - `build_render_jobs(spec: dict[str, Any], plan: dict[str, Any], *, priority: int=100, render_mode: str='shots', bible: dict[str, Any] | None=None, recipe: dict[str, Any] | None=None) -> list[dict[str, Any]]` — Build RenderJob dicts (unsaved) in the requested render mode
 - `validate_jobs(spec: dict[str, Any], plan: dict[str, Any], jobs: list[dict[str, Any]], *, render_mode: str='shots') -> None`
 
@@ -527,7 +633,8 @@ Every public constant, function, class and method in the shipped packages, with 
 - class `StoryboardOutline`(BaseModel)
 - `assign_durations(beats: list[StoryboardBeat], runtime_seconds: float) -> list[float]` — Split the runtime across beats proportional to narration weight
 - `plan_video(script_path: str | Path, *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, use_ai: bool=True, extra_assets: list[dict[str, Any]] | None=None) -> dict[str, Any]` — Parse a script file, validate, plan and persist spec + shot plan
-- `validate_storyboard_generatable(outline: StoryboardOutline) -> str | None` — Require at least one beat routable to the working renderer
+- const `LETTERING_CUES`
+- `validate_storyboard_generatable(outline: StoryboardOutline) -> str | None` — Require a renderable, typography-free storyboard
 - `direct_brief(brief: str, *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, runtime_seconds: int | None=None) -> dict[str, Any]` — Direct a video from a human creative brief (template-4 phase 20)
 - `store_spec_payload(spec: dict[str, Any]) -> dict[str, Any]`
 - `queue_shot_plan(plan_id: str, *, priority: int=100, render_mode: str='shots') -> dict[str, Any]` — Enqueue RenderJobs for a planned shot plan in the requested render mode
@@ -731,6 +838,13 @@ Every public constant, function, class and method in the shipped packages, with 
 - `companies(page: int=Query(default=1, ge=1), page_size: int=Query(default=10, ge=1, le=100), q: str=Query(default='', max_length=200), industry: str=Query(default='', max_length=100), country: str=Query(default='', max_length=100), view: CompanyView='all', sort: CompanySort='recent')` [router.get('', response_model=CompaniesPage)]
 - `company(company_id: str)` [router.get('/{company_id:path}', response_model=CompanyDetail)]
 
+### `app/company_context_api.py`
+
+- class `CompanyContextView`(RouteState) — The founder's canonical context plus the route resolved from its state
+- `load_company_context() -> CompanyContext` — Return the stored context, backfilling from an already-confirmed program
+- `read_company_context()` [router.get('/context', response_model=CompanyContextView)]
+- `replace_company_context(payload: CompanyContextSections)` [router.put('/context', response_model=CompanyContextView, dependencies=[Depends(verify_founder_action)])] — Replace the canonical context with the submitted sections
+
 ### `app/company_ops_api.py`
 
 - class `CodingTaskRequest`(BaseModel)
@@ -830,7 +944,7 @@ Every public constant, function, class and method in the shipped packages, with 
 ### `app/onboarding_api.py`
 
 - class `CompanyStart`(BaseModel)
-- class `CompanyContext`(BaseModel)
+- class `CompanyConfirm`(BaseModel) — Founder-confirmed company answers from the research/confirm step
 - class `Icp`(BaseModel)
 - class `StrategyInput`(BaseModel)
 - class `AiIcp`(Icp)
@@ -846,11 +960,11 @@ Every public constant, function, class and method in the shipped packages, with 
 - class `DraftRequest`(BaseModel)
 - class `ProgramState`(BaseModel)
 - class `CalibrationCandidate`(BaseModel)
-- class `OnboardingView`(BaseModel)
+- class `OnboardingView`(RouteState) — The onboarding projection plus the initial route from the saved context
 - `onboarding_view()` [read_router.get('/onboarding', response_model=OnboardingView)]
 - `start_company(payload: CompanyStart)` [write_router.post('/company', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
 - `research_company()` [write_router.post('/research-company', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `confirm_company(payload: CompanyContext)` [write_router.post('/company/confirm', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
+- `confirm_company(payload: CompanyConfirm)` [write_router.post('/company/confirm', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
 - `async suggest_strategy()` [write_router.post('/strategy/draft', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
 - `confirm_strategy(payload: StrategyInput)` [write_router.post('/strategy', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
 - `first_search()` [write_router.post('/search', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
@@ -999,8 +1113,19 @@ Every public constant, function, class and method in the shipped packages, with 
 - class `ContentView`(BaseModel)
 - `content_view()` [router.get('/content', response_model=ContentView)]
 - class `RecentContact`(BaseModel)
-- class `HomeView`(BaseModel)
+- class `HomeView`(RouteState)
 - `home_view()` [router.get('/home', response_model=HomeView)]
+
+### `app/workflows_api.py`
+
+- class `WorkflowCreateRequest`(BaseModel)
+- class `WorkflowRunRequest`(BaseModel)
+- `create_workflow(payload: WorkflowCreateRequest)` [router.post('', response_model=Workflow, status_code=201)]
+- `list_workflows(limit: int=Query(50, ge=1, le=200), status: str | None=Query(None))` [router.get('', response_model=list[Workflow])]
+- `get_workflow(workflow_id: str)` [router.get('/{workflow_id}', response_model=Workflow)]
+- `run(workflow_id: str, payload: WorkflowRunRequest | None=None)` [router.post('/{workflow_id}/run', response_model=Workflow)]
+- `pause(workflow_id: str)` [router.post('/{workflow_id}/pause', response_model=Workflow)]
+- `get_state(workflow_id: str)` [router.get('/{workflow_id}/state', response_model=WorkflowState)]
 
 ### `app/workspace_api.py`
 
@@ -1095,6 +1220,18 @@ Every public constant, function, class and method in the shipped packages, with 
 - `arrow(start, end, *, label=None, dashed=False, color='#1e1e1e', elbow=None, points=None, label_at=None)`
 - `free_text(x, y, w, paragraphs, *, color='#1e1e1e', size=16, center=False)`
 
+### `scripts/launch_batch.py`
+
+- const `ROOT`
+- `plan_one(key: str, project_id: str, submit: bool, timeout: int | None) -> dict`
+- `main(argv: list[str] | None=None) -> int`
+
+### `scripts/launch_briefs.py`
+
+- const `RUNTIME_SECONDS`
+- const `BRIEFS`
+- const `RENDER_MODE`
+
 ### `scripts/restore.py`
 
 - const `DEFAULT_LIVE_PATTERN`
@@ -1182,6 +1319,7 @@ Every public constant, function, class and method in the shipped packages, with 
 | `GET /content/` | `app/api.py` |
 | `GET /content` | `app/api.py` |
 | `GET /content` | `app/workflow_views_api.py` |
+| `GET /context` | `app/company_context_api.py` |
 | `GET /doctor` | `app/marketing_api.py` |
 | `GET /doctor` | `app/sales_api.py` |
 | `GET /drafts/reconcile` | `app/sales_api.py` |
@@ -1254,6 +1392,8 @@ Every public constant, function, class and method in the shipped packages, with 
 | `GET /{company_id:path}` | `app/companies_api.py` |
 | `GET /{contact_id}` | `app/contacts_api.py` |
 | `GET /{path:path}` | `app/api.py` |
+| `GET /{workflow_id}/state` | `app/workflows_api.py` |
+| `GET /{workflow_id}` | `app/workflows_api.py` |
 | `POST /activate` | `app/onboarding_api.py` |
 | `POST /asset-packs` | `app/marketing_api.py` |
 | `POST /buyer` | `app/onboarding_api.py` |
@@ -1323,6 +1463,9 @@ Every public constant, function, class and method in the shipped packages, with 
 | `POST /strategy/draft` | `app/onboarding_api.py` |
 | `POST /strategy` | `app/onboarding_api.py` |
 | `POST /{run_id}/search` | `app/service_discovery_api.py` |
+| `POST /{workflow_id}/pause` | `app/workflows_api.py` |
+| `POST /{workflow_id}/run` | `app/workflows_api.py` |
+| `PUT /context` | `app/company_context_api.py` |
 
 ## CLI verbs
 
@@ -1343,6 +1486,7 @@ Every public constant, function, class and method in the shipped packages, with 
 | `buffer_org_accounts` | `core/state.py` |
 | `buffer_orgs` | `core/state.py` |
 | `coding_tasks` | `core/ops_store.py` |
+| `company_context` | `core/company_context.py` |
 | `incidents` | `core/ops_store.py` |
 | `marketing_campaigns` | `core/marketing_store.py` |
 | `marketing_events` | `core/marketing_store.py` |
@@ -1364,6 +1508,7 @@ Every public constant, function, class and method in the shipped packages, with 
 | `video_shot_plans` | `core/video_store.py` |
 | `video_specs` | `core/video_store.py` |
 | `video_visual_bibles` | `core/video_store.py` |
+| `workflows` | `core/workflow_store.py` |
 
 ## Regenerate
 

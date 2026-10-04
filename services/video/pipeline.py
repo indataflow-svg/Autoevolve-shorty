@@ -10,6 +10,7 @@ from services.video.defs import (
     DEFAULT_NEGATIVE_PROMPT,
     FORMAT_SIZES,
     HUNYUAN_DEFAULT_PROFILE,
+    INFO_DISPLAY_CUES,
     MIXED_RENDERER_PRECEDENCE,
     RENDERER_FOR_TYPE,
     ROUTE_KEYWORDS,
@@ -51,19 +52,33 @@ def assign_durations(beats: list[StoryboardBeat], runtime_seconds: float) -> lis
     deterministic: each beat gets a share proportional to its word count,
     minimum 2s, with rounding drift absorbed by the final beat. The result
     always sums to exactly ``runtime_seconds``.
+
+    The 2s floor is capped at an equal share of the runtime, and every
+    allocation reserves that floor for the beats still to come, so a short
+    runtime split across many beats (e.g. 10s across nine beats) can never
+    leave the last beat with a negative or zero duration.
     """
     if runtime_seconds <= 0:
         raise ValueError("runtime must be positive")
+    if not beats:
+        return []
     weights = [max(1, len(beat.narration.split())) for beat in beats]
     total_weight = sum(weights)
+    floor = min(2.0, runtime_seconds / len(beats))
     durations: list[float] = []
     for index, weight in enumerate(weights):
-        if index + 1 == len(weights):
+        remaining = len(weights) - index
+        if remaining == 1:
             durations.append(round(runtime_seconds - sum(durations), 2))
-        else:
-            durations.append(max(2.0, round(runtime_seconds * weight / total_weight, 2)))
+            continue
+        # Cap this beat so the remaining beats still fit their reserved floor.
+        budget = round(runtime_seconds - sum(durations) - floor * (remaining - 1), 2)
+        share = round(runtime_seconds * weight / total_weight, 2)
+        durations.append(min(max(floor, share), budget))
     drift = round(runtime_seconds - sum(durations), 2)
-    durations[-1] = round(durations[-1] + drift, 2)
+    if drift:
+        largest = max(range(len(durations)), key=lambda i: durations[i])
+        durations[largest] = round(durations[largest] + drift, 2)
     return durations
 
 def plan_video(
@@ -168,12 +183,44 @@ def _finalize_directed_plan(
     }
 
 
-def validate_storyboard_generatable(outline: StoryboardOutline) -> str | None:
-    """Require at least one beat routable to the working renderer.
+LETTERING_CUES = (
+    "logo", "sign reading", "sign with", "illuminated sign", "headline",
+    "title card", "caption", "subtitle", "watermark", "text reading",
+    "text on", "lettering", "word ", "words ", "label", "labeled as",
+    "tagline", "slogan", "banner with", "written on", "printed on",
+    "monogram", "wordmark",
+    # A whiteboard is a physical surface that will carry writing. Bare shapes
+    # like a node or a graph are NOT lettering: they draw fine as icons, so
+    # they stay out of this list.
+    "whiteboard", "blackboard", "readout", "scoreboard",
+)
 
-    Today only hunyuan jobs are submittable (motion/asset/ffmpeg dispatch
-    is not built yet), so a storyboard with zero generatable beats would
-    queue jobs that can never render. Relax this when those submitters land.
+
+def _asks_for_lettering(text: str) -> bool:
+    """True when a beat asks the renderer to draw visible words.
+
+    Rejecting these at plan time is the only lever we have: generative video
+    cannot spell, and the deterministic finishing layer owns all real text.
+    """
+    haystack = str(text or "").lower()
+    if any(cue in haystack for cue in INFO_DISPLAY_CUES):
+        return True
+    return any(cue in haystack for cue in LETTERING_CUES)
+
+
+def validate_storyboard_generatable(outline: StoryboardOutline) -> str | None:
+    """Require a renderable, typography-free storyboard.
+
+    Two rules, both learned from failed renders:
+
+    1. At least one beat must route to hunyuan. Only hunyuan jobs are
+       submittable today (motion/asset/ffmpeg dispatch is not built yet), so a
+       storyboard with zero generatable beats would queue jobs that can never
+       render.
+    2. No beat may ask for visible lettering. Generative video cannot render
+       legible words, and nothing downstream can fix garbled type in a finished
+       frame. Reject it at planning time and let the beat be re-authored, so
+       the deterministic finishing layer owns all text.
     """
     from services.video.shot_planner import route_visual
 
@@ -183,10 +230,29 @@ def validate_storyboard_generatable(outline: StoryboardOutline) -> str | None:
         )
         if "hunyuan" in families:
             return None
+    culprits = [
+        beat.visual[:90]
+        for beat in outline.beats
+        if _asks_for_lettering(beat.visual) or _asks_for_lettering(beat.narration)
+    ]
+    if culprits:
+        return (
+            "Do not ask for visible words: generative video cannot render "
+            "legible lettering and nothing can repair it afterwards. Rewrite "
+            f"these beats without any logo, sign, headline, title card, "
+            f"caption, subtitle, watermark, UI, dashboard, interface, screen, "
+            f"monitor, diagram, chart, label or number: convey the idea through "
+            f"the scene itself (light, machinery, landscape, motion). Offending: "
+            f"{'; '.join(culprits[:6])}."
+        )
     return (
-        "Storyboard has no cinematic beat for AI video generation; include at "
-        "least one beat with a concrete physical scene, setting and camera "
-        "movement (pure text/graphic concepts cannot render yet)."
+        "None of your beats is renderable by AI video: they read as information "
+        "displays (dashboard, logo, diagram, UI or data screen), which the "
+        "renderer will not produce. Rewrite at least two beats as flat 2D "
+        "vector-style illustration with clean geometric shapes, bold flat "
+        "silhouettes and icon-like forms, and say so in the visual description "
+        "(use words like flat vector illustration, icon, geometric, silhouette, "
+        "motion graphics). Keep them free of any lettering."
     )
 
 
@@ -255,16 +321,39 @@ def direct_brief(
     storyteller = CreativeDirector(
         "storyboarding",
         instructions=(
-            "You are a storyboard artist. Break the approved direction into an ordered "
-            "list of visual beats covering the runtime exactly once, in order. Keep "
-            "narration factual per the brief; every beat needs a concrete visual. "
-            "Include at least two purely cinematic beats: real physical places, "
-            "atmosphere, and camera movement with no text, no logos, no screens, "
-            "no diagrams, no data displays, and no people operating software. "
-            "Text, logos and diagrams belong in separate non-cinematic beats."
+            "You are a storyboard artist. Break the approved direction into an "
+            "ordered list of visual beats covering the runtime exactly once, in "
+            "order. Keep narration factual per the brief; every beat needs a "
+            "concrete visual.\n"
+            "The protagonist is the viewer: an ordinary person who discovers "
+            "InDataFlow. Show them noticing something, investigating, and being "
+            "surprised. Open with a story, not a statement: the first beats set "
+            "a place, this person, and a situation that wants something (an "
+            "empty desk at dawn, a lone figure on a rooftop, a corridor before "
+            "the doors open). Let the film develop and arrive somewhere by the "
+            "last beat.\n"
+            "Two or more beats must be purely cinematic and placed early: real "
+            "physical places with light, atmosphere and camera movement (dolly "
+            "in, crane up, slow push, aerial, tracking).\n"
+            "NEVER describe visible words or lettering in any beat: no logo, "
+            "sign, headline, title card, caption, subtitle, watermark, UI, "
+            "dashboard, interface, screen, monitor, diagram, chart, label, "
+            "number, named node, graph or whiteboard. Generated typography is "
+            "the one thing this pipeline cannot fix afterwards, so write beats "
+            "that need none. Abstract the idea into the world instead: convey "
+            "automation through machinery, light or landscape, not through text "
+            "on a screen.\n"
+            "Give every beat a different shot: vary the subject, the place and "
+            "the camera between beats. Never reuse the same construction (for "
+            "example one person standing in six different rooms); if two beats "
+            "would open the same way, rewrite one of them.\n"
+            "Style: describe every beat as flat 2D vector illustration — clean "
+            "geometric shapes, bold flat silhouettes, icon-like forms, simple "
+            "and readable at a glance. Write icons and simple objects rather "
+            "than realistic interiors or equipment."
         ),
         output_validator=_validate_outline,
-        retries=4,
+        retries=8,
     )
 
     direction_text = (

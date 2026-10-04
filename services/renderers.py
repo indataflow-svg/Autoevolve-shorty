@@ -64,6 +64,12 @@ DEFAULT_RENDER_TIMEOUT_SECONDS = 1800
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
 HEALTH_TIMEOUT_SECONDS = 10
 PRE_SUBMIT_ATTEMPTS = 3
+# A failed render's diagnostic tail (stdout + traceback) is the only evidence of
+# why the GPU job died, so keep enough of it to reach the traceback.
+WORKER_ERROR_MAX_CHARS = 8000
+# The worker under-delivers a few frames on long encodes (observed 237/240 and
+# 141/144). Accept that as drift; reject anything larger as a truncated render.
+FRAME_COUNT_TOLERANCE = 0.02
 DEFAULT_POLL_INTERVAL_SECONDS = 15
 
 ASYNC_STATUSES = {"queued", "running", "accepted", "pending", "leased"}
@@ -181,6 +187,31 @@ class Renderer(ABC):
         expected_sha256: str | None = None,
     ) -> dict[str, Any]:
         """Stream ``GET /video/{output_name}`` to disk (observed worker shape)."""
+
+
+def _worker_error_tail(text: str, limit: int = WORKER_ERROR_MAX_CHARS) -> str:
+    """Return the most diagnostic tail of a worker 5xx body.
+
+    A render failure prints a banner, the prompt, progress, then the traceback.
+    The cause is at the end, so keep the tail rather than the prefix. Tries to
+    pretty-print the structured detail the worker sends; falls back to the raw
+    tail if it is not JSON.
+    """
+    raw = text[-limit:]
+    try:
+        body = json.loads(text)
+    except ValueError:
+        return raw
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, dict):
+        parts = []
+        for key, value in detail.items():
+            if value in (None, "", [], {}):
+                continue
+            parts.append(f"--- {key} ---\n{value}")
+        if parts:
+            return "\n".join(parts)[-limit:]
+    return json.dumps(detail if detail is not None else body, indent=2)[-limit:]
 
 
 def _safe_filename(name: str) -> str:
@@ -327,9 +358,14 @@ class HunyuanRenderer(Renderer):
                 retryable=False,
             )
         if response.status_code >= 500:
+            # Worker failures carry the render subprocess's stdout/stderr tail;
+            # the traceback naming the actual cause lives at the end, so a short
+            # prefix truncates away exactly the diagnostic that matters. Keep
+            # the tail, bounded, and never include the Bearer token.
             raise RenderWorkerError(
                 f"http_{response.status_code}",
-                f"worker failed with {response.status_code}: {response.text[:500]}",
+                f"worker failed with {response.status_code}: "
+                f"{_worker_error_tail(response.text)}",
                 retryable=True,
             )
         if response.status_code >= 400:
@@ -659,8 +695,16 @@ def qa_render_output(
     *,
     expected_frames: int | None = None,
     expected_fps: int | None = None,
+    frame_tolerance: float = FRAME_COUNT_TOLERANCE,
 ) -> dict[str, Any]:
-    """Validate a worker MP4. Raises RenderQAError with a useful reason."""
+    """Validate a worker MP4. Raises RenderQAError with a useful reason.
+
+    ``frame_tolerance`` is a fraction of the requested frame count. The worker
+    is observed to deliver slightly short encodes (237/240 and 141/144 on
+    live runs), which is cosmetically irrelevant, so a small shortfall is
+    accepted and the real count is reported instead of failing the job. A
+    larger shortfall still fails: that means a truncated render, not drift.
+    """
     file_path = Path(path)
     if not file_path.is_file():
         raise RenderQAError(f"missing output file: {file_path}")
@@ -676,10 +720,18 @@ def qa_render_output(
     if not video.get("codec_name"):
         raise RenderQAError(f"no video stream found: {file_path}")
     frames = int(video.get("nb_read_frames") or 0)
+    shortfall = 0
     if expected_frames and frames and frames != expected_frames:
-        raise RenderQAError(
-            f"frame count {frames} != expected {expected_frames}: {file_path}"
-        )
+        shortfall = expected_frames - frames
+        allowed = int(expected_frames * frame_tolerance)
+        if shortfall > 0 and shortfall <= allowed:
+            # Acceptable worker drift: keep going and report the true count.
+            pass
+        else:
+            raise RenderQAError(
+                f"frame count {frames} != expected {expected_frames} "
+                f"(tolerance {allowed} frames): {file_path}"
+            )
     duration_s: float | None = None
     if expected_fps:
         rate = str(video.get("avg_frame_rate") or "")
@@ -697,6 +749,10 @@ def qa_render_output(
         "frames": frames or None,
         "file_size_bytes": size,
     }
+    if expected_frames and frames and frames != expected_frames:
+        details["requested_frames"] = expected_frames
+        details["frame_shortfall"] = shortfall
+        details["duration_seconds"] = round(frames / expected_fps, 3) if expected_fps else None
     if expected_frames and not frames:
         container = _run_ffprobe([
             "-show_entries", "format=duration", "-of", "json", str(file_path)

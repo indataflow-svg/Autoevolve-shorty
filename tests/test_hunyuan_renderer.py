@@ -511,5 +511,54 @@ class HunyuanRendererTests(unittest.TestCase):
         self.assertEqual(renderers.aspect_ratio_for(None, None), "9:16")
 
 
+@unittest.skipUnless(HAS_FFMPEG and HAS_FFPROBE, "ffmpeg/ffprobe required")
+class RenderQATests(unittest.TestCase):
+    """Frame-count drift is tolerated; a real shortfall still fails."""
+
+    def _write(self, frames: int) -> Path:
+        directory = Path(tempfile.mkdtemp(prefix="qa-mp4-"))
+        out = directory / "clip.mp4"
+        result = subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i",
+                f"testsrc=duration={frames / 24}:size=64x64:rate=24",
+                "-pix_fmt", "yuv420p", "-c:v", "libx264", "-y", str(out),
+            ],
+            capture_output=True,
+            timeout=120,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        return out
+
+    def test_small_frame_shortfall_is_accepted_and_reported(self):
+        path = self._write(237)
+        qa = renderers.qa_render_output(path, expected_frames=240, expected_fps=24)
+        self.assertEqual(qa["frames"], 237)
+        self.assertEqual(qa["requested_frames"], 240)
+        self.assertEqual(qa["frame_shortfall"], 3)
+        # The real count is preserved, never silently rewritten.
+        self.assertAlmostEqual(qa["duration_seconds"], 237 / 24, places=2)
+
+    def test_large_shortfall_still_fails(self):
+        path = self._write(120)
+        with self.assertRaises(renderers.RenderQAError) as caught:
+            renderers.qa_render_output(path, expected_frames=240, expected_fps=24)
+        self.assertIn("tolerance", str(caught.exception))
+
+    def test_extra_frames_still_fails(self):
+        path = self._write(260)
+        with self.assertRaises(renderers.RenderQAError):
+            renderers.qa_render_output(path, expected_frames=240, expected_fps=24)
+
+    def test_tolerance_is_configurable(self):
+        path = self._write(120)
+        # A zero tolerance restores the old exact-match behaviour.
+        with self.assertRaises(renderers.RenderQAError):
+            renderers.qa_render_output(
+                path, expected_frames=240, expected_fps=24, frame_tolerance=0
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

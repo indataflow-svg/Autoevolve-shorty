@@ -6,6 +6,14 @@ from typing import Any
 from services.video.defs import DEFAULT_NEGATIVE_PROMPT, HUNYUAN_DEFAULT_PROFILE, invalid
 from services.video.shot_planner import primary_renderer
 
+# Product-level art direction. True when the film should read as flat graphic /
+# icon animation rather than photographic cinema. Hunyuan cannot emit real SVG,
+# so this biases the prompt toward flat vector-illustration language; the
+# deterministic motion-graphics renderer (not built) is what would make it true
+# vector output.
+GRAPHIC_STYLE = True
+
+
 def build_render_jobs(
     spec: dict[str, Any], plan: dict[str, Any], *, priority: int = 100,
     render_mode: str = "shots",
@@ -71,6 +79,7 @@ def _full_video_job(
 ) -> dict[str, Any]:
     """One whole-video Hunyuan job: no clip division, user-chosen mode."""
     from services.visual_bible import inherit_for_shot
+    from services.video.defs import GRAPHIC_MOTION_DIRECTION, GRAPHIC_STYLE_DIRECTION
 
     shots = plan.get("shots") or []
     beats = " / ".join(
@@ -78,13 +87,21 @@ def _full_video_job(
     )[:700]
     bible = bible or {}
     inherited = inherit_for_shot(bible, shots[0] if shots else {})
-    environment = inherited["environment"] or "clean modern environment"
-    style = inherited["style"] or "premium commercial cinematography"
-    prompt = (
-        f"Cinematic short video, {spec.get('title')}: {beats}. "
-        f"{environment}, {style}, realistic materials, "
-        "natural motion, smooth continuous camera."
-    )[:900]
+    if GRAPHIC_STYLE:
+        # Flat graphic / icon-animation look: no photographic environment or
+        # lens language, just the illustration system and its motion.
+        prompt = (
+            f"{GRAPHIC_STYLE_DIRECTION}. Animated illustration: {beats}. "
+            f"{GRAPHIC_MOTION_DIRECTION}."
+        )[:900]
+    else:
+        environment = inherited["environment"] or "clean modern environment"
+        style = inherited["style"] or "premium commercial cinematography"
+        prompt = (
+            f"Cinematic short video, {spec.get('title')}: {beats}. "
+            f"{environment}, {style}, realistic materials, "
+            "natural motion, smooth continuous camera."
+        )[:900]
     project_id = spec.get("projectId") or "project"
     total = spec["format"]["durationSeconds"]
     fps = spec["format"]["fps"]

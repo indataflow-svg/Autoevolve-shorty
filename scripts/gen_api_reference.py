@@ -36,6 +36,23 @@ ROUTE_DECORATORS = re.compile(r"@\w+\.(get|post|put|patch|delete)\(\s*[\"']([^\"
 CLI_SUBCOMMANDS = re.compile(r"add_parser\(\s*[\"']([^\"']+)")
 
 
+def _git_head() -> str:
+    """Short commit hash for the generated header, or 'unknown' outside a repo."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            timeout=15,
+        )
+        return result.stdout.strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
 def _rel(path: Path) -> str:
     return str(path.relative_to(ROOT))
 
@@ -255,6 +272,13 @@ def build() -> str:
             out.extend(_render_module(path, tree))
 
     out.append("## HTTP routes")
+    out.append("")
+    out.append(
+        "Extracted from route decorators, so a path served by two routers is "
+        "listed once per router. The authoritative operation count is the "
+        "OpenAPI contract (`/openapi.json`), which collapses these to unique "
+        "path+method pairs."
+    )
     out.append("")
     out.append("| route | module |\n|---|---|")
     out.extend(sorted(set(routes)))

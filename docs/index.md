@@ -3,6 +3,11 @@
 AutoEvolve's React UI uses the Company Core FastAPI backend. Existing
 `COMPANY_CORE_*` configuration names and engine binaries retain their names.
 
+## Start here
+
+- [Functionality Reference](FUNCTIONALITY.md): **every capability in the product** — onboarding, sales, marketing, video, engineering, research, platform — with routes, tables, and honest limits.
+- [API Reference](API-REFERENCE.md): every public function, class, route, and table, generated from source.
+
 ## Start and operate
 
 - [README](../README.md): requirements, installation, frontend build, first boot.

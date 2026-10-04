@@ -28,6 +28,24 @@ FORMAT_SIZES = {
     "1:1": (1080, 1080),
 }
 
+# Flat graphic / vector-illustration direction. Hunyuan is a raster diffusion
+# model, so this is a style bias, not true vector output: it pushes toward flat
+# two-dimensional shapes, clean geometry, bold silhouettes and icon-like forms
+# instead of photographic texture. Real SVG/icon rendering is the deterministic
+# motion-graphics path (recipe `flat-vector-explainer`), which is not built yet.
+GRAPHIC_STYLE_DIRECTION = (
+    "flat 2D vector illustration style, clean geometric shapes, bold flat "
+    "silhouettes, icon-like forms, crisp edges, minimal detail, limited brand "
+    "palette of blue and indigo on a light neutral background, no gradients, "
+    "no photorealism, no texture grain, no depth of field, even lighting"
+)
+
+# Prompt tail that adds motion to the flat graphic direction.
+GRAPHIC_MOTION_DIRECTION = (
+    "smooth continuous animation, elements sliding and scaling in sequence, "
+    "confident easing, steady camera or gentle push, one idea per moment"
+)
+
 DEFAULT_NEGATIVE_PROMPT = (
     "blurry, low quality, distorted, deformed, malformed hands, extra fingers, "
     "duplicated objects, flickering, unstable geometry, temporal inconsistency, "
@@ -82,6 +100,12 @@ ROUTE_KEYWORDS: dict[str, tuple[str, ...]] = {
         "city at night", "aerial city",
         "natural landscape", "landscape", "horizon", "mountain", "desert",
         "ocean", "forest",
+        # Flat graphic / icon-animation language. Hunyuan is a raster model, so
+        # these do not buy true vector output, but they are the beats it can
+        # actually render: without them every icon beat falls through to stock.
+        "vector", "flat 2d", "icon", "illustration", "graphic",
+        "motion graphics", "silhouette", "geometric", "2d",
+        "minimalist", "cut-out", "papercut", "line art",
     ),
     "stock": (
         "truck", "ship", "port", "warehouse", "document", "people", "driver",
@@ -104,7 +128,10 @@ INFO_DISPLAY_CUES = (
     "screen showing",
     "screen displaying",
     "data display",
+    "data readout",
     "dashboard",
+    "monitor",
+    "displaying",
     "interface showing",
     "labeled as",
     "labels",
