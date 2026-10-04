@@ -3470,6 +3470,32 @@
         ]
       }
     },
+    "/company/ui/service-discovery": {
+      "get": {
+        "tags": [
+          "service discovery"
+        ],
+        "summary": "Service Discovery",
+        "operationId": "service_discovery_company_ui_service_discovery_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDiscoveryView"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/company/sales/prospect/domain": {
       "post": {
         "tags": [
@@ -4892,6 +4918,1007 @@
         }
       }
     },
+    "/company/video/specs": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "List Specs",
+        "operationId": "list_specs_company_video_specs_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Specs Company Video Specs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "video-actions"
+        ],
+        "summary": "Create Spec",
+        "operationId": "create_spec_company_video_specs_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpecCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Spec Company Video Specs Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/specs/{spec_id}": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Read Spec",
+        "operationId": "read_spec_company_video_specs__spec_id__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "spec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Spec Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Read Spec Company Video Specs  Spec Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/plans": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "List Plans",
+        "operationId": "list_plans_company_video_plans_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "spec_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Spec Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Plans Company Video Plans Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "video-actions"
+        ],
+        "summary": "Create Plan",
+        "operationId": "create_plan_company_video_plans_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Plan Company Video Plans Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/plans/{plan_id}": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Read Plan",
+        "operationId": "read_plan_company_video_plans__plan_id__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Read Plan Company Video Plans  Plan Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/jobs": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "List Render Jobs",
+        "operationId": "list_render_jobs_company_video_jobs_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shot_plan_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shot Plan Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "renderer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Renderer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Render Jobs Company Video Jobs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Read Job",
+        "operationId": "read_job_company_video_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Read Job Company Video Jobs  Job Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/queue/stats": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Read Queue Stats",
+        "operationId": "read_queue_stats_company_video_queue_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Read Queue Stats Company Video Queue Stats Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/video/hunyuan/profile": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Read Hunyuan Profile",
+        "operationId": "read_hunyuan_profile_company_video_hunyuan_profile_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Read Hunyuan Profile Company Video Hunyuan Profile Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/video/plans/{plan_id}/queue": {
+      "post": {
+        "tags": [
+          "video-actions"
+        ],
+        "summary": "Queue Plan",
+        "operationId": "queue_plan_company_video_plans__plan_id__queue_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "render_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 16,
+              "default": "shots",
+              "title": "Render Mode"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Queue Plan Company Video Plans  Plan Id  Queue Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/jobs/{job_id}/retry": {
+      "post": {
+        "tags": [
+          "video-actions"
+        ],
+        "summary": "Retry Render Job",
+        "operationId": "retry_render_job_company_video_jobs__job_id__retry_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Retry Render Job Company Video Jobs  Job Id  Retry Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "video-actions"
+        ],
+        "summary": "Cancel Render Job",
+        "operationId": "cancel_render_job_company_video_jobs__job_id__cancel_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Cancel Render Job Company Video Jobs  Job Id  Cancel Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/render-jobs/next": {
+      "get": {
+        "tags": [
+          "video-worker"
+        ],
+        "summary": "Lease Next Render Job",
+        "operationId": "lease_next_render_job_company_video_render_jobs_next_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "worker_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "title": "Worker Id"
+            }
+          },
+          {
+            "name": "renderer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Renderer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Lease Next Render Job Company Video Render Jobs Next Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/render-jobs/{job_id}/heartbeat": {
+      "post": {
+        "tags": [
+          "video-worker"
+        ],
+        "summary": "Heartbeat Render Job",
+        "operationId": "heartbeat_render_job_company_video_render_jobs__job_id__heartbeat_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "worker_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "title": "Worker Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Heartbeat Render Job Company Video Render Jobs  Job Id  Heartbeat Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/render-jobs/{job_id}/complete": {
+      "post": {
+        "tags": [
+          "video-worker"
+        ],
+        "summary": "Complete Render Job",
+        "operationId": "complete_render_job_company_video_render_jobs__job_id__complete_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "worker_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "title": "Worker Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobComplete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Complete Render Job Company Video Render Jobs  Job Id  Complete Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/render-jobs/{job_id}/fail": {
+      "post": {
+        "tags": [
+          "video-worker"
+        ],
+        "summary": "Fail Render Job",
+        "operationId": "fail_render_job_company_video_render_jobs__job_id__fail_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "worker_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "title": "Worker Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobFail"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Fail Render Job Company Video Render Jobs  Job Id  Fail Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/company/setup/onboarding/company": {
       "post": {
         "tags": [
@@ -5050,6 +6077,60 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/setup/onboarding/strategy/draft": {
+      "post": {
+        "tags": [
+          "onboarding"
+        ],
+        "summary": "Suggest Strategy",
+        "operationId": "suggest_strategy_company_setup_onboarding_strategy_draft_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5485,6 +6566,143 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OnboardingView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/setup/service-discovery/search": {
+      "post": {
+        "tags": [
+          "service discovery"
+        ],
+        "summary": "Start Service Search",
+        "operationId": "start_service_search_company_setup_service_discovery_search_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDiscoveryView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/setup/service-discovery/{run_id}/search": {
+      "post": {
+        "tags": [
+          "service discovery"
+        ],
+        "summary": "Retarget Service Search",
+        "operationId": "retarget_service_search_company_setup_service_discovery__run_id__search_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceTargetEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDiscoveryView"
                 }
               }
             }
@@ -8818,6 +10036,45 @@
         ],
         "title": "InteractionSummary"
       },
+      "JobComplete": {
+        "properties": {
+          "result": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result"
+          }
+        },
+        "type": "object",
+        "title": "JobComplete"
+      },
+      "JobFail": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Message",
+            "default": ""
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "JobFail"
+      },
       "LeadCreateResult": {
         "properties": {
           "lead": {
@@ -9856,6 +11113,21 @@
         ],
         "title": "OutreachPage"
       },
+      "PlanCreate": {
+        "properties": {
+          "spec_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Spec Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "spec_id"
+        ],
+        "title": "PlanCreate"
+      },
       "ProgramState": {
         "properties": {
           "id": {
@@ -9907,6 +11179,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/CompanyContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "strategy_draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StrategyInput"
               },
               {
                 "type": "null"
@@ -10775,6 +12057,304 @@
         ],
         "title": "SendReconcilePayload"
       },
+      "ServiceContact": {
+        "properties": {
+          "lead_id": {
+            "type": "string",
+            "title": "Lead Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "job_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Title"
+          },
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lead_id",
+          "name"
+        ],
+        "title": "ServiceContact"
+      },
+      "ServiceDiscoveryView": {
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceRunView"
+            },
+            "type": "array",
+            "title": "Runs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runs"
+        ],
+        "title": "ServiceDiscoveryView"
+      },
+      "ServiceInput": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 5,
+            "title": "Service"
+          },
+          "desired_contacts": {
+            "type": "integer",
+            "maximum": 25.0,
+            "minimum": 1.0,
+            "title": "Desired Contacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "service",
+          "desired_contacts"
+        ],
+        "title": "ServiceInput"
+      },
+      "ServiceRunView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "searched",
+              "no_results",
+              "provider_error"
+            ],
+            "title": "Status"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ServiceSearchPlan"
+          },
+          "desired_contacts": {
+            "type": "integer",
+            "title": "Desired Contacts"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market"
+          },
+          "contact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Contact Ids"
+          },
+          "provider_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Provider Counts"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceContact"
+            },
+            "type": "array",
+            "title": "Contacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "service",
+          "status",
+          "plan",
+          "desired_contacts",
+          "created_at",
+          "contacts"
+        ],
+        "title": "ServiceRunView"
+      },
+      "ServiceSearchPlan": {
+        "properties": {
+          "buyer_industry": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Buyer Industry"
+          },
+          "search_keywords": {
+            "items": {
+              "type": "string",
+              "maxLength": 80,
+              "minLength": 2
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Search Keywords"
+          },
+          "buyer_titles": {
+            "items": {
+              "type": "string",
+              "maxLength": 80,
+              "minLength": 2
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Buyer Titles"
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Rationale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "buyer_industry",
+          "search_keywords",
+          "buyer_titles",
+          "rationale"
+        ],
+        "title": "ServiceSearchPlan"
+      },
+      "ServiceTargetEdit": {
+        "properties": {
+          "buyer_industry": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Buyer Industry"
+          },
+          "search_keywords": {
+            "items": {
+              "type": "string",
+              "maxLength": 80,
+              "minLength": 2
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Search Keywords"
+          },
+          "buyer_titles": {
+            "items": {
+              "type": "string",
+              "maxLength": 80,
+              "minLength": 2
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Buyer Titles"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market"
+          },
+          "desired_contacts": {
+            "type": "integer",
+            "maximum": 25.0,
+            "minimum": 1.0,
+            "title": "Desired Contacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "buyer_industry",
+          "search_keywords",
+          "buyer_titles",
+          "desired_contacts"
+        ],
+        "title": "ServiceTargetEdit"
+      },
       "SessionStatus": {
         "properties": {
           "authenticated": {
@@ -10932,6 +12512,59 @@
           "step"
         ],
         "title": "SetupStepPayload"
+      },
+      "SpecCreate": {
+        "properties": {
+          "script_text": {
+            "type": "string",
+            "maxLength": 200000,
+            "minLength": 1,
+            "title": "Script Text"
+          },
+          "project_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Project Id"
+          },
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "maxLength": 8,
+            "title": "Aspect Ratio",
+            "default": "9:16"
+          },
+          "fps": {
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 1.0,
+            "title": "Fps",
+            "default": 24
+          },
+          "source_name": {
+            "type": "string",
+            "maxLength": 160,
+            "title": "Source Name",
+            "default": "script"
+          }
+        },
+        "type": "object",
+        "required": [
+          "script_text",
+          "project_id"
+        ],
+        "title": "SpecCreate"
       },
       "StrategyInput": {
         "properties": {

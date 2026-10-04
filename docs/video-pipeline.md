@@ -43,6 +43,11 @@ provenance). Both persist the spec, its Visual Bible + motion recipe, its
 asset registry, and the shot plan, then build RenderJobs. Details:
 `docs/creative-director/`.
 
+The dashboard Video page (`/video`) offers the same choice graphically: a
+render-type dropdown (per-shot clips vs full video), a shot-plan picker,
+and the queued jobs with status, attempts, outputs and errors. It calls
+`POST /company/video/plans/{id}/queue?render_mode=…` with the founder
+action token, then polls `GET /company/video/jobs?shot_plan_id=…`.
 Planning is deterministic. When `OMNIROUTE_API_KEY` is set, the AI layer
 refines shot purposes and visual prompts (and adds continuity notes); when it
 is not set — or when the model call fails — the deterministic templates win.

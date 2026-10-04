@@ -71,7 +71,9 @@ def command_queue(args: argparse.Namespace) -> int:
     from services import video_pipeline
 
     try:
-        result = video_pipeline.queue_shot_plan(args.shot_plan_id, priority=args.priority)
+        result = video_pipeline.queue_shot_plan(
+            args.shot_plan_id, priority=args.priority, render_mode=args.mode
+        )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -84,7 +86,8 @@ def command_queue(args: argparse.Namespace) -> int:
         if count:
             print(f"{count} {noun} job{'s' if count != 1 else ''}")
 
-    print(f"{counts['total']} jobs queued")
+    total = counts["total"]
+    print(f"{total} job{'s' if total != 1 else ''} queued")
     jobs("Hunyuan", by_renderer.get("hunyuan", 0))
     jobs("asset/motion", by_renderer.get("asset", 0) + by_renderer.get("motion_graphics", 0))
     jobs("brand-end-frame", counts.get("brand_end_frames", 0))
@@ -186,6 +189,8 @@ def main(argv: list[str] | None = None) -> int:
     queue = sub.add_parser("queue", help="enqueue one RenderJob per render-required shot")
     queue.add_argument("shot_plan_id")
     queue.add_argument("--priority", type=int, default=100)
+    queue.add_argument("--mode", default="shots", choices=["shots", "full"],
+                       help="shots: one job per clip; full: single whole-video job")
     queue.set_defaults(func=command_queue)
 
     profile = sub.add_parser("profile", help="print the default Hunyuan render profile")
