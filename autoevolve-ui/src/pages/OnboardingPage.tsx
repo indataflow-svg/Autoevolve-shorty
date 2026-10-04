@@ -1,11 +1,11 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, CheckCircle2, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { companyDetail } from '../api/companies'
 import {
   activateProgram, confirmCompany, confirmStrategy, createFirstDraft, decideRefinement,
-  onboardingView, recordCalibration, researchOwnCompany, resolveBuyer, searchFirstCompanies,
+  onboardingView, recordCalibration, researchOwnCompany, resolveBuyer, searchFirstCompanies, suggestStrategy,
   startCompany, type CompanyContext, type OnboardingView, type StrategyInput,
 } from '../api/onboarding'
 import { useCredentials } from '../app/Auth'
@@ -18,6 +18,13 @@ type Run = (label: string, action: () => Promise<OnboardingView>) => Promise<voi
 const lines = (value: string) => value.split(/\n|,/).map(item => item.trim()).filter(Boolean)
 const asLines = (value: string[] | undefined) => (value || []).join('\n')
 const fact = (record: Record<string, unknown> | null | undefined, key: string) => typeof record?.[key] === 'string' ? String(record[key]) : ''
+const strategyEditKey = (id: string) => `onboarding-strategy-edit:${id}`
+function storedStrategy(id: string): StrategyInput | null {
+  try {
+    const raw = sessionStorage.getItem(strategyEditKey(id))
+    return raw ? JSON.parse(raw) as StrategyInput : null
+  } catch { return null }
+}
 
 function Section({ title, detail, children }: { title: string; detail: string; children: ReactNode }) {
   return <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>{title}</h2><p>{detail}</p></div>{children}</section>
@@ -42,6 +49,7 @@ function CompanyStartForm({ program, run, token }: { program: Program | null; ru
 function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: Program; run: Run; token: string; onEditCompany: () => void }) {
   const credentials = useCredentials()
   const research = program.company_research as Record<string, unknown> | null
+  const sources = Array.isArray(research?.sources) ? research.sources.filter((item): item is { field: string; url: string } => !!item && typeof item === 'object' && typeof item.url === 'string' && typeof item.field === 'string') : []
   const signals = research?.signals && typeof research.signals === 'object' ? research.signals as Record<string, unknown> : null
   const [name, setName] = useState(program.company_context?.name || fact(research, 'name') || program.company.name)
   const website = program.company.website
@@ -50,8 +58,9 @@ function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: P
   const [positioning, setPositioning] = useState(program.company_context?.positioning || fact(signals, 'summary_line'))
   const [offerSummary, setOfferSummary] = useState(program.company_context?.offer_summary || (Array.isArray(research?.specialties) ? research.specialties.filter((item): item is string => typeof item === 'string').join(', ') : ''))
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void run('confirm company', () => confirmCompany(credentials, { name, website, description, industry, positioning, offer_summary: offerSummary } satisfies CompanyContext, token)) }
-  return <Section title="2. Research and confirm your company" detail="Research uses a configured company enrichment provider. Check and edit every fact before it becomes strategy context.">
-    <div className="onboarding-inline-actions"><button className="button secondary" onClick={() => void run('research company', () => researchOwnCompany(credentials, token))}><RefreshCw size={15} />{research ? 'Refresh provider research' : 'Research website'}</button><button className="button secondary" onClick={onEditCompany}>Change company or website</button><span>{research ? `Provider: ${program.research_provider}` : 'No inferred facts saved. You may enter verified facts manually.'}</span></div>
+  return <Section title="2. Research and confirm your company" detail="Research checks your website first, then configured data providers. Check and edit every fact before it becomes strategy context.">
+    <div className="onboarding-inline-actions"><button className="button secondary" onClick={() => void run('research company', () => researchOwnCompany(credentials, token))}><RefreshCw size={15} />{research ? 'Refresh company research' : 'Research website'}</button><button className="button secondary" onClick={onEditCompany}>Change company or website</button><span>{research ? `Source: ${program.research_provider?.replaceAll('+', ' + ')}` : 'No inferred facts saved. You may enter verified facts manually.'}</span></div>
+    {sources.length > 0 && <p className="operational-note">Website evidence: {sources.map((source, index) => <span key={`${source.url}-${index}`}>{index > 0 ? ', ' : ''}<a href={source.url} target="_blank" rel="noopener noreferrer">{source.field}</a></span>)}</p>}
     {program.research_error && <p className="operational-error" role="alert">Company research: {program.research_error}</p>}
     <form className="onboarding-form" onSubmit={submit}>
       <label>Confirmed name<input value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required /></label>
@@ -67,28 +76,31 @@ function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: P
 
 function StrategyForm({ program, run, token }: { program: Program; run: Run; token: string }) {
   const credentials = useCredentials()
-  const saved = program.strategy
-  const [name, setName] = useState(saved?.name || `${program.company.name} first program`)
-  const [objective, setObjective] = useState(saved?.objective || program.company.objective)
-  const [metric, setMetric] = useState(saved?.success_metric || '')
+  const saved = storedStrategy(program.id) || program.strategy_draft!
+  const [name, setName] = useState(saved.name)
+  const [objective, setObjective] = useState(saved.objective)
+  const [metric, setMetric] = useState(saved.success_metric)
   const [offers, setOffers] = useState(asLines(saved?.offers))
-  const [industry, setIndustry] = useState(saved?.icp.industry || '')
-  const [icp, setIcp] = useState(saved?.icp.description || '')
+  const [industry, setIndustry] = useState(saved.icp.industry)
+  const [icp, setIcp] = useState(saved.icp.description)
   const [sizes, setSizes] = useState(asLines(saved?.icp.company_sizes))
   const [buyers, setBuyers] = useState(asLines(saved?.buyer_titles))
-  const [markets, setMarkets] = useState(asLines(saved?.markets) || program.company.market)
+  const [markets, setMarkets] = useState(asLines(saved?.markets))
   const [signals, setSignals] = useState(asLines(saved?.positive_signals))
   const [exclusions, setExclusions] = useState(asLines(saved?.exclusions))
-  const [tone, setTone] = useState(saved?.tone || '')
+  const [tone, setTone] = useState(saved.tone)
   const [claims, setClaims] = useState(asLines(saved?.approved_claims))
   const [forbidden, setForbidden] = useState(asLines(saved?.prohibited_claims))
-  const [channels, setChannels] = useState<Array<'email' | 'linkedin' | 'social'>>(saved?.channels || ['email'])
+  const [channels, setChannels] = useState<Array<'email' | 'linkedin' | 'social'>>(saved.channels)
+  const value = useMemo<StrategyInput>(() => ({ name, objective, success_metric: metric, offers: lines(offers), icp: { industry, description: icp, company_sizes: lines(sizes) }, buyer_titles: lines(buyers), markets: lines(markets), positive_signals: lines(signals), exclusions: lines(exclusions), tone, approved_claims: lines(claims), prohibited_claims: lines(forbidden), channels }), [name, objective, metric, offers, industry, icp, sizes, buyers, markets, signals, exclusions, tone, claims, forbidden, channels])
+  useEffect(() => {
+    sessionStorage.setItem(strategyEditKey(program.id), JSON.stringify(value))
+  }, [program.id, value])
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const value: StrategyInput = { name, objective, success_metric: metric, offers: lines(offers), icp: { industry, description: icp, company_sizes: lines(sizes) }, buyer_titles: lines(buyers), markets: lines(markets), positive_signals: lines(signals), exclusions: lines(exclusions), tone, approved_claims: lines(claims), prohibited_claims: lines(forbidden), channels }
     void run('save strategy', () => confirmStrategy(credentials, value, token))
   }
-  return <Section title="3. Define your first program" detail="One conservative program. Claims remain human-approved; drafts must still be reviewed before send."><form className="onboarding-form" onSubmit={submit}>
+  return <Section title="3. Define your first program" detail="AI drafted every field from your confirmed company context. Review and edit the targeting suggestions and claims before saving."><form className="onboarding-form" onSubmit={submit}>
     <div className="onboarding-grid"><label>Program name<input value={name} onChange={event => setName(event.target.value)} required /></label><label>Success metric<input value={metric} onChange={event => setMetric(event.target.value)} placeholder="e.g. qualified replies per month" minLength={3} required /></label></div>
     <label>Objective<textarea value={objective} onChange={event => setObjective(event.target.value)} minLength={3} required /></label>
     <label>Offers · one per line<textarea value={offers} onChange={event => setOffers(event.target.value)} required /></label>
@@ -141,6 +153,13 @@ export function OnboardingPage() {
       const confirmed = await action()
       queryClient.setQueryData(['onboarding'], confirmed)
       if (label === 'save company') setEditingCompany(false)
+      if (label === 'confirm company') {
+        sessionStorage.removeItem(strategyEditKey(confirmed.program!.id))
+        setPending('generating AI strategy')
+        const drafted = await suggestStrategy(credentials, token)
+        queryClient.setQueryData(['onboarding'], drafted)
+      }
+      if (label === 'save strategy') sessionStorage.removeItem(strategyEditKey(confirmed.program!.id))
       await queryClient.invalidateQueries({ queryKey: ['onboarding'] })
       if (label === 'activate') {
         await queryClient.invalidateQueries({ queryKey: ['home'] })
@@ -151,7 +170,7 @@ export function OnboardingPage() {
   }
   const good = view?.sample.filter(item => item.feedback?.rating === 'good') || []
   return <AppShell active="Onboarding" query="" onQueryChange={() => undefined}><div className="page-layout"><main className="page-main"><div className="page-content onboarding-page">
-    <div className="page-heading"><div><h1>First-run setup</h1><p>Build a calibrated first prospect set on the same records used by Contacts and Outreach.</p></div><div className="heading-actions"><Link to="/home" className="button secondary">Home</Link></div></div>
+    <div className="page-heading"><div><h1>First-run setup</h1><p>Build a calibrated first prospect set on the same records used by Contacts and Outreach.</p></div><div className="heading-actions"><Link to="/services" className="button primary">Start with a service <ArrowRight size={16} /></Link><Link to="/home" className="button secondary">Home</Link></div></div>
     {query.isError && view && <div className="operational-error" role="alert">Refresh failed: {query.error.message} <button onClick={() => query.refetch()}>Retry</button></div>}
     {query.isPending ? <LoadingRows label="Loading onboarding" /> : query.isError && !view ? <DataState title="Setup could not be loaded" detail={query.error.message} retry={() => query.refetch()} /> : view && <>
       <div className="onboarding-progress"><span>Program: <strong>{program?.strategy?.name || program?.company.name || 'Not started'}</strong></span><StateBadge tone={step === 'home' ? 'green' : 'blue'}>{program?.status || 'not_started'}</StateBadge><span>Next: {step.replaceAll('_', ' ')}</span></div>
@@ -160,7 +179,9 @@ export function OnboardingPage() {
       {error && <p className="form-error" role="alert">{error}</p>}
       {(step === 'company' || editingCompany) && <CompanyStartForm program={program} run={run} token={token} />}
       {!editingCompany && (step === 'research_company' || step === 'confirm_company') && program && <CompanyConfirmForm key={program.research_provider || 'manual'} program={program} run={run} token={token} onEditCompany={() => setEditingCompany(true)} />}
-      {step === 'strategy' && program && <StrategyForm program={program} run={run} token={token} />}
+      {step === 'strategy' && program && (program.strategy_draft
+        ? <StrategyForm program={program} run={run} token={token} />
+        : <Section title="3. Define your first program" detail="Generate an AI draft from your confirmed company context, then review and edit every field before saving."><button className="button primary" disabled={!!pending} onClick={() => void run('generate AI strategy', () => suggestStrategy(credentials, token))}>Generate AI draft <ArrowRight size={16} /></button></Section>)}
       {step === 'search' && program && <Section title="4. Find your first companies" detail="Research writes real company candidates into the existing sales lead store. Provider warnings remain visible."><p>Industry: <strong>{program.strategy?.icp.industry}</strong> · Market: <strong>{program.strategy?.markets[0]}</strong> · Up to {program.provider_limits?.sample_size || 10} companies in the calibration sample.</p>{program.research_warnings?.map(warning => <p className="operational-error" key={warning}>{warning}</p>)}<button className="button primary" disabled={!!pending} onClick={() => void run('search companies', () => searchFirstCompanies(credentials, token))}>Run company search <ArrowRight size={16} /></button>{view.sample.length === 0 && program.calibration_status === 'not_started' && <p className="operational-note">A successful search with zero companies leaves this step open. Refine the market or retry.</p>}</Section>}
       {step === 'calibrate' && <Section title="5. Calibrate on real companies" detail="Review each saved company. Ratings save individually so you can stop and resume without losing prior feedback."><p className="operational-note">{view.sample.filter(item => item.feedback).length} of {view.sample.length} classified. Bands are based on the existing lead score, not a verified fit model.</p><div className="onboarding-list">{view.sample.map(item => <CalibrationRow key={item.lead_id} candidate={item} run={run} token={token} />)}</div></Section>}
       {step === 'refinement' && program && <Section title="6. Review the suggested refinement" detail="Feedback proposes changes; nothing is applied without your choice."><div className="onboarding-proposal"><h3>Proposed exclusions</h3>{program.proposed_refinement?.exclusions?.length ? <ul>{program.proposed_refinement.exclusions.map(item => <li key={item}>{item}</li>)}</ul> : <p>No concrete exclusion can be inferred from the saved rejection reasons.</p>}{program.proposed_refinement?.notes?.map(note => <p key={note}>{note}</p>)}</div>{good.length === 0 && <p className="operational-note">No company was rated good. After deciding on this proposal, run another search before resolving buyers.</p>}<div className="onboarding-inline-actions"><button className="button primary" onClick={() => void run('approve refinement', () => decideRefinement(credentials, true, token))}>Approve proposal</button><button className="button secondary" onClick={() => void run('reject refinement', () => decideRefinement(credentials, false, token))}>Keep current strategy</button></div></Section>}

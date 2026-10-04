@@ -1,0 +1,4 @@
+interface:
+  display_name: "Motion Designer"
+  short_description: "Design source-grounded short-form product videos"
+  default_prompt: "Use $motion-designer to turn this approved product or customer story into a motion brief and storyboard."

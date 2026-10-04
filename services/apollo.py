@@ -102,6 +102,25 @@ class ApolloClient:
             return contacts
         return []
 
+    def people_service_search(
+        self, *, keywords: list[str], job_titles: list[str], location: str | None = None, limit: int = 25,
+    ) -> list[dict]:
+        """One bounded preview search; this endpoint does not reveal email or phone."""
+        params: dict[str, Any] = {
+            "q_keywords": keywords[0],
+            "person_titles[]": job_titles[:3],
+            "page": 1,
+            "per_page": min(max(limit, 1), 25),
+        }
+        if location:
+            params["organization_locations[]"] = [location]
+        payload = self._request("POST", "mixed_people/api_search", params=params)
+        for key in ("people", "contacts"):
+            rows = payload.get(key)
+            if isinstance(rows, list):
+                return rows
+        return []
+
     def bulk_match(self, details: list[dict[str, Any]]) -> list[dict]:
         payload = self._request(
             "POST",

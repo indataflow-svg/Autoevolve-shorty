@@ -27,6 +27,7 @@ AutoEvolve's React UI uses the Company Core FastAPI backend. Existing
 ## Tutorials and troubleshooting
 
 - [First Sales Outreach](first-outreach.md) and [First Marketing Campaign](first-campaign.md).
+- [Motion Designer Workflow](motion-design-workflow.md): source-grounded story, GPT skill, Higgsfield shots, and G2 review handoff.
 - [Model Routing](model-routing.md), [Lead Intake](lead-intake.md), and [Troubleshooting](troubleshooting.md).
 
 ## Historical and planning material

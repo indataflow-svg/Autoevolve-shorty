@@ -4,13 +4,14 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
 import core.sales_store as sales_store
 import core.state as state
 from app.api import app
+from app.onboarding_api import StrategyInput
 
 
 class OnboardingApiTests(unittest.TestCase):
@@ -30,8 +31,16 @@ class OnboardingApiTests(unittest.TestCase):
         self.client = TestClient(app)
         self.auth = ("founder", "dashboard-secret")
         self.headers = {"X-Founder-Action-Token": "action-secret"}
+        self.website_research = patch("app.onboarding_api.extract_domain", new_callable=AsyncMock)
+        self.website_research_mock = self.website_research.start()
+        self.website_research_mock.return_value = {"pages": [], "pages_ok": 0}
+        self.strategy_generator = patch("app.onboarding_api._generate_strategy_draft", new_callable=AsyncMock)
+        self.strategy_generator_mock = self.strategy_generator.start()
+        self.strategy_generator_mock.return_value = StrategyInput.model_validate(self.strategy_payload())
 
     def tearDown(self):
+        self.strategy_generator.stop()
+        self.website_research.stop()
         self.env.stop()
         state.DB_PATH = self.old_state
         sales_store.DB_PATH = self.old_sales
@@ -60,8 +69,9 @@ class OnboardingApiTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 200, response.text)
 
-    def strategy(self):
-        response = self.post("strategy", {
+    @staticmethod
+    def strategy_payload():
+        return {
             "name": "First outbound", "objective": "Find qualified operations buyers",
             "success_metric": "Qualified replies per month", "offers": ["Workflow audit"],
             "icp": {"industry": "Software", "description": "Midmarket teams with manual operations handoffs", "company_sizes": ["50-500"]},
@@ -69,8 +79,30 @@ class OnboardingApiTests(unittest.TestCase):
             "positive_signals": ["Growing operations team"], "exclusions": [],
             "tone": "Direct and factual", "approved_claims": ["Guided setup"],
             "prohibited_claims": ["Guaranteed revenue"], "channels": ["email", "linkedin"],
-        })
+        }
+
+    def strategy(self):
+        drafted = self.post("strategy/draft")
+        self.assertEqual(drafted.status_code, 200, drafted.text)
+        self.assertEqual(drafted.json()["program"]["strategy_draft"]["offers"], ["Workflow audit"])
+        response = self.post("strategy", self.strategy_payload())
         self.assertEqual(response.status_code, 200, response.text)
+
+    def test_strategy_requires_generated_draft_and_caches_it(self):
+        self.start()
+        self.confirm()
+        self.assertEqual(self.post("strategy", self.strategy_payload()).status_code, 409)
+        first = self.post("strategy/draft")
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(first.json()["next_step"], "strategy")
+        self.assertEqual(first.json()["program"]["strategy_draft"]["icp"]["industry"], "Software")
+        self.assertEqual(self.post("strategy/draft").status_code, 200)
+        self.strategy_generator_mock.assert_awaited_once()
+        edited = self.strategy_payload()
+        edited["tone"] = "Warm and precise"
+        saved = self.post("strategy", edited)
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["program"]["strategy"]["tone"], "Warm and precise")
 
     def test_auth_action_gates_validation_and_resume(self):
         self.assertEqual(self.client.get("/company/ui/onboarding").status_code, 401)
@@ -89,6 +121,92 @@ class OnboardingApiTests(unittest.TestCase):
         self.assertIn("No company enrichment provider", self.client.get("/company/ui/onboarding", auth=self.auth).json()["program"]["research_error"])
         self.confirm()  # Manual confirmation is honest when provider is unavailable.
         self.assertEqual(self.client.get("/company/ui/onboarding", auth=self.auth).json()["next_step"], "strategy")
+
+    def test_company_research_distinguishes_no_match_from_provider_block(self):
+        from services.company_enrich import CompanyEnrichError
+        from services.pdl import PeopleDataLabsError
+
+        self.start()
+        with patch.dict(os.environ, {"CE_API_KEY": "test-only", "PDL_API_KEY": "test-only"}):
+            with patch("services.company_enrich.CompanyEnrichClient") as ce_client, \
+                 patch("services.pdl.PeopleDataLabsClient") as pdl_client:
+                ce_client.return_value.enrich_company.side_effect = CompanyEnrichError("not found", 404)
+                pdl_client.return_value.enrich_company.side_effect = PeopleDataLabsError("not found", 404)
+                missing = self.post("research-company")
+                self.assertEqual(missing.status_code, 404, missing.text)
+                self.assertIn("no matching company", missing.json()["detail"])
+                ce_client.return_value.enrich_company.side_effect = CompanyEnrichError("blocked", 403)
+                blocked = self.post("research-company")
+        self.assertEqual(blocked.status_code, 424, blocked.text)
+        self.assertIn("companyenrich blocked API access", blocked.json()["detail"])
+        self.assertIn("pdl has no matching company", blocked.json()["detail"])
+        self.assertNotIn("method=GET", blocked.json()["detail"])
+        self.assertEqual(self.client.get("/company/ui/onboarding", auth=self.auth).json()["next_step"], "research_company")
+        self.confirm()
+
+    def test_company_research_uses_website_without_provider_keys(self):
+        self.start()
+        self.website_research_mock.return_value = {
+            "domain": "studio.test", "base_url": "https://studio.test", "pages_ok": 1,
+            "pages": [{"ok": True, "url": "https://studio.test", "site_name": "Example Studio",
+                       "description": "Example Studio builds practical operations software for teams.", "text": ""}],
+        }
+        with patch.dict(os.environ, {"CE_API_KEY": "", "PDL_API_KEY": ""}):
+            researched = self.post("research-company")
+        self.assertEqual(researched.status_code, 200, researched.text)
+        program = researched.json()["program"]
+        self.assertEqual(program["research_provider"], "website")
+        self.assertEqual(program["company_research"]["description"], "Example Studio builds practical operations software for teams.")
+        self.assertEqual(program["company_research"]["sources"][0]["url"], "https://studio.test")
+        self.assertEqual(researched.json()["next_step"], "confirm_company")
+
+    def test_website_research_survives_blocked_and_missing_enrichment(self):
+        from services.company_enrich import CompanyEnrichError
+        from services.pdl import PeopleDataLabsError
+
+        self.start()
+        self.website_research_mock.return_value = {
+            "domain": "studio.test", "base_url": "https://studio.test", "pages_ok": 1,
+            "pages": [{"ok": True, "url": "https://studio.test", "site_name": "Example Studio",
+                       "description": "Example Studio builds practical operations software for teams.", "text": ""}],
+        }
+        with patch.dict(os.environ, {"CE_API_KEY": "test-only", "PDL_API_KEY": "test-only"}):
+            with patch("services.company_enrich.CompanyEnrichClient") as ce_client, \
+                 patch("services.pdl.PeopleDataLabsClient") as pdl_client:
+                ce_client.return_value.enrich_company.side_effect = CompanyEnrichError("blocked", 403)
+                pdl_client.return_value.enrich_company.side_effect = PeopleDataLabsError("not found", 404)
+                researched = self.post("research-company")
+        self.assertEqual(researched.status_code, 200, researched.text)
+        self.assertEqual(researched.json()["program"]["research_provider"], "website")
+        self.assertEqual(researched.json()["next_step"], "confirm_company")
+
+    def test_research_rejects_unsafe_website_before_provider_calls(self):
+        self.start()
+        self.website_research_mock.side_effect = ValueError("website resolves to a non-public address")
+        with patch.dict(os.environ, {"CE_API_KEY": "test-only"}):
+            with patch("services.company_enrich.CompanyEnrichClient") as client:
+                response = self.post("research-company")
+        self.assertEqual(response.status_code, 422)
+        client.assert_not_called()
+
+    def test_website_research_ignores_mismatched_provider_company(self):
+        self.start()
+        self.website_research_mock.return_value = {
+            "domain": "studio.test", "base_url": "https://studio.test", "pages_ok": 1,
+            "pages": [{"ok": True, "url": "https://studio.test", "site_name": "Example Studio",
+                       "description": "Example Studio builds practical operations software for teams.", "text": ""}],
+        }
+        with patch.dict(os.environ, {"CE_API_KEY": "test-only", "PDL_API_KEY": ""}):
+            with patch("services.company_enrich.CompanyEnrichClient") as client:
+                client.return_value.extract_company_profile.return_value = {
+                    "name": "Different Company", "domain": "different.example.org", "industry": "Finance",
+                }
+                researched = self.post("research-company")
+        self.assertEqual(researched.status_code, 200, researched.text)
+        program = researched.json()["program"]
+        self.assertEqual(program["research_provider"], "website")
+        self.assertEqual(program["company_research"]["name"], "Example Studio")
+        self.assertIsNone(program["company_research"]["industry"])
 
     def test_full_calibration_reuses_real_candidates_contacts_and_drafts(self):
         self.start()

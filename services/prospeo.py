@@ -10,9 +10,10 @@ from typing import Any
 
 
 class ProspeoError(RuntimeError):
-    def __init__(self, message: str, status: int | None = None):
+    def __init__(self, message: str, status: int | None = None, error_code: str | None = None):
         super().__init__(message)
         self.status = status
+        self.error_code = error_code
 
 
 logger = logging.getLogger(__name__)
@@ -46,15 +47,19 @@ class ProspeoClient:
             except urllib.error.HTTPError as exc:
                 raw = ""
                 detail = str(exc)
+                error_code = None
                 try:
                     raw = exc.read().decode("utf-8")
-                    payload = json.loads(raw)
-                    detail = payload.get("message") or payload.get("error_code") or payload.get("detail") or raw[:500]
+                    error_payload = json.loads(raw)
+                    error_code = error_payload.get("error_code")
+                    detail = error_payload.get("message") or error_code or error_payload.get("detail") or raw[:500]
                 except Exception:
                     if not raw:
                         raw = detail
-                logger.warning(
-                    "Prospeo upstream error method=%s url=%s status=%s attempt=%s body=%s response=%s",
+                log = logger.info if error_code == "NO_RESULTS" else logger.warning
+                log(
+                    "Prospeo %s method=%s url=%s status=%s attempt=%s body=%s response=%s",
+                    "search returned no results" if error_code == "NO_RESULTS" else "upstream error",
                     request.get_method(),
                     url,
                     exc.code,
@@ -68,6 +73,7 @@ class ProspeoClient:
                 raise ProspeoError(
                     f"method={request.get_method()} url={url} status={exc.code} detail={detail} body={body_preview}",
                     exc.code,
+                    error_code,
                 ) from exc
             except (TimeoutError, urllib.error.URLError) as exc:
                 logger.warning(

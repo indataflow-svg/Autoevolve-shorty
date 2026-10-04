@@ -44,6 +44,34 @@ services.company_enrich.CompanyEnrichClient = FixtureCompanyEnrich
 import app.onboarding_api as onboarding  # noqa: E402
 
 
+async def fixture_extract_domain(domain, max_pages):
+    assert domain.rstrip("/") == "https://studio.test" and max_pages == 4
+    return {
+        "domain": "studio.test", "base_url": domain, "pages_ok": 1,
+        "pages": [{"ok": True, "url": domain, "site_name": "Example Studio",
+                   "description": "Example Studio builds operations tools for teams.", "text": ""}],
+    }
+
+
+onboarding.extract_domain = fixture_extract_domain
+
+
+async def fixture_strategy_draft(program):
+    assert program.company_context and program.company_context.industry == "Software"
+    return onboarding.StrategyInput(
+        name="Example Studio first program", objective=program.company.objective,
+        success_metric="Qualified replies per month", offers=["Workflow audit"],
+        icp=onboarding.Icp(industry="Software", description="Midmarket operations teams with manual handoffs", company_sizes=["50-500 employees"]),
+        buyer_titles=["Operations Director"], markets=[program.company.market],
+        positive_signals=["Growing operations team"], exclusions=["Outside the primary market"],
+        tone="Direct and factual", approved_claims=["Operations workflow support"],
+        prohibited_claims=["Guaranteed revenue"], channels=["email"],
+    )
+
+
+onboarding._generate_strategy_draft = fixture_strategy_draft
+
+
 def fixture_research(*, industry, location, limit_per_provider):
     assert industry == "Software" and location == "United States" and limit_per_provider == 3
     rows = []
@@ -75,6 +103,40 @@ async def fixture_draft(lead_id):
 onboarding.research_market_leads = fixture_research
 onboarding.import_domain = fixture_import
 onboarding.build_draft = fixture_draft
+
+import app.service_discovery_api as service_discovery  # noqa: E402
+
+
+async def fixture_service_plan(service, company_context):
+    assert service == "Appointment scheduling for dental clinics"
+    return service_discovery.ServiceSearchPlan(
+        buyer_industry="Dental clinics", search_keywords=["dental practice", "appointment scheduling"],
+        buyer_titles=["Practice Manager"],
+        rationale="Dental clinics may need help with appointment scheduling.",
+    )
+
+
+def fixture_service_search(*, keywords, buyer_titles, market, desired_contacts):
+    assert buyer_titles and 1 <= desired_contacts <= 25
+    if keywords[0] == "Veterinary clinics":
+        return {"results": [], "providers": {"prospeo": 0}, "completed_providers": ["prospeo"], "warnings": []}
+    assert keywords[0] == "Dental clinics"
+    results = []
+    for name, company, domain, provider in [
+        ("Alex Lee", "Bright Dental", "bright.test", "apollo"),
+        ("Sam Rivera", "Clear Dental", "clear.test", "prospeo"),
+    ][:desired_contacts]:
+        lead, _ = sales_store.upsert_lead({
+            "full_name": name, "job_title": "Practice Manager", "company": company,
+            "company_domain": domain, "country": market or "United States", "source": provider,
+            "metadata": {"service_discovery_preview": True},
+        })
+        results.append(lead)
+    return {"results": results, "providers": {"apollo": 1, "prospeo": 1}, "completed_providers": ["apollo", "prospeo"], "warnings": []}
+
+
+service_discovery._plan_service = fixture_service_plan
+service_discovery.search_service_contacts = fixture_service_search
 
 from app.api import app  # noqa: E402
 import uvicorn  # noqa: E402

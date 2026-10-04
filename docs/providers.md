@@ -31,6 +31,32 @@ You do not need every sales provider. A practical minimum is Prospeo plus one co
 provider. Hunter and Lusha can be added as alternatives. Apollo features depend on which endpoints
 your account plan permits; a configured key does not guarantee access to restricted endpoints.
 
+The service-first path at `/services` accepts a service description and a target of 1–25 contacts.
+AI drafts buyer keywords and titles, then one bounded people-search request runs against Apollo
+first and Prospeo only if more contacts are needed. It saves names, titles, and companies as
+contact previews; it does not automatically reveal email or phone. Lusha preview search is
+disabled by default because its credit cost depends on the account. Optional rolling 24-hour
+local request caps can be set in `.env`:
+
+```dotenv
+SERVICE_APOLLO_PREVIEW_CAP_24H=20
+SERVICE_PROSPEO_PREVIEW_CAP_24H=1
+SERVICE_LUSHA_PREVIEW_CAP_24H=0
+```
+
+Prospeo validates an inherited or edited market against its free location suggestions before
+using it as a location filter. Broad regions such as "Africa" may not be supported; in that case
+the search continues without a location filter and the service page warns that results may be
+outside the requested market. A Prospeo `NO_RESULTS` response is shown as no matches, not a
+provider outage. Use a supported country or city when geography is essential.
+
+These caps count preview search attempts made by this application; free Prospeo location
+suggestions are separate. They cannot read credits spent
+outside AutoEvolve or guarantee a provider account remains within its free allowance.
+The current [Apollo people-search documentation](https://docs.apollo.io/reference/people-api-search)
+lists that preview endpoint at zero credits. The current [Prospeo search documentation](https://prospeo.io/api-docs/search-person)
+lists one credit for a results page. Check your own plan before raising the caps.
+
 ## Resend
 
 Canonical values and webhook setup live in [API keys](keys.md#outbound-email-tier-3).

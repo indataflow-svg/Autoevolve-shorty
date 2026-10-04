@@ -58,6 +58,10 @@ G2 searches configured stock providers and uses your owned showcase/outro for pr
 scenes. Review licensing and visual relevance. A media failure can be retried after correcting the
 reported provider, FFmpeg, timeout, or missing-asset issue.
 
+For a launch or customer-showcase video that needs a designed motion treatment, follow the
+[Motion Designer workflow](motion-design-workflow.md). It creates a source-grounded storyboard and
+Higgsfield shot prompts while keeping generated assets separate from approved product evidence.
+
 ## 5. Select and hand off
 
 When variants are ready, preview and select one. Platform captions remain editable before the final

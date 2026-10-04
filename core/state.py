@@ -75,6 +75,19 @@ def init_db() -> None:
                 value TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS service_discovery_runs (
+                id TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS service_provider_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider TEXT NOT NULL,
+                action TEXT NOT NULL,
+                started_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS org_capabilities (
                 org_id INTEGER NOT NULL,
                 capability TEXT NOT NULL,
@@ -201,6 +214,53 @@ def save_onboarding_program(program: dict) -> None:
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (json.dumps(program, ensure_ascii=False),),
         )
+
+
+def get_service_discovery_run(run_id: str) -> dict | None:
+    with connect() as conn:
+        row = conn.execute("SELECT state FROM service_discovery_runs WHERE id = ?", (run_id,)).fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def list_service_discovery_runs(limit: int = 10) -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT state FROM service_discovery_runs ORDER BY created_at DESC, rowid DESC LIMIT ?",
+            (min(max(limit, 1), 50),),
+        ).fetchall()
+    return [json.loads(row[0]) for row in rows]
+
+
+def save_service_discovery_run(run: dict) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO service_discovery_runs (id, state, created_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET state = excluded.state",
+            (run["id"], json.dumps(run, ensure_ascii=False), run["created_at"]),
+        )
+
+
+def claim_service_provider_request(provider: str, action: str, limit_24h: int) -> bool:
+    """Reserve one request against a conservative rolling local provider cap."""
+    if limit_24h <= 0:
+        return False
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(hours=24)).isoformat()
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        used = conn.execute(
+            "SELECT COUNT(*) FROM service_provider_requests WHERE provider = ? AND action = ? AND started_at >= ?",
+            (provider, action, cutoff),
+        ).fetchone()[0]
+        if used >= limit_24h:
+            return False
+        conn.execute(
+            "INSERT INTO service_provider_requests (provider, action, started_at) VALUES (?, ?, ?)",
+            (provider, action, now.isoformat()),
+        )
+    return True
 
 
 def _seed_orgs_from_env() -> None:

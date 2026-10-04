@@ -18,6 +18,7 @@ def run_gates(
     *,
     artifacts: dict[str, str] | None = None,
     context: dict[str, Any] | None = None,
+    render_mode: str = "shots",
 ) -> dict[str, Any]:
     """Run all quality gates. ``artifacts`` maps shot_id -> local MP4 path.
 
@@ -34,7 +35,7 @@ def run_gates(
     try:
         video_pipeline.validate_spec(spec)
         video_pipeline.validate_plan(spec, plan)
-        video_pipeline.validate_jobs(spec, plan, jobs)
+        video_pipeline.validate_jobs(spec, plan, jobs, render_mode=render_mode)
         video_pipeline.validate_claims(spec, plan, context)
         from services.visual_bible import validate_bible
 

@@ -51,7 +51,7 @@ class CompanyEnrichClient:
                     detail = parsed.get("message") or parsed.get("detail") or parsed.get("title") or raw[:500]
                 except Exception:
                     pass
-                if exc.code in {404, 409, 422, 429, 500, 502, 503, 504} and attempt + 1 < attempts:
+                if exc.code in {429, 500, 502, 503, 504} and attempt + 1 < attempts:
                     time.sleep(2 ** attempt)
                     continue
                 raise CompanyEnrichError(

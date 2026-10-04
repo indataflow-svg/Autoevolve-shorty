@@ -200,6 +200,24 @@ class SalesContractsTest(unittest.TestCase):
         self.assertIn("website=example.com", captured["url"])
         self.assertEqual(captured["key"], "secret")
 
+    def test_company_enrichment_no_match_does_not_retry(self):
+        from services.company_enrich import CompanyEnrichClient, CompanyEnrichError
+        from services.pdl import PeopleDataLabsClient, PeopleDataLabsError
+
+        for client, error in (
+            (CompanyEnrichClient("secret"), CompanyEnrichError),
+            (PeopleDataLabsClient("secret"), PeopleDataLabsError),
+        ):
+            with self.subTest(provider=type(client).__name__):
+                response = urllib.error.HTTPError("https://example.test", 404, "Not Found", {}, io.BytesIO(b'{"error":{"message":"No match"}}'))
+                with patch("urllib.request.urlopen", side_effect=response) as open_request, \
+                     patch("time.sleep") as sleep:
+                    with self.assertRaises(error) as caught:
+                        client.enrich_company("example.com")
+                self.assertEqual(caught.exception.status, 404)
+                open_request.assert_called_once()
+                sleep.assert_not_called()
+
     def test_company_profile_auto_rotation_falls_back_to_pdl(self):
         from core.sales_store import get_lead, upsert_lead
         from services.company_enrich import CompanyEnrichError
