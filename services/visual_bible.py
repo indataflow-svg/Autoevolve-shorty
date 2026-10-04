@@ -78,6 +78,41 @@ def validate_bible(bible: dict[str, Any]) -> None:
         raise ValueError("invalid visual bible: " + "; ".join(errors))
 
 
+def adapt_bible(bible: dict[str, Any], brief_text: str) -> dict[str, Any]:
+    """Adapt the default bible environment to the brief's domain.
+
+    The default bible speaks freight; a software/AI brief must not inherit
+    container yards. Deterministic keyword adaptation (no model call):
+    software cues without any freight cue switch the environment record to
+    a tech variant. Returns the (possibly new) bible dict.
+    """
+    import copy
+    import re
+
+    haystack = str(brief_text or "").lower()
+    words = set(re.findall(r"[a-z0-9]+", haystack))
+    freight_cues = (
+        "freight", "cargo", "port", "truck", "shipment", "corridor",
+        "warehouse", "logistics", "container", "customs",
+    )
+    tech_cues = (
+        "software", "startup", "platform", "cloud", "algorithm",
+    )
+    tech_hits = sum(1 for cue in tech_cues if cue in words)
+    tech_hits += min(len(re.findall(r"\bai\b", haystack)), 2)
+    if "artificial intelligence" in haystack:
+        tech_hits += 1
+    if tech_hits < 2 or any(cue in words for cue in freight_cues):
+        return bible
+    adapted = copy.deepcopy(bible)
+    adapted["environment"] = {
+        "architecture": "modern tech workspaces and digital environments",
+        "materials": "glass, light interfaces, clean surfaces",
+        "atmosphere": "focused innovation calm, no fantasy elements",
+    }
+    return adapted
+
+
 def inherit_for_shot(bible: dict[str, Any], shot: dict[str, Any]) -> dict[str, str]:
     """Render the bible sections a shot prompt needs as short strings."""
     cine = bible.get("cinematography", {})

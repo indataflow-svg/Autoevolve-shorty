@@ -44,11 +44,16 @@ def route_visual(beat_text: str, visual: dict[str, Any]) -> tuple[str, str, list
     declared = str(visual.get("type") or "").strip().lower().replace(" ", "_")
     if declared in VISUAL_TYPES and declared != "mixed":
         families = [declared] + [family for family in families if family != declared]
-    if "hunyuan" in families and any(cue in haystack for cue in INFO_DISPLAY_CUES):
-        # Information displays (labeled diagrams, data projections, screens
-        # showing content) must be rendered deterministically even when the
-        # setting sounds cinematic: generating them fabricates information.
-        families = ["motion_graphics"] + [family for family in families if family != "hunyuan"]
+    if not any(family in ("product_capture", "source_capture") for family in families):
+        # Information displays (labeled diagrams, data, screens showing
+        # content, logos, taglines) must be rendered deterministically even
+        # when the setting sounds cinematic: generating them fabricates
+        # information. Real captures keep their acquisition families.
+        if any(cue in haystack for cue in INFO_DISPLAY_CUES):
+            families = ["motion_graphics"] + [
+                family for family in families
+                if family not in ("hunyuan", "motion_graphics")
+            ]
     if not families:
         families = ["stock"]  # authentic footage is the safe default, never Hunyuan
     visual_type = families[0] if len(families) == 1 else "mixed"

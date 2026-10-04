@@ -80,6 +80,8 @@ ROUTE_KEYWORDS: dict[str, tuple[str, ...]] = {
         "sunrise", "aerial", "atmospheric", "slow push", "dolly",
         "cityscape", "skyline", "neon", "metropolis", "futuristic city",
         "city at night", "aerial city",
+        "natural landscape", "landscape", "horizon", "mountain", "desert",
+        "ocean", "forest",
     ),
     "stock": (
         "truck", "ship", "port", "warehouse", "document", "people", "driver",
@@ -106,6 +108,11 @@ INFO_DISPLAY_CUES = (
     "interface showing",
     "labeled as",
     "labels",
+    "logo",
+    "sign reading",
+    "illuminated sign",
+    "text reading",
+    "tagline",
 )
 
 # Renderer precedence when a shot mixes production families: generated footage

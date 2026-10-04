@@ -75,6 +75,17 @@ class BibleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_bible(bible)
 
+    def test_bible_adapts_to_software_briefs(self):
+        from services.visual_bible import adapt_bible, default_bible
+
+        freight = adapt_bible(default_bible(), "cargo trucks move freight through the port corridor")
+        self.assertIn("freight", freight["environment"]["architecture"])
+        tech = adapt_bible(default_bible(), "our AI software platform for startups in the cloud")
+        self.assertIn("tech", tech["environment"]["architecture"])
+        self.assertNotIn("freight", tech["environment"]["architecture"])
+        neutral = adapt_bible(default_bible(), "a short film about the sea")
+        self.assertEqual(neutral["environment"], default_bible()["environment"])
+
     def test_shot_inheritance(self):
         inherited = inherit_for_shot(default_bible(), {"motion": "slow push"})
         self.assertIn("style", inherited)
@@ -165,6 +176,17 @@ class PipelineExtensionTests(unittest.TestCase):
         )
         self.assertNotEqual(renderer, "hunyuan")
         self.assertIn("motion_graphics", visual_type)
+
+    def test_info_display_routes_deterministic(self):
+        from services.video.shot_planner import route_visual
+
+        for visual in (
+            "cityscape with holographic projections of workflows",
+            "logo appearing on screen with tagline",
+            "flowchart on a large screen",
+        ):
+            _, renderer, _ = route_visual("establishing", {"visual": visual})
+            self.assertEqual(renderer, "motion_graphics")
 
     def test_shot_record_validation(self):
         result = video_pipeline.plan_video(CORRIDOR, project_id="x")

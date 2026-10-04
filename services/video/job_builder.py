@@ -9,6 +9,7 @@ from services.video.shot_planner import primary_renderer
 def build_render_jobs(
     spec: dict[str, Any], plan: dict[str, Any], *, priority: int = 100,
     render_mode: str = "shots",
+    bible: dict[str, Any] | None = None, recipe: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build RenderJob dicts (unsaved) in the requested render mode.
 
@@ -21,7 +22,7 @@ def build_render_jobs(
     if render_mode not in ("shots", "full"):
         raise ValueError(f"unknown render mode: {render_mode!r} (expected 'shots' or 'full')")
     if render_mode == "full":
-        return [_full_video_job(spec, plan, priority=priority)]
+        return [_full_video_job(spec, plan, priority=priority, bible=bible, recipe=recipe)]
     jobs: list[dict[str, Any]] = []
     width, height = spec["format"]["width"], spec["format"]["height"]
     project_id = spec.get("projectId") or "project"
@@ -65,17 +66,23 @@ def build_render_jobs(
 
 
 def _full_video_job(
-    spec: dict[str, Any], plan: dict[str, Any], *, priority: int = 100
+    spec: dict[str, Any], plan: dict[str, Any], *, priority: int = 100,
+    bible: dict[str, Any] | None = None, recipe: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One whole-video Hunyuan job: no clip division, user-chosen mode."""
+    from services.visual_bible import inherit_for_shot
+
     shots = plan.get("shots") or []
     beats = " / ".join(
         str(shot.get("purpose") or "")[:160] for shot in shots
     )[:700]
+    bible = bible or {}
+    inherited = inherit_for_shot(bible, shots[0] if shots else {})
+    environment = inherited["environment"] or "clean modern environment"
+    style = inherited["style"] or "premium commercial cinematography"
     prompt = (
         f"Cinematic short video, {spec.get('title')}: {beats}. "
-        "Authentic freight environment, premium commercial cinematography, "
-        "restrained blue and indigo visual language, realistic materials, "
+        f"{environment}, {style}, realistic materials, "
         "natural motion, smooth continuous camera."
     )[:900]
     project_id = spec.get("projectId") or "project"

@@ -100,7 +100,7 @@ def plan_video(
         context=context,
     )
     from services.motion_recipes import select_recipe
-    from services.visual_bible import default_bible
+    from services.visual_bible import adapt_bible, default_bible
 
     brief_text = " ".join([
         spec_payload.get("title", ""),
@@ -108,7 +108,10 @@ def plan_video(
         " ".join(beat.get("text", "") for beat in parsed["beats"]),
     ])
     recipe_id, recipe = select_recipe(brief_text)
-    bible = default_bible(brand_name=spec_payload.get("brand", {}).get("name", "InDataFlow"))
+    bible = adapt_bible(
+        default_bible(brand_name=spec_payload.get("brand", {}).get("name", "InDataFlow")),
+        brief_text,
+    )
     if extra_assets:
         spec_payload["assets"] = (spec_payload.get("assets") or []) + list(extra_assets)
     return _finalize_directed_plan(
@@ -149,7 +152,10 @@ def _finalize_directed_plan(
         "status": "planned",
     })
     video_store.update_spec_status(spec["id"], "planned")
-    jobs = build_render_jobs({**spec_payload, "id": spec["id"]}, {**plan_payload, "id": plan["id"]})
+    jobs = build_render_jobs(
+        {**spec_payload, "id": spec["id"]}, {**plan_payload, "id": plan["id"]},
+        bible=bible, recipe=recipe,
+    )
     validate_jobs(spec_payload, {**plan_payload, "id": plan["id"]}, jobs)
     return {
         "spec": video_store.get_spec(spec["id"]),
@@ -204,7 +210,7 @@ def direct_brief(
     """
     from services.creative_director import CreativeDirector, DirectorUnavailable
     from services.motion_recipes import RECIPES, select_recipe_ai
-    from services.visual_bible import default_bible
+    from services.visual_bible import adapt_bible, default_bible
 
     if not brief or not brief.strip():
         raise ValueError("brief must not be empty")
@@ -229,7 +235,7 @@ def direct_brief(
     recipe_choice = select_recipe_ai(brief)
     recipe_id = recipe_choice["recipe"]
     recipe = RECIPES[recipe_id]
-    bible = default_bible()
+    bible = adapt_bible(default_bible(), brief)
 
     runtime_target = float(runtime_seconds or creative.runtime_seconds or 48)
     if runtime_target > 150 and runtime_seconds is None:
@@ -252,8 +258,10 @@ def direct_brief(
             "You are a storyboard artist. Break the approved direction into an ordered "
             "list of visual beats covering the runtime exactly once, in order. Keep "
             "narration factual per the brief; every beat needs a concrete visual. "
-            "Include at least two beats with concrete cinematic visuals (real places, "
-            "atmosphere, camera movement) suitable for AI video generation."
+            "Include at least two purely cinematic beats: real physical places, "
+            "atmosphere, and camera movement with no text, no logos, no screens, "
+            "no diagrams, no data displays, and no people operating software. "
+            "Text, logos and diagrams belong in separate non-cinematic beats."
         ),
         output_validator=_validate_outline,
         retries=4,
@@ -359,7 +367,11 @@ def queue_shot_plan(plan_id: str, *, priority: int = 100, render_mode: str = "sh
     existing = video_store.list_jobs(shot_plan_id=plan_id)
     if existing:
         return {"queued": existing, "already_queued": True, "counts": job_counts(existing, plan)}
-    jobs = build_render_jobs(spec, plan, priority=priority, render_mode=render_mode)
+    stored_bible = video_store.get_visual_bible(spec["id"]) or {}
+    jobs = build_render_jobs(
+        spec, plan, priority=priority, render_mode=render_mode,
+        bible=stored_bible.get("bible") or None, recipe=None,
+    )
     validate_jobs(spec, plan, jobs, render_mode=render_mode)
     queued = video_store.enqueue_jobs(store_job_rows(jobs))
     video_store.update_plan_status(plan_id, "queued")
