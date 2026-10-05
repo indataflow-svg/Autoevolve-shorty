@@ -64,6 +64,32 @@ export const scheduleManualPost = (credentials: Credentials, id: string, mode: '
 
 export const homeView = (credentials: Credentials) => api<HomeView>('/company/ui/home', credentials)
 
+// True workflow CRUD against /company/workflows. These are the workflows
+// names; the outreach/campaign/content helpers below are read projections
+// that predate this file's name and stay here to avoid breaking imports.
+export type Workflow = components['schemas']['Workflow']
+export type WorkflowState = components['schemas']['WorkflowState']
+
+export const listWorkflows = (credentials: Credentials, status?: string) => {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  const query = params.toString()
+  return api<Workflow[]>(`/company/workflows${query ? `?${query}` : ''}`, credentials)
+}
+export const getWorkflow = (credentials: Credentials, id: string) =>
+  api<Workflow>(`/company/workflows/${encodeURIComponent(id)}`, credentials)
+export const createWorkflow = (
+  credentials: Credentials,
+  input: { name: string; objective?: string; trigger?: Record<string, unknown>; steps?: Array<Record<string, unknown>>; success_metric?: Record<string, unknown> },
+  token: string,
+) => api<Workflow>('/company/workflows', credentials, { method: 'POST', body: JSON.stringify(input) }, token)
+export const runWorkflow = (credentials: Credentials, id: string, token: string, resume = false) =>
+  api<Workflow>(`/company/workflows/${encodeURIComponent(id)}/run`, credentials, { method: 'POST', body: JSON.stringify({ resume }) }, token)
+export const pauseWorkflow = (credentials: Credentials, id: string, token: string) =>
+  api<Workflow>(`/company/workflows/${encodeURIComponent(id)}/pause`, credentials, { method: 'POST' }, token)
+export const workflowState = (credentials: Credentials, id: string) =>
+  api<WorkflowState>(`/company/workflows/${encodeURIComponent(id)}/state`, credentials)
+
 export function repliesPage(credentials: Credentials, input: { page: number; q: string; view: string; sort: string }) {
   const params = new URLSearchParams({ page: String(input.page), page_size: '10', view: input.view, sort: input.sort })
   if (input.q) params.set('q', input.q)

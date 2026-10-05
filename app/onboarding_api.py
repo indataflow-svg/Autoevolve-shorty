@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, BeforeValidator, Field, HttpUrl
+from pydantic import BaseModel, BeforeValidator, Field, HttpUrl, model_validator
 
 from app.sales_api import verify_founder_action
 from core.company_context import (
@@ -43,10 +43,16 @@ Channel = Literal["email", "linkedin", "social"]
 
 
 class CompanyStart(BaseModel):
-    name: str = Field(min_length=2, max_length=120)
+    name: str | None = Field(default=None, max_length=120)
     website: HttpUrl
     objective: str = Field(min_length=3, max_length=300)
     market: str = Field(min_length=2, max_length=120)
+
+    @model_validator(mode="after")
+    def _name_if_given_must_be_real(self) -> "CompanyStart":
+        if self.name is not None and len(self.name.strip()) < 2:
+            raise ValueError("company name must be at least 2 characters when given")
+        return self
 
 
 class CompanyConfirm(BaseModel):
@@ -58,7 +64,7 @@ class CompanyConfirm(BaseModel):
     the canonical company context (core.company_context), not stored twice.
     """
 
-    name: str = Field(min_length=2, max_length=120)
+    name: str | None = Field(default=None, max_length=120)
     website: HttpUrl
     description: str = Field(min_length=10, max_length=3000)
     industry: str = Field(min_length=2, max_length=120)
@@ -99,6 +105,12 @@ class CompanyConfirm(BaseModel):
         BeforeValidator(normalize_marketing_stage),
         Field(default="starting_from_zero"),
     ] = "starting_from_zero"
+
+    @model_validator(mode="after")
+    def _name_if_given_must_be_real(self) -> "CompanyConfirm":
+        if self.name is not None and len(self.name.strip()) < 2:
+            raise ValueError("company name must be at least 2 characters when given")
+        return self
 
 
 class Icp(BaseModel):

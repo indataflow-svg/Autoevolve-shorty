@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.sales_api import verify_founder_action
-from core.company_context import get_company_context
+from core.company_context import get_company_context, is_workflow_ready
 from core.marketing_routing import stored_route_state
 from core.plan_governance import (
     GovernanceRecord,
@@ -37,6 +37,12 @@ from core.validation_plan import (
 from core.workflow_store import create_workflow
 
 router = APIRouter(prefix="/company/marketing/validation", tags=["market-validation"])
+
+# Canonical automation name. The /marketing/validation routes above stay working
+# so existing clients and tests keep passing; new code should use these, which
+# live under their own /company/automation root and cannot overlap with the
+# workflow engine's /company/workflows/{id} routes.
+automation_router = APIRouter(prefix="/company/automation", tags=["automation"])
 
 
 class WorkflowFromPlan(BaseModel):
@@ -70,13 +76,15 @@ def _routable_context():
             f"company is routed to {routing.next_stage or 'no stage'}; "
             "a validation plan is only planned for the market_validation state",
         )
-    if context.status != "context_complete":
-        # An incomplete context cannot support an honest plan: the model would
+    if not context.workflow_ready:
+        # Workflow preparation unlocks at 80%: Get Started keeps progress, and
+        # the data the founder already set counts. Below that the model would
         # have to invent the missing customer, problem, or objective.
         raise HTTPException(
             422,
-            "company context is incomplete: " + ", ".join(context.missing)
-            + ". Finish onboarding before generating a validation plan.",
+            f"company context is {context.completeness_percent}% complete "
+            f"(needs 80% for workflow preparation): {', '.join(context.missing)}. "
+            "Finish the missing answers in Get Started before generating a validation plan.",
         )
     return context
 
@@ -84,6 +92,16 @@ def _routable_context():
 @router.post("/plan", response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])
 async def create_validation_plan():
     """Plan the first market-validation experiment. Nothing is executed."""
+    return await _create_plan()
+
+
+@automation_router.post("/plan", response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])
+async def create_workflows_validation_plan():
+    """Canonical automation name for plan creation. Same behavior as /plan above."""
+    return await _create_plan()
+
+
+async def _create_plan() -> ValidationPlanRecord:
     context = _routable_context()
     # Imported here so a missing optional dependency cannot break the API import.
     from agents.hermes import HermesError, HermesOutputError, plan_market_validation
@@ -114,6 +132,16 @@ async def create_validation_plan():
 @router.get("/plan", response_model=ValidationPlanRecord)
 def read_validation_plan():
     """The most recent plan, or 404 when none has been generated yet."""
+    return _read_plan()
+
+
+@automation_router.get("/plan", response_model=ValidationPlanRecord)
+def read_workflows_validation_plan():
+    """Canonical automation name for reading the latest plan."""
+    return _read_plan()
+
+
+def _read_plan() -> ValidationPlanRecord:
     record = get_latest_validation_plan()
     if record is None:
         raise HTTPException(404, "no validation plan has been generated yet")
@@ -128,7 +156,7 @@ def _stored_plan(plan_id: str | None) -> ValidationPlanRecord:
 
 
 def _governed_context():
-    """The routable, complete context governance needs to authorize a plan."""
+    """The routable, workflow-ready context governance needs to authorize a plan."""
     routing = stored_route_state()
     if routing.routing_error:
         raise HTTPException(409, routing.routing_error)
@@ -141,31 +169,52 @@ def _governed_context():
             f"company is routed to {routing.next_stage or 'no stage'}; "
             "governance only applies to the market_validation state",
         )
-    if context.status != "context_complete":
+    if not context.workflow_ready:
         raise HTTPException(
             422,
-            "company context is incomplete: " + ", ".join(context.missing)
-            + ". Finish onboarding before governing a plan.",
+            f"company context is {context.completeness_percent}% complete "
+            f"(needs 80% for workflow preparation): {', '.join(context.missing)}. "
+            "Finish the missing answers in Get Started before governing a plan.",
         )
     return context
 
 
-@router.get("/workflow", response_model=GovernanceRecord)
+@router.get("/workflow", response_model=GovernanceRecord, deprecated=True)
 def read_governance():
+    """Legacy name. Prefer GET /company/automation/governance."""
+    return _read_governance()
+
+
+@automation_router.get("/governance", response_model=GovernanceRecord)
+def read_workflows_governance():
     """The latest governance decision and the lifecycle it has reached."""
+    return _read_governance()
+
+
+def _read_governance() -> GovernanceRecord:
     record = latest_governance()
     if record is None:
         raise HTTPException(404, "no plan has been validated for execution yet")
     return record
 
 
-@router.post("/workflow", response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])
+@router.post("/workflow", response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)], deprecated=True)
 def create_workflow_from_plan(payload: WorkflowFromPlan | None = None):
+    """Legacy name. Prefer POST /company/automation/governance."""
+    return _create_governed_workflow(payload)
+
+
+@automation_router.post("/governance", response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])
+def create_workflows_governance(payload: WorkflowFromPlan | None = None):
     """Validate a plan and, only if governance allows it, create the workflow.
 
     A blocked plan is still persisted with its reasons and creates no workflow,
     so a refusal is auditable rather than a silent no-op.
     """
+    return _create_governed_workflow(payload)
+
+
+def _create_governed_workflow(payload: WorkflowFromPlan | None = None) -> GovernanceRecord:
     from core.workflow_store import WorkflowState
 
     context = _governed_context()
@@ -200,9 +249,19 @@ def create_workflow_from_plan(payload: WorkflowFromPlan | None = None):
     return save_governance(record.model_copy(update={"workflow_id": workflow.id}))
 
 
-@router.post("/workflow/approve", response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])
+@router.post("/workflow/approve", response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)], deprecated=True)
 def approve_workflow(payload: ApprovalPayload | None = None):
+    """Legacy name. Prefer POST /company/automation/governance/approve."""
+    return _approve_governance(payload)
+
+
+@automation_router.post("/governance/approve", response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])
+def approve_workflows_governance(payload: ApprovalPayload | None = None):
     """Record the founder's approval. Execution stays locked until this exists."""
+    return _approve_governance(payload)
+
+
+def _approve_governance(payload: ApprovalPayload | None = None) -> GovernanceRecord:
     record = latest_governance()
     if record is None:
         raise HTTPException(404, "no plan has been validated for execution yet")
@@ -225,13 +284,23 @@ def approve_workflow(payload: ApprovalPayload | None = None):
     return save_governance(record.model_copy(update={"approved_at": _now()}))
 
 
-@router.post("/workflow/run", response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])
+@router.post("/workflow/run", response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)], deprecated=True)
 def run_workflow_from_plan(payload: SimulationRun | None = None):
+    """Legacy name. Prefer POST /company/automation/governance/run."""
+    return _run_governance(payload)
+
+
+@automation_router.post("/governance/run", response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])
+def run_workflows_governance(payload: SimulationRun | None = None):
     """Run the approved workflow through the existing runner.
 
     The only authorized action is ``simulate_outreach``: it returns a simulated
     result and performs no external side effect.
     """
+    return _run_governance(payload)
+
+
+def _run_governance(payload: SimulationRun | None = None) -> GovernanceRecord:
     from core.workflow_store import get_workflow, save_workflow
     from services.workflow_runner import run_workflow
 
@@ -275,6 +344,53 @@ def run_workflow_from_plan(payload: SimulationRun | None = None):
     return save_governance(record.model_copy(update={
         "executed_at": _now(), "execution": execution,
     }))
+
+
+class AutomationWorkflowView(BaseModel):
+    """One governed workflow with its decision, plan link, and engine state.
+
+    Powers the Workflows page showcase: KPIs and scores come from the linked
+    workflow's step outputs, the plan link traces back to the Hermes plan.
+    """
+
+    governance: GovernanceRecord
+    workflow_id: str | None = None
+    workflow_status: str | None = None
+    workflow: dict | None = None
+
+
+@automation_router.get("/workflows", response_model=list[AutomationWorkflowView])
+def list_automation_workflows(limit: int = 20):
+    """All governed workflows, newest first, each with its engine document."""
+    from core.plan_governance import init_governance_db
+    from core.state import connect
+    from core.workflow_store import get_workflow
+
+    init_governance_db()
+    with connect() as db:
+        rows = db.execute(
+            "SELECT id FROM validation_workflows ORDER BY created_at DESC, rowid DESC LIMIT ?",
+            (max(1, min(limit, 100)),),
+        ).fetchall()
+    from core.plan_governance import get_governance
+
+    views = []
+    for row in rows:
+        record = get_governance(row["id"])
+        if record is None:
+            continue
+        document = None
+        status = None
+        if record.workflow_id:
+            workflow = get_workflow(record.workflow_id)
+            if workflow is not None:
+                document = workflow.model_dump(mode="json")
+                status = workflow.state.status
+        views.append(AutomationWorkflowView(
+            governance=record, workflow_id=record.workflow_id,
+            workflow_status=status, workflow=document,
+        ))
+    return views
 
 
 def _now() -> str:

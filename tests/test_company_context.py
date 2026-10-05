@@ -68,6 +68,32 @@ class CompanyContextCoreTests(unittest.TestCase):
         )
         self.assertIsNone(context.product.name)
         self.assertIsNone(context.state.marketing_stage)
+        self.assertEqual(context.completeness_percent, 17)
+        self.assertFalse(context.workflow_ready)
+
+    def test_company_name_is_optional_and_identity_counts_without_it(self):
+        # A description or website alone counts the company group: the name
+        # stays optional and never blocks workflow preparation by itself.
+        for identity in (
+            {"description": "Ops tools for midmarket teams"},
+            {"website": "https://studio.test"},
+        ):
+            context = normalize_company_context({"company": identity})
+            self.assertIsNone(context.company.name)
+            self.assertNotIn("company", context.missing)
+
+    def test_completeness_reaches_workflow_ready_at_80_percent(self):
+        context = normalize_company_context({
+            "company": {"description": "Ops tools"},
+            "product": {"name": "Ops Audit"},
+            "customer": {"ideal_customer": "Midmarket ops teams"},
+            "market": {"problem": "Handoffs are manual"},
+            "objective": {"primary_goal": "Get first customers"},
+        })
+        self.assertEqual(context.missing, ["marketing_stage"])
+        self.assertEqual(context.completeness_percent, 83)
+        self.assertTrue(context.workflow_ready)
+        self.assertEqual(context.status, "context_incomplete")
 
     def test_blank_and_null_answers_are_unknown_rather_than_invented(self):
         context = normalize_company_context({

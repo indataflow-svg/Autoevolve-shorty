@@ -29,7 +29,7 @@ from agents.hermes import (
     plan_market_validation,
 )
 from app.api import app
-from core.company_context import normalize_company_context, save_company_context
+from core.company_context import get_company_context, normalize_company_context, save_company_context
 from core.validation_plan import (
     GROUNDING_THRESHOLD,
     WORKFLOW_TEMPLATE,
@@ -373,10 +373,10 @@ class ValidationApiTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def post_plan(self, **kwargs):
-        return self.client.post("/company/marketing/validation/plan", auth=self.auth, headers=self.headers, **kwargs)
+        return self.client.post("/company/automation/plan", auth=self.auth, headers=self.headers, **kwargs)
 
     def get_plan(self):
-        return self.client.get("/company/marketing/validation/plan", auth=self.auth)
+        return self.client.get("/company/automation/plan", auth=self.auth)
 
     @staticmethod
     def _result():
@@ -409,9 +409,9 @@ class ValidationApiTests(unittest.TestCase):
         self.assertIn("no validation plan", self.get_plan().json()["detail"])
 
     def test_generation_requires_the_founder_token(self):
-        denied = self.client.post("/company/marketing/validation/plan", auth=self.auth)
+        denied = self.client.post("/company/automation/plan", auth=self.auth)
         self.assertEqual(denied.status_code, 403)
-        unauthenticated = self.client.get("/company/marketing/validation/plan")
+        unauthenticated = self.client.get("/company/automation/plan")
         self.assertEqual(unauthenticated.status_code, 401)
         self.assertIsNone(get_latest_validation_plan())
 
@@ -431,8 +431,25 @@ class ValidationApiTests(unittest.TestCase):
         }))
         response = self.post_plan()
         self.assertEqual(response.status_code, 422)
-        self.assertIn("incomplete", response.json()["detail"])
+        self.assertIn("80%", response.json()["detail"])
         self.assertIsNone(get_latest_validation_plan())
+
+    def test_workflow_ready_context_at_80_percent_is_accepted(self):
+        # Five of six required groups (83%) unlocks workflow preparation even
+        # though the context is not fully complete: Get Started keeps progress.
+        # The company name is optional here: a description counts for identity.
+        save_company_context(normalize_company_context({
+            "company": {"description": "Ops tools for midmarket teams"},
+            "product": {"name": "Ops Audit"},
+            "customer": {"ideal_customer": "Midmarket ops teams"},
+            "market": {"problem": "Handoffs are manual"},
+            "objective": {"primary_goal": "Get first customers"},
+        }))
+        stored = get_company_context()
+        assert stored is not None
+        self.assertEqual(stored.completeness_percent, 83)
+        self.assertTrue(stored.workflow_ready)
+        self.assertEqual(stored.missing, ["marketing_stage"])
 
     def test_unsupported_marketing_stage_is_reported_not_routed(self):
         stored = self.context.model_dump(mode="json")
@@ -553,7 +570,7 @@ class RoutingToValidationTests(unittest.TestCase):
         )
         with patch.object(hermes, "plan_market_validation", return_value=result) as generate:
             planned = self.client.post(
-                "/company/marketing/validation/plan", auth=self.auth, headers=self.headers,
+                "/company/automation/plan", auth=self.auth, headers=self.headers,
             )
         self.assertEqual(planned.status_code, 200, planned.text)
         # Hermes received exactly the persisted context, nothing else.

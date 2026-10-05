@@ -719,16 +719,15 @@ export interface paths {
         };
         /**
          * Read Governance
-         * @description The latest governance decision and the lifecycle it has reached.
+         * @deprecated
+         * @description Legacy name. Prefer GET /company/automation/governance.
          */
         get: operations["read_governance_company_marketing_validation_workflow_get"];
         put?: never;
         /**
          * Create Workflow From Plan
-         * @description Validate a plan and, only if governance allows it, create the workflow.
-         *
-         *     A blocked plan is still persisted with its reasons and creates no workflow,
-         *     so a refusal is auditable rather than a silent no-op.
+         * @deprecated
+         * @description Legacy name. Prefer POST /company/automation/governance.
          */
         post: operations["create_workflow_from_plan_company_marketing_validation_workflow_post"];
         delete?: never;
@@ -748,7 +747,8 @@ export interface paths {
         put?: never;
         /**
          * Approve Workflow
-         * @description Record the founder's approval. Execution stays locked until this exists.
+         * @deprecated
+         * @description Legacy name. Prefer POST /company/automation/governance/approve.
          */
         post: operations["approve_workflow_company_marketing_validation_workflow_approve_post"];
         delete?: never;
@@ -768,12 +768,124 @@ export interface paths {
         put?: never;
         /**
          * Run Workflow From Plan
+         * @deprecated
+         * @description Legacy name. Prefer POST /company/automation/governance/run.
+         */
+        post: operations["run_workflow_from_plan_company_marketing_validation_workflow_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/automation/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Workflows Validation Plan
+         * @description Canonical automation name for reading the latest plan.
+         */
+        get: operations["read_workflows_validation_plan_company_automation_plan_get"];
+        put?: never;
+        /**
+         * Create Workflows Validation Plan
+         * @description Canonical automation name for plan creation. Same behavior as /plan above.
+         */
+        post: operations["create_workflows_validation_plan_company_automation_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/automation/governance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Workflows Governance
+         * @description The latest governance decision and the lifecycle it has reached.
+         */
+        get: operations["read_workflows_governance_company_automation_governance_get"];
+        put?: never;
+        /**
+         * Create Workflows Governance
+         * @description Validate a plan and, only if governance allows it, create the workflow.
+         *
+         *     A blocked plan is still persisted with its reasons and creates no workflow,
+         *     so a refusal is auditable rather than a silent no-op.
+         */
+        post: operations["create_workflows_governance_company_automation_governance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/automation/governance/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Workflows Governance
+         * @description Record the founder's approval. Execution stays locked until this exists.
+         */
+        post: operations["approve_workflows_governance_company_automation_governance_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/automation/governance/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Workflows Governance
          * @description Run the approved workflow through the existing runner.
          *
          *     The only authorized action is ``simulate_outreach``: it returns a simulated
          *     result and performs no external side effect.
          */
-        post: operations["run_workflow_from_plan_company_marketing_validation_workflow_run_post"];
+        post: operations["run_workflows_governance_company_automation_governance_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/automation/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Automation Workflows
+         * @description All governed workflows, newest first, each with its engine document.
+         */
+        get: operations["list_automation_workflows_company_automation_workflows_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1777,6 +1889,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/company/video/ingest/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ingest
+         * @description What a project has uploaded, so the UI can show pack and assets.
+         */
+        get: operations["list_ingest_company_video_ingest__project_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/company/video/plans/{plan_id}/queue": {
         parameters: {
             query?: never;
@@ -1822,6 +1954,53 @@ export interface paths {
         put?: never;
         /** Cancel Render Job */
         post: operations["cancel_render_job_company_video_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/video/ingest/pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Pack
+         * @description Store and parse an uploaded scenario pack.
+         *
+         *     The pack is the source of truth for a composed video, so it is validated
+         *     here rather than at render time: a malformed pack fails the upload, not the
+         *     render.
+         */
+        post: operations["ingest_pack_company_video_ingest_pack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/video/ingest/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Media
+         * @description Store and validate an uploaded media asset.
+         *
+         *     The bytes are written unchanged and probed with ffprobe, so a truncated or
+         *     unreadable file is rejected here instead of surfacing as a broken video.
+         */
+        post: operations["ingest_media_company_video_ingest_media_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2261,6 +2440,24 @@ export interface components {
              */
             objective: string;
         };
+        /**
+         * AutomationWorkflowView
+         * @description One governed workflow with its decision, plan link, and engine state.
+         *
+         *     Powers the Workflows page showcase: KPIs and scores come from the linked
+         *     workflow's step outputs, the plan link traces back to the Hermes plan.
+         */
+        AutomationWorkflowView: {
+            governance: components["schemas"]["GovernanceRecord"];
+            /** Workflow Id */
+            workflow_id?: string | null;
+            /** Workflow Status */
+            workflow_status?: string | null;
+            /** Workflow */
+            workflow?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** Body_create_manual_post_from_ui_company_marketing_manual_posts_post */
         Body_create_manual_post_from_ui_company_marketing_manual_posts_post: {
             /** Platform */
@@ -2281,6 +2478,18 @@ export interface components {
              * @default []
              */
             assets: string[];
+        };
+        /** Body_ingest_media_company_video_ingest_media_post */
+        Body_ingest_media_company_video_ingest_media_post: {
+            payload: components["schemas"]["MediaUpload"];
+            /** Media */
+            media: string;
+        };
+        /** Body_ingest_pack_company_video_ingest_pack_post */
+        Body_ingest_pack_company_video_ingest_pack_post: {
+            payload: components["schemas"]["PackUpload"];
+            /** Pack */
+            pack: string;
         };
         /** Body_upload_campaign_voice_recording_company_marketing_campaigns__campaign_id__voice_recording_post */
         Body_upload_campaign_voice_recording_company_marketing_campaigns__campaign_id__voice_recording_post: {
@@ -2614,7 +2823,7 @@ export interface components {
          */
         CompanyConfirm: {
             /** Name */
-            name: string;
+            name?: string | null;
             /**
              * Website
              * Format: uri
@@ -2742,6 +2951,16 @@ export interface components {
             status: "context_complete" | "context_incomplete";
             /** Missing */
             missing?: string[];
+            /**
+             * Completeness Percent
+             * @default 0
+             */
+            completeness_percent: number;
+            /**
+             * Workflow Ready
+             * @default false
+             */
+            workflow_ready: boolean;
         };
         /**
          * CompanyContextSections
@@ -2916,7 +3135,7 @@ export interface components {
         /** CompanyStart */
         CompanyStart: {
             /** Name */
-            name: string;
+            name?: string | null;
             /**
              * Website
              * Format: uri
@@ -3715,6 +3934,15 @@ export interface components {
             ok: boolean;
             org: components["schemas"]["MarketingOrgActionRecord"];
         };
+        /** MediaUpload */
+        MediaUpload: {
+            /** Project Id */
+            project_id: string;
+            /** Filename */
+            filename: string;
+            /** Tag */
+            tag?: string | null;
+        };
         /** MeetingActionResult */
         MeetingActionResult: {
             /** Ok */
@@ -3905,6 +4133,13 @@ export interface components {
             by_status: {
                 [key: string]: number;
             };
+        };
+        /** PackUpload */
+        PackUpload: {
+            /** Project Id */
+            project_id: string;
+            /** Filename */
+            filename: string;
         };
         /** PlanCreate */
         PlanCreate: {
@@ -6374,6 +6609,213 @@ export interface operations {
             };
         };
     };
+    read_workflows_validation_plan_company_automation_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationPlanRecord"];
+                };
+            };
+        };
+    };
+    create_workflows_validation_plan_company_automation_plan_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationPlanRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_workflows_governance_company_automation_governance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRecord"];
+                };
+            };
+        };
+    };
+    create_workflows_governance_company_automation_governance_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WorkflowFromPlan"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_workflows_governance_company_automation_governance_approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApprovalPayload"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_workflows_governance_company_automation_governance_run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SimulationRun"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_automation_workflows_company_automation_workflows_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationWorkflowView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     doctor_company_sales_doctor_get: {
         parameters: {
             query?: never;
@@ -8323,6 +8765,39 @@ export interface operations {
             };
         };
     };
+    list_ingest_company_video_ingest__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     queue_plan_company_video_plans__plan_id__queue_post: {
         parameters: {
             query?: {
@@ -8407,6 +8882,80 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_pack_company_video_ingest_pack_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_ingest_pack_company_video_ingest_pack_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_media_company_video_ingest_media_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_ingest_media_company_video_ingest_media_post"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

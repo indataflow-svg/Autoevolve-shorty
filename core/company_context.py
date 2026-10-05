@@ -60,6 +60,13 @@ _STAGE_SYNONYMS = {
 SCHEMA_VERSION = 1
 CONTEXT_ROW_ID = 1
 
+# Workflow preparation (plan generation, governance) is allowed once the founder
+# has answered at least this share of the required groups. The strict
+# `context_complete` status still means every group is known; this threshold is
+# the practical bar for starting work with a mostly-answered context.
+# With 6 required groups, 0.8 means at least 5 of 6 groups (at most 1 missing).
+WORKFLOW_READINESS_THRESHOLD = 0.8
+
 _WHITESPACE = re.compile(r"\s+")
 _LIST_SPLIT = re.compile(r"[\n\r]+")
 _STAGE_KEY = re.compile(r"[^a-z0-9]+")
@@ -260,14 +267,21 @@ class ContextState(BaseModel):
 
 # A group counts as known when the founder actually answered it. Group labels are
 # what the API reports as missing, so they read as plain business language.
+# Company identity counts when any identity fact is known: the company name
+# stays optional, so a description or website alone is enough to count the group.
 REQUIRED_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
-    (("company.name",), "company"),
+    (("company.name", "company.description", "company.website"), "company"),
     (("product.name", "product.description"), "product"),
     (("customer.ideal_customer",), "customer"),
     (("market.problem",), "problem"),
     (("objective.primary_goal", "objective.desired_outcome"), "objective"),
     (("state.marketing_stage",), "marketing_stage"),
 )
+
+# Workflow preparation unlocks below 100%: Get Started keeps progress, and the
+# data the founder has already set counts toward readiness. 80% means at most
+# one required group may still be unknown.
+WORKFLOW_READY_PERCENT = int(WORKFLOW_READINESS_THRESHOLD * 100)
 
 
 def _resolve(context: "CompanyContextSections", path: str) -> Any:
@@ -284,6 +298,29 @@ def missing_required(context: "CompanyContextSections") -> list[str]:
         for paths, label in REQUIRED_GROUPS
         if not any(_resolve(context, path) for path in paths)
     ]
+
+
+def completeness_ratio(context: "CompanyContextSections") -> float:
+    """Share of required groups that are known (0.0-1.0).
+
+    With 6 required groups, each answered group is ~0.167. A context missing
+    only one group scores ~0.833 and clears the workflow readiness threshold.
+    """
+    total = len(REQUIRED_GROUPS)
+    if not total:
+        return 1.0
+    known = total - len(missing_required(context))
+    return known / total
+
+
+def is_workflow_ready(context: "CompanyContextSections") -> bool:
+    """True when the context is complete enough to prepare a workflow.
+
+    Strict `context_complete` still requires every group; this is the practical
+    gate for plan generation and governance so one unanswered group does not
+    block workflow preparation.
+    """
+    return completeness_ratio(context) >= WORKFLOW_READINESS_THRESHOLD
 
 
 class CompanyContextSections(BaseModel):
@@ -313,10 +350,16 @@ class CompanyContext(CompanyContextSections):
     updated_at: answer_text(60)
     status: ContextStatus = "context_incomplete"
     missing: list[str] = Field(default_factory=list)
+    completeness_percent: int = 0
+    workflow_ready: bool = False
 
     @model_validator(mode="after")
     def _derive_completeness(self) -> "CompanyContext":
         self.missing = missing_required(self)
+        total = len(REQUIRED_GROUPS)
+        known = total - len(self.missing)
+        self.completeness_percent = int(round(100 * known / total)) if total else 0
+        self.workflow_ready = self.completeness_percent >= WORKFLOW_READY_PERCENT
         self.status = "context_incomplete" if self.missing else "context_complete"
         return self
 

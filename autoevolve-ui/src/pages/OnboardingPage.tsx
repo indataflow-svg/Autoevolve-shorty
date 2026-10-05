@@ -37,9 +37,9 @@ function CompanyStartForm({ program, run, token }: { program: Program | null; ru
   const [website, setWebsite] = useState(program?.company.website || '')
   const [objective, setObjective] = useState(program?.company.objective || '')
   const [market, setMarket] = useState(program?.company.market || '')
-  function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void run('save company', () => startCompany(credentials, { name, website, objective, market }, token)) }
+  function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void run('save company', () => startCompany(credentials, { name: name.trim() || null, website, objective, market }, token)) }
   return <Section title="1. Your company" detail="These are your own company facts, separate from prospect companies."><form className="onboarding-form" onSubmit={submit}>
-    <label>Company name<input value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required /></label>
+    <label>Company name (optional)<input value={name} onChange={event => setName(event.target.value)} maxLength={120} placeholder="Leave blank if you prefer — description or website still counts" /></label>
     <label>Website<input type="url" value={website} onChange={event => setWebsite(event.target.value)} placeholder="https://your-company.example" required /></label>
     <label>Objective<textarea value={objective} onChange={event => setObjective(event.target.value)} minLength={3} maxLength={300} required /></label>
     <label>Primary market<input value={market} onChange={event => setMarket(event.target.value)} minLength={2} maxLength={120} required /></label>
@@ -79,7 +79,7 @@ function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: P
   const research = program.company_research as Record<string, unknown> | null
   const sources = Array.isArray(research?.sources) ? research.sources.filter((item): item is { field: string; url: string } => !!item && typeof item === 'object' && typeof item.url === 'string' && typeof item.field === 'string') : []
   const signals = research?.signals && typeof research.signals === 'object' ? research.signals as Record<string, unknown> : null
-  const [name, setName] = useState(program.company_context?.name || fact(research, 'name') || program.company.name)
+  const [name, setName] = useState(program.company_context?.name || fact(research, 'name') || program.company.name || '')
   const website = program.company.website
   const [description, setDescription] = useState(program.company_context?.description || fact(research, 'description'))
   const [industry, setIndustry] = useState(program.company_context?.industry || fact(research, 'industry'))
@@ -92,7 +92,7 @@ function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: P
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     void run('confirm company', () => confirmCompany(credentials, {
-      name, website, description, industry, positioning, offer_summary: offerSummary,
+      name: name.trim() || null, website, description, industry, positioning, offer_summary: offerSummary,
       marketing_stage: stage, ...extras,
     } satisfies CompanyConfirm, token))
   }
@@ -104,7 +104,7 @@ function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: P
     {sources.length > 0 && <p className="operational-note">Website evidence: {sources.map((source, index) => <span key={`${source.url}-${index}`}>{index > 0 ? ', ' : ''}<a href={source.url} target="_blank" rel="noopener noreferrer">{source.field}</a></span>)}</p>}
     {program.research_error && <p className="operational-error" role="alert">Company research: {program.research_error}</p>}
     <form className="onboarding-form" onSubmit={submit}>
-      <label>Confirmed name<input value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={120} required /></label>
+      <label>Confirmed name (optional)<input value={name} onChange={event => setName(event.target.value)} maxLength={120} placeholder="Leave blank if unknown" /></label>
       <label>Website researched<input type="url" value={website} readOnly /></label>
       <label>Description<textarea value={description} onChange={event => setDescription(event.target.value)} minLength={10} maxLength={3000} required /></label>
       <label>Industry<input value={industry} onChange={event => setIndustry(event.target.value)} minLength={2} maxLength={120} required /></label>
@@ -230,7 +230,7 @@ export function OnboardingPage() {
     {query.isError && view && <div className="operational-error" role="alert">Refresh failed: {query.error.message} <button onClick={() => query.refetch()}>Retry</button></div>}
     {query.isPending ? <LoadingRows label="Loading onboarding" /> : query.isError && !view ? <DataState title="Setup could not be loaded" detail={query.error.message} retry={() => query.refetch()} /> : view && <>
       <div className="onboarding-progress"><span>Program: <strong>{program?.strategy?.name || program?.company.name || 'Not started'}</strong></span><StateBadge tone={step === 'home' ? 'green' : 'blue'}>{program?.status || 'not_started'}</StateBadge><span>Next: {step.replaceAll('_', ' ')}</span></div>
-      {program && companyContext_ && <p className="operational-note">Company context: <StateBadge tone={companyContext_.status === 'context_complete' ? 'green' : 'yellow'}>{companyContext_.status === 'context_complete' ? 'context complete' : 'context incomplete'}</StateBadge>{(companyContext_.context?.missing?.length ?? 0) > 0 && <> Still unknown: {(companyContext_.context?.missing || []).join(', ').replaceAll('_', ' ')}.</>} Answers stay as given; nothing is inferred.</p>}
+      {program && companyContext_ && <p className="operational-note">Company context: <StateBadge tone={companyContext_.status === 'context_complete' ? 'green' : (companyContext_.context?.workflow_ready ? 'green' : 'yellow')}>{companyContext_.status === 'context_complete' ? 'context complete' : `context ${companyContext_.context?.completeness_percent ?? 0}%${companyContext_.context?.workflow_ready ? ' · ready for workflow preparation' : ''}`}</StateBadge>{(companyContext_.context?.missing?.length ?? 0) > 0 && <> Still unknown: {(companyContext_.context?.missing || []).join(', ').replaceAll('_', ' ')}.</>} Answers stay as given; nothing is inferred. Your progress is saved at every step.</p>}
       {step !== 'home' && <label className="onboarding-token">Founder action token<input type="password" autoComplete="off" aria-label="Founder action token" value={token} onChange={event => setToken(event.target.value)} /><small>Required by the existing action gate; held only in this page's memory.</small></label>}
       {pending && <p role="status" className="operational-note">{pending}… Waiting for backend confirmation.</p>}
       {error && <p className="form-error" role="alert">{error}</p>}

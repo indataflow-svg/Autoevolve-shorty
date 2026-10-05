@@ -69,6 +69,21 @@ class OnboardingApiTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 200, response.text)
 
+    def test_company_name_is_optional_and_progress_is_kept(self):
+        # Get Started keeps progress: no name still starts the program.
+        response = self.post("company", {
+            "name": None, "website": "https://studio.test",
+            "objective": "Find qualified operations buyers", "market": "United States",
+        })
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()["program"]["company"]["name"])
+        # A one-character name is still rejected when given.
+        bad = self.post("company", {
+            "name": "X", "website": "https://studio.test",
+            "objective": "Find qualified operations buyers", "market": "United States",
+        })
+        self.assertEqual(bad.status_code, 422)
+
     @staticmethod
     def strategy_payload():
         return {

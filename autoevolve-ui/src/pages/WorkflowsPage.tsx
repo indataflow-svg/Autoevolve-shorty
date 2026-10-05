@@ -4,8 +4,8 @@ import { ArrowRight, Compass, FileText, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { companyContext } from '../api/companyContext'
 import {
-  approveGovernedWorkflow, createGovernedWorkflow, generateValidationPlan, runWorkflowSimulation,
-  validationGovernance, validationPlan, type GovernanceRecord, type ValidationPlanRecord,
+  approveGovernedWorkflow, automationWorkflows, createGovernedWorkflow, generateValidationPlan, runWorkflowSimulation,
+  validationGovernance, validationPlan, type AutomationWorkflowView, type GovernanceRecord, type ValidationPlanRecord,
 } from '../api/validation'
 import { ApiError } from '../api/client'
 import { useCredentials } from '../app/Auth'
@@ -92,12 +92,43 @@ function GovernancePanel({ record, busy, error, onAction }: {
   </section>
 }
 
-export function ValidationPage() {
+function WorkflowShowcase({ items }: { items: AutomationWorkflowView[] }) {
+  if (items.length === 0) return null
+  return <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Workflows</h2><p>Every governed workflow with its result. Simulations only — nothing has been sent, published, or spent.</p></div>
+    <div className="workflow-showcase">{items.map(item => <WorkflowCard key={item.governance.id} item={item} />)}</div>
+  </section>
+}
+
+function WorkflowCard({ item }: { item: AutomationWorkflowView }) {
+  const doc = (item.workflow || {}) as Record<string, unknown>
+  const docState = doc.state as { status?: string; results?: Array<{ step_id?: string; action?: string; status?: string; output?: Record<string, unknown> }> } | undefined
+  const steps = docState?.results?.length ? docState.results : ((item.governance.execution?.steps || []) as Array<{ step_id?: string; action?: string; status?: string; output?: Record<string, unknown> }>)
+  const first = steps[0]?.output || {}
+  const target = (doc.success_metric as { target?: number } | undefined)?.target
+  const events = typeof first.validation_events === 'number' ? first.validation_events : null
+  const score = events !== null && typeof target === 'number' && target > 0 ? `${events} / ${target}` : '—'
+  const title = typeof doc.name === 'string' && doc.name ? doc.name : item.workflow_id || 'Workflow'
+  return <div className="workflow-card">
+    <div className="workflow-card-head"><strong>{title}</strong><StateBadge tone={item.workflow_status === 'completed' ? 'green' : item.workflow_status === 'failed' ? 'red' : 'blue'}>{item.workflow_status || item.governance.lifecycle}</StateBadge></div>
+    <dl className="validation-grid">
+      <div><dt>Targets</dt><dd>{String(first.targets ?? '—')}</dd></div>
+      <div><dt>Sent</dt><dd>{String(first.sent ?? '—')}</dd></div>
+      <div><dt>Validation events</dt><dd>{events ?? '—'}</dd></div>
+      <div><dt>Score</dt><dd>{score}</dd></div>
+      <div><dt>External side effects</dt><dd>{first.external_side_effects === false ? 'none' : first.external_side_effects === true ? 'unexpected' : '—'}</dd></div>
+      <div><dt>Governance</dt><dd>{item.governance.status}{item.governance.approved_at ? ' · approved' : ' · awaiting approval'}</dd></div>
+    </dl>
+    {steps.length > 0 && <table className="workflow-steps"><thead><tr><th>Step</th><th>Action</th><th>Status</th></tr></thead><tbody>{steps.map((step, index) => <tr key={step.step_id || index}><td>{step.step_id || `step_${index + 1}`}</td><td>{step.action || '—'}</td><td>{step.status || '—'}</td></tr>)}</tbody></table>}
+  </div>
+}
+
+export function WorkflowsPage() {
   const credentials = useCredentials()
   const queryClient = useQueryClient()
   const query = useQuery({ queryKey: ['validation-plan'], queryFn: () => validationPlan(credentials), retry: false })
   const routing = useQuery({ queryKey: ['company-context'], queryFn: () => companyContext(credentials), retry: false })
   const governance = useQuery({ queryKey: ['validation-governance'], queryFn: () => validationGovernance(credentials), retry: false })
+  const showcase = useQuery({ queryKey: ['automation-workflows'], queryFn: () => automationWorkflows(credentials), retry: false })
   const [token, setToken] = useState('')
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
@@ -129,13 +160,15 @@ export function ValidationPage() {
         : action === 'approve' ? await approveGovernedWorkflow(credentials, token)
           : await runWorkflowSimulation(credentials, token)
       queryClient.setQueryData(['validation-governance'], updated)
+      await queryClient.invalidateQueries({ queryKey: ['automation-workflows'] })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'That action was refused. Nothing ran.')
     } finally { setPending('') }
   }
-  return <AppShell active="Market Validation" query="" onQueryChange={() => undefined}><div className="page-layout"><main className="page-main"><div className="page-content validation-page">
-    <div className="page-heading"><div><h1>Market Validation</h1><p>Find the fastest credible way to test whether this business can generate real demand.</p></div><div className="heading-actions"><Link to="/home" className="button secondary">Home</Link></div></div>
+  return <AppShell active="Workflows" query="" onQueryChange={() => undefined}><div className="page-layout"><main className="page-main"><div className="page-content validation-page">
+    <div className="page-heading"><div><h1>Workflows</h1><p>Find the fastest credible way to test whether this business can generate real demand.</p></div><div className="heading-actions"><Link to="/home" className="button secondary">Home</Link></div></div>
     <div className="onboarding-progress"><span>Route: <strong>{stage(routing.data?.marketing_stage)} → {stage(routing.data?.next_stage)}</strong></span><StateBadge tone={record ? 'blue' : 'neutral'}>{record ? 'plan ready' : 'no plan yet'}</StateBadge><span>{record ? `Status: ${record.status}` : 'Planning only — nothing is executed'}</span></div>
+    {routing.data?.context && <p className="operational-note">Company data: <strong>{routing.data.context.completeness_percent ?? 0}%</strong> complete{(routing.data.context.workflow_ready ?? false) ? ' · ready for workflow preparation' : ` · needs 80% for workflow preparation${(routing.data.context.missing?.length ?? 0) > 0 ? ` (missing: ${(routing.data.context.missing || []).join(', ').replaceAll('_', ' ')})` : ''}`}. Get Started keeps your progress — fill the missing answers there.</p>}
     {query.isPending ? <LoadingRows label="Loading validation plan" /> : failed
       ? <DataState title="Validation plan could not be loaded" detail={query.error.message} retry={() => query.refetch()} />
       : <>
@@ -148,6 +181,7 @@ export function ValidationPage() {
         {record && showPlan && <PlanView record={record} />}
         {decision && <GovernancePanel record={decision} busy={pending.startsWith('Governance') || pending === 'Recording approval' || pending === 'Running the simulated workflow' ? pending : ''} error={error} onAction={action => void govern(action)} />}
         {noDecisionYet && record && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Governance</h2><p>Validating the plan checks its channel, limits, constraints, and approval requirement before any workflow exists.</p></div><div className="validation-actions"><button className="button secondary" disabled={pending !== ''} onClick={() => void govern('validate')}>Validate Plan</button></div></section>}
+        {showcase.data && showcase.data.length > 0 && <WorkflowShowcase items={showcase.data} />}
         {noPlanYet && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>What happens here</h2><p>AutoEvolve reads the confirmed company context and asks Hermes for the smallest credible validation experiment.</p></div><p className="operational-note"><FileText size={15} /> The result is a reviewable plan: hypothesis, market, validation experiment, evidence, and limits. Sending, publishing, and spending are not part of this stage.</p></section>}
       </>}
   </div></main></div></AppShell>

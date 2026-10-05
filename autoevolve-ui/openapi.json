@@ -2304,8 +2304,9 @@
           "market-validation"
         ],
         "summary": "Read Governance",
-        "description": "The latest governance decision and the lifecycle it has reached.",
+        "description": "Legacy name. Prefer GET /company/automation/governance.",
         "operationId": "read_governance_company_marketing_validation_workflow_get",
+        "deprecated": true,
         "security": [
           {
             "HTTPBasic": []
@@ -2329,8 +2330,9 @@
           "market-validation"
         ],
         "summary": "Create Workflow From Plan",
-        "description": "Validate a plan and, only if governance allows it, create the workflow.\n\nA blocked plan is still persisted with its reasons and creates no workflow,\nso a refusal is auditable rather than a silent no-op.",
+        "description": "Legacy name. Prefer POST /company/automation/governance.",
         "operationId": "create_workflow_from_plan_company_marketing_validation_workflow_post",
+        "deprecated": true,
         "security": [
           {
             "HTTPBasic": []
@@ -2401,8 +2403,9 @@
           "market-validation"
         ],
         "summary": "Approve Workflow",
-        "description": "Record the founder's approval. Execution stays locked until this exists.",
+        "description": "Legacy name. Prefer POST /company/automation/governance/approve.",
         "operationId": "approve_workflow_company_marketing_validation_workflow_approve_post",
+        "deprecated": true,
         "security": [
           {
             "HTTPBasic": []
@@ -2473,8 +2476,9 @@
           "market-validation"
         ],
         "summary": "Run Workflow From Plan",
-        "description": "Run the approved workflow through the existing runner.\n\nThe only authorized action is ``simulate_outreach``: it returns a simulated\nresult and performs no external side effect.",
+        "description": "Legacy name. Prefer POST /company/automation/governance/run.",
         "operationId": "run_workflow_from_plan_company_marketing_validation_workflow_run_post",
+        "deprecated": true,
         "security": [
           {
             "HTTPBasic": []
@@ -2522,6 +2526,380 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GovernanceRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/automation/plan": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Create Workflows Validation Plan",
+        "description": "Canonical automation name for plan creation. Same behavior as /plan above.",
+        "operationId": "create_workflows_validation_plan_company_automation_plan_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationPlanRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Read Workflows Validation Plan",
+        "description": "Canonical automation name for reading the latest plan.",
+        "operationId": "read_workflows_validation_plan_company_automation_plan_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationPlanRecord"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/automation/governance": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Read Workflows Governance",
+        "description": "The latest governance decision and the lifecycle it has reached.",
+        "operationId": "read_workflows_governance_company_automation_governance_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceRecord"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Create Workflows Governance",
+        "description": "Validate a plan and, only if governance allows it, create the workflow.\n\nA blocked plan is still persisted with its reasons and creates no workflow,\nso a refusal is auditable rather than a silent no-op.",
+        "operationId": "create_workflows_governance_company_automation_governance_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/WorkflowFromPlan"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/automation/governance/approve": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Approve Workflows Governance",
+        "description": "Record the founder's approval. Execution stays locked until this exists.",
+        "operationId": "approve_workflows_governance_company_automation_governance_approve_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApprovalPayload"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/automation/governance/run": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Run Workflows Governance",
+        "description": "Run the approved workflow through the existing runner.\n\nThe only authorized action is ``simulate_outreach``: it returns a simulated\nresult and performs no external side effect.",
+        "operationId": "run_workflows_governance_company_automation_governance_run_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SimulationRun"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/automation/workflows": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "List Automation Workflows",
+        "description": "All governed workflows, newest first, each with its engine document.",
+        "operationId": "list_automation_workflows_company_automation_workflows_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AutomationWorkflowView"
+                  },
+                  "title": "Response List Automation Workflows Company Automation Workflows Get"
                 }
               }
             }
@@ -6174,6 +6552,56 @@
         ]
       }
     },
+    "/company/video/ingest/{project_id}": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "List Ingest",
+        "description": "What a project has uploaded, so the UI can show pack and assets.",
+        "operationId": "list_ingest_company_video_ingest__project_id__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Ingest Company Video Ingest  Project Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/company/video/plans/{plan_id}/queue": {
       "post": {
         "tags": [
@@ -6363,6 +6791,140 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Cancel Render Job Company Video Jobs  Job Id  Cancel Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/ingest/pack": {
+      "post": {
+        "tags": [
+          "video-actions"
+        ],
+        "summary": "Ingest Pack",
+        "description": "Store and parse an uploaded scenario pack.\n\nThe pack is the source of truth for a composed video, so it is validated\nhere rather than at render time: a malformed pack fails the upload, not the\nrender.",
+        "operationId": "ingest_pack_company_video_ingest_pack_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ingest_pack_company_video_ingest_pack_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Ingest Pack Company Video Ingest Pack Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/video/ingest/media": {
+      "post": {
+        "tags": [
+          "video-actions"
+        ],
+        "summary": "Ingest Media",
+        "description": "Store and validate an uploaded media asset.\n\nThe bytes are written unchanged and probed with ffprobe, so a truncated or\nunreadable file is rejected here instead of surfacing as a broken video.",
+        "operationId": "ingest_media_company_video_ingest_media_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ingest_media_company_video_ingest_media_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Ingest Media Company Video Ingest Media Post"
                 }
               }
             }
@@ -7768,6 +8330,53 @@
         ],
         "title": "AssetPackRequest"
       },
+      "AutomationWorkflowView": {
+        "properties": {
+          "governance": {
+            "$ref": "#/components/schemas/GovernanceRecord"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Id"
+          },
+          "workflow_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Status"
+          },
+          "workflow": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow"
+          }
+        },
+        "type": "object",
+        "required": [
+          "governance"
+        ],
+        "title": "AutomationWorkflowView",
+        "description": "One governed workflow with its decision, plan link, and engine state.\n\nPowers the Workflows page showcase: KPIs and scores come from the linked\nworkflow's step outputs, the plan link traces back to the Hermes plan."
+      },
       "Body_create_manual_post_from_ui_company_marketing_manual_posts_post": {
         "properties": {
           "platform": {
@@ -7827,6 +8436,42 @@
           "platform"
         ],
         "title": "Body_create_manual_post_from_ui_company_marketing_manual_posts_post"
+      },
+      "Body_ingest_media_company_video_ingest_media_post": {
+        "properties": {
+          "payload": {
+            "$ref": "#/components/schemas/MediaUpload"
+          },
+          "media": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Media"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payload",
+          "media"
+        ],
+        "title": "Body_ingest_media_company_video_ingest_media_post"
+      },
+      "Body_ingest_pack_company_video_ingest_pack_post": {
+        "properties": {
+          "payload": {
+            "$ref": "#/components/schemas/PackUpload"
+          },
+          "pack": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Pack"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payload",
+          "pack"
+        ],
+        "title": "Body_ingest_pack_company_video_ingest_pack_post"
       },
       "Body_upload_campaign_voice_recording_company_marketing_campaigns__campaign_id__voice_recording_post": {
         "properties": {
@@ -8839,9 +9484,15 @@
       "CompanyConfirm": {
         "properties": {
           "name": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Name"
           },
           "website": {
@@ -9172,7 +9823,6 @@
         },
         "type": "object",
         "required": [
-          "name",
           "website",
           "description",
           "industry",
@@ -9297,6 +9947,16 @@
             },
             "type": "array",
             "title": "Missing"
+          },
+          "completeness_percent": {
+            "type": "integer",
+            "title": "Completeness Percent",
+            "default": 0
+          },
+          "workflow_ready": {
+            "type": "boolean",
+            "title": "Workflow Ready",
+            "default": false
           }
         },
         "type": "object",
@@ -9877,9 +10537,15 @@
       "CompanyStart": {
         "properties": {
           "name": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Name"
           },
           "website": {
@@ -9904,7 +10570,6 @@
         },
         "type": "object",
         "required": [
-          "name",
           "website",
           "objective",
           "market"
@@ -12453,6 +13118,40 @@
         ],
         "title": "MarketingOrgCreateResult"
       },
+      "MediaUpload": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Project Id"
+          },
+          "filename": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Filename"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "filename"
+        ],
+        "title": "MediaUpload"
+      },
       "MeetingActionResult": {
         "properties": {
           "ok": {
@@ -13112,6 +13811,28 @@
           "by_status"
         ],
         "title": "OutreachPage"
+      },
+      "PackUpload": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Project Id"
+          },
+          "filename": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Filename"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "filename"
+        ],
+        "title": "PackUpload"
       },
       "PlanCreate": {
         "properties": {
