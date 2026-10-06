@@ -134,6 +134,44 @@ class VideoPipelineTests(unittest.TestCase):
         )
         video_pipeline.validate_jobs(spec, plan, jobs, render_mode="full")
 
+    def test_full_render_mode_chunks_carry_their_own_story_slice(self):
+        # Regression: chunk prompts used to share one storyboard summary and
+        # differ only by "Segment N of M". Each chunk must carry the scene
+        # descriptions of the shots overlapping its own time window instead.
+        import re
+
+        result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
+        spec, plan = result["spec"], result["plan"]
+        jobs = video_pipeline.build_render_jobs(spec, plan, render_mode="full")
+        self.assertGreater(len(jobs), 1)
+        scenes = [
+            re.sub(r" Segment \d+.*$", "", job["prompt"]).strip() for job in jobs
+        ]
+        self.assertEqual(
+            len(set(scenes)), len(scenes),
+            "chunk prompts differ only by the segment suffix",
+        )
+        whole_plan = " / ".join(
+            str(shot.get("purpose") or "")[:160] for shot in plan["shots"]
+        )[:700]
+        for scene in scenes:
+            self.assertNotIn(
+                whole_plan, scene,
+                "a chunk carries the whole storyboard instead of its slice",
+            )
+        # The scene text comes from visualPrompt, not the abstract purpose.
+        self.assertTrue(
+            any(
+                str(shot.get("visualPrompt") or "")[:60] in scene
+                for shot in plan["shots"]
+                for scene in scenes
+                if shot.get("visualPrompt")
+            )
+            or not any(shot.get("visualPrompt") for shot in plan["shots"]),
+            "no chunk carries any shot's scene description",
+        )
+        video_pipeline.validate_jobs(spec, plan, jobs, render_mode="full")
+
     def test_full_render_mode_chunk_count_never_requests_out_of_distribution(self):
         result = video_pipeline.plan_video(CORRIDOR, project_id="indataflow-corridor")
         spec, plan = result["spec"], result["plan"]

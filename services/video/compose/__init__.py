@@ -65,18 +65,37 @@ def register_pack_concept(
         "source_path": f"pack:concept-{concept.n}",
         "status": "planned",
     })
-    shots = [
-        {
+    shots = []
+    for beat in concept.beats:
+        # The pack's Preferred visual type routes first: it is the author's
+        # explicit declaration, so it outranks keyword matching (the same
+        # precedence route_visual gives a declared type). The generate flag
+        # stays the GPU gate: a beat is only renderable on GPU when it both
+        # asks for generated imagery and routes to the hunyuan renderer.
+        from services.video.shot_planner import route_visual
+
+        visual_type, renderer, families = route_visual(
+            " ".join(beat.caption_lines),
+            {
+                "visual": beat.visible,
+                "type": beat.preferred_type,
+                "search": beat.search,
+                "motion": ", ".join(beat.motion),
+                "connection": beat.connection,
+            },
+        )
+        shots.append({
             "id": f"beat_{beat.n:02d}",
             "startSeconds": beat.t_in,
             "endSeconds": beat.t_out,
             "durationSeconds": round(beat.duration, 3),
             "purpose": beat.connection or beat.visible,
-            "visualType": "hunyuan" if beat.generate else "pending_compose",
-            "families": ["hunyuan"] if beat.generate else [],
+            "visualType": visual_type,
+            "renderer": renderer,
+            "families": families,
             "visualPrompt": beat.fallback_prompt if beat.generate else beat.visible,
             "negativePrompt": DEFAULT_NEGATIVE_PROMPT if beat.generate else "",
-            "renderRequired": beat.generate,
+            "renderRequired": beat.generate and renderer == "hunyuan",
             "caption_lines": list(beat.caption_lines),
             "preferred_type": beat.preferred_type,
             "search": beat.search,
@@ -84,9 +103,7 @@ def register_pack_concept(
             "motion": list(beat.motion),
             "generate": beat.generate,
             "fallback_prompt": beat.fallback_prompt,
-        }
-        for beat in concept.beats
-    ]
+        })
     plan = video_store.create_shot_plan({
         "video_spec_id": spec["id"],
         "shots": shots,
@@ -120,6 +137,24 @@ def gpu_jobs_for_concept(
     jobs: list[dict[str, Any]] = []
     for beat in concept.beats:
         if not beat.generate:
+            continue
+        # A generate flag alone is not enough: the beat must also route to the
+        # hunyuan renderer. A "generated illustration title" is a deterministic
+        # draw (motion_graphics), and sending it to the GPU would spend money
+        # on a raster approximation of a shape the compose stage draws exactly.
+        from services.video.shot_planner import route_visual
+
+        _, renderer, _ = route_visual(
+            " ".join(beat.caption_lines),
+            {
+                "visual": beat.visible,
+                "type": beat.preferred_type,
+                "search": beat.search,
+                "motion": ", ".join(beat.motion),
+                "connection": beat.connection,
+            },
+        )
+        if renderer != "hunyuan":
             continue
         if not str(beat.fallback_prompt or "").strip():
             raise ValueError(

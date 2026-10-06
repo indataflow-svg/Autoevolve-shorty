@@ -97,23 +97,20 @@ def _full_video_chunks(
     from services.video.defs import GRAPHIC_MOTION_DIRECTION, GRAPHIC_STYLE_DIRECTION
 
     shots = plan.get("shots") or []
-    beats = " / ".join(
-        str(shot.get("purpose") or "")[:160] for shot in shots
-    )[:700]
     bible = bible or {}
     inherited = inherit_for_shot(bible, shots[0] if shots else {})
     if GRAPHIC_STYLE:
         # Flat graphic / icon-animation look: no photographic environment or
         # lens language, just the illustration system and its motion.
-        style_prompt = (
-            f"{GRAPHIC_STYLE_DIRECTION}. Animated illustration: {beats}. "
+        style_head = (
+            f"{GRAPHIC_STYLE_DIRECTION}. Animated illustration. "
             f"{GRAPHIC_MOTION_DIRECTION}."
         )
     else:
         environment = inherited["environment"] or "clean modern environment"
         inherited_style = inherited["style"] or "premium commercial cinematography"
-        style_prompt = (
-            f"Cinematic short video, {spec.get('title')}: {beats}. "
+        style_head = (
+            f"Cinematic short video, {spec.get('title')}. "
             f"{environment}, {inherited_style}, realistic materials, "
             "natural motion, smooth continuous camera."
         )
@@ -128,12 +125,31 @@ def _full_video_chunks(
     remainder = total_frames - base * count
 
     chunks: list[dict[str, Any]] = []
+    frame_cursor = 0
     for index in range(count):
         frames = base + (1 if index < remainder else 0)
-        prompt = style_prompt[:820] + (
-            f" Segment {index + 1} of {count}."
-            if count > 1 else ""
-        )
+        # The chunk's time window, so it carries its own slice of the story:
+        # every shot overlapping the window contributes its full scene
+        # description (visualPrompt), not the abstract purpose string.
+        window_start = frame_cursor / fps
+        window_end = (frame_cursor + frames) / fps
+        frame_cursor += frames
+        covered = [
+            shot for shot in shots
+            if float(shot.get("startSeconds") or 0) < window_end
+            and float(shot.get("endSeconds") or 0) > window_start
+        ]
+        scenes = " / ".join(
+            str(shot.get("visualPrompt") or shot.get("purpose") or "")[:220]
+            for shot in covered
+        )[:640]
+        if not scenes:
+            scenes = "; ".join(
+                str(shot.get("purpose") or "")[:160] for shot in shots
+            )[:640]
+        prompt = f"{style_head} {scenes}"
+        if count > 1:
+            prompt += f" Segment {index + 1} of {count}."
         chunks.append({
             "videoSpecId": spec.get("id"),
             "shotPlanId": plan.get("id"),
