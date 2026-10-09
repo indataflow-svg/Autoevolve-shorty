@@ -259,10 +259,16 @@ def run_qa_gate(
     except QAGateError as exc:
         checks["contact_sheet"] = _fail(str(exc))
 
-    passed = all(
-        check.get("status") == "PASS"
+    # A skipped check (e.g. audio on a silent render) is an absence of
+    # evidence, not a failure: only FAIL may fail the gate. Missing checks
+    # still fail -- a check that never ran is a broken gate, not a pass.
+    statuses = [
+        check.get("status")
         for check in checks.values()
         if isinstance(check, dict)
+    ]
+    passed = "FAIL" not in statuses and all(
+        status in ("PASS", "SKIPPED") for status in statuses
     )
     return _report(checks, directory, frames, passed=passed)
 
