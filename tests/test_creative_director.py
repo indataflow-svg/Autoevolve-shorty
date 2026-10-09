@@ -177,6 +177,77 @@ class PipelineExtensionTests(unittest.TestCase):
         self.assertNotEqual(renderer, "hunyuan")
         self.assertIn("motion_graphics", visual_type)
 
+    def test_route_cues_match_on_word_boundaries(self):
+        """Substring matching used to cross-match unrelated words."""
+        from services.video.shot_planner import _matched_families
+
+        # "ship" is the tail of "relationSHIP", "port" sits inside "imPORTant",
+        # "support" and "report". None of those are freight.
+        for text in (
+            "a close relationship between teams",
+            "we need to support the customer",
+            "an important deadline",
+            "send a report to finance",
+        ):
+            self.assertEqual(
+                _matched_families(text), [], f"false positive on {text!r}"
+            )
+        # Real cues must still fire.
+        self.assertIn("stock", _matched_families("a ship in port"))
+        self.assertIn("hunyuan", _matched_families("cinematic aerial push"))
+        self.assertIn("hunyuan", _matched_families("natural landscape at sunrise"))
+
+    def test_stem_cue_matches_inflections_only(self):
+        from services.video.shot_planner import _matched_families
+
+        for text in ("a vector icon", "flat illustration", "iconic shapes"):
+            self.assertIn("motion_graphics", _matched_families(text), text)
+        # The left boundary still blocks a match inside a longer word.
+        self.assertNotIn("motion_graphics", _matched_families("unvectored"))
+
+    def test_illustration_language_never_routes_to_hunyuan(self):
+        """These are deterministic draws; sending them to Hunyuan wastes GPU."""
+        from services.video.shot_planner import route_visual
+
+        for visual in (
+            "flat vector illustration of icons",
+            "graphic silhouette",
+            "cut-out paper shapes",
+            "geometric line art",
+            "2d icon animation",
+            "motion graphics title card",
+        ):
+            _, renderer, families = route_visual("establishing", {"visual": visual})
+            self.assertEqual(renderer, "motion_graphics", visual)
+            self.assertNotIn("hunyuan", families, visual)
+
+    def test_founder_types_route_to_ffmpeg(self):
+        from services.video.defs import RENDERER_FOR_TYPE, VISUAL_TYPES
+        from services.video.shot_planner import route_visual
+
+        for visual_type in ("founder_footage", "founder_overlay"):
+            self.assertIn(visual_type, VISUAL_TYPES)
+            self.assertEqual(RENDERER_FOR_TYPE[visual_type], "ffmpeg")
+        _, renderer, families = route_visual(
+            "establishing", {"visual": "founder on camera explaining the loop"}
+        )
+        self.assertEqual(renderer, "ffmpeg")
+        self.assertIn("founder_footage", families)
+
+    def test_declared_type_beats_cue_matching(self):
+        from services.video.shot_planner import route_visual
+
+        _, renderer, families = route_visual(
+            "x", {"type": "founder_footage", "visual": "anything at all"}
+        )
+        self.assertEqual(renderer, "ffmpeg")
+        self.assertEqual(families[0], "founder_footage")
+        # An explicit hunyuan type is still honoured even against graphic cues.
+        _, renderer, _ = route_visual(
+            "x", {"type": "hunyuan", "visual": "flat vector icon"}
+        )
+        self.assertEqual(renderer, "hunyuan")
+
     def test_info_display_routes_deterministic(self):
         from services.video.shot_planner import route_visual
 
