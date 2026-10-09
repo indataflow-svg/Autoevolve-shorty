@@ -20,10 +20,47 @@ from services.video.defs import (
     invalid,
 )
 
+def _cue_forms(cue: str) -> tuple[str, ...]:
+    """Word forms a cue may legitimately appear in.
+
+    Plurals are added one-directionally (cue, cue+"s", cue+"es") so a beat
+    saying "screenshots" still matches the cue "screenshot". Forms are only
+    ever added, never stripped: deriving "custom" from the cue "customs" would
+    match "custom software" and misroute it to freight.
+    """
+    if cue.endswith("*"):
+        return (cue,)
+    forms = [cue, f"{cue}s"]
+    if cue.endswith(("s", "x", "ch", "sh")):
+        forms.append(f"{cue}es")
+    return tuple(forms)
+
+
+def _cue_matches(haystack: str, cue: str) -> bool:
+    """Match a routing cue on word boundaries.
+
+    Substring matching is wrong in both directions: "port" matched "support",
+    "report" and "important", and "ship" matched "relationship". A cue is a
+    phrase, so it must be found as whole words.
+
+    A trailing ``*`` opts a cue into open suffix matching for morphological
+    variants (``illustrat*`` covers illustration/illustrative/illustrated),
+    which word boundaries alone cannot express.
+    """
+    if cue.endswith("*"):
+        stem = cue[:-1]
+        # Zero or more trailing letters, so the bare stem still matches.
+        return re.search(rf"(?<![a-z0-9]){re.escape(stem)}[a-z]*(?![a-z0-9])", haystack) is not None
+    return any(
+        re.search(rf"(?<![a-z0-9]){re.escape(form)}(?![a-z0-9])", haystack)
+        for form in _cue_forms(cue)
+    )
+
+
 def _matched_families(haystack: str) -> list[str]:
     found: list[str] = []
     for family, cues in ROUTE_KEYWORDS.items():
-        if any(cue in haystack for cue in cues):
+        if any(_cue_matches(haystack, cue) for cue in cues):
             found.append(family)
     return found
 
@@ -288,7 +325,7 @@ def plan_shots(
                 "dtype": HUNYUAN_DEFAULT_PROFILE["dtype"],
             }
         shots.append(shot)
-    _attach_continuity(shots)
+    _attach_continuity(shots, str((spec.get("extra") or {}).get("style") or ""))
     ai_report = {"source": "deterministic", "notes": []}
     if use_ai and is_model_configured():
         try:
@@ -330,8 +367,7 @@ def _assets_for(
     return assets
 
 
-def _attach_continuity(shots: list[dict[str, Any]]) -> None:
-    style = "restrained blue and indigo, premium commercial cinematography"
+def _attach_continuity(shots: list[dict[str, Any]], style: str) -> None:
     for index, shot in enumerate(shots):
         shot["continuity"] = {
             "previousShot": shots[index - 1]["id"] if index > 0 else None,

@@ -93,27 +93,15 @@ def _full_video_chunks(
     Anything longer is chunked and concatenated by FFmpeg, which is the same
     approach ``engines/g2/g2_runtime/mixed_video.py`` already uses.
     """
-    from services.visual_bible import inherit_for_shot
-    from services.video.defs import GRAPHIC_MOTION_DIRECTION, GRAPHIC_STYLE_DIRECTION
+    from services.video.defs import DEFAULT_HOUSE_STYLE, HOUSE_STYLES
 
     shots = plan.get("shots") or []
-    bible = bible or {}
-    inherited = inherit_for_shot(bible, shots[0] if shots else {})
-    if GRAPHIC_STYLE:
-        # Flat graphic / icon-animation look: no photographic environment or
-        # lens language, just the illustration system and its motion.
-        style_head = (
-            f"{GRAPHIC_STYLE_DIRECTION}. Animated illustration. "
-            f"{GRAPHIC_MOTION_DIRECTION}."
-        )
-    else:
-        environment = inherited["environment"] or "clean modern environment"
-        inherited_style = inherited["style"] or "premium commercial cinematography"
-        style_head = (
-            f"Cinematic short video, {spec.get('title')}. "
-            f"{environment}, {inherited_style}, realistic materials, "
-            "natural motion, smooth continuous camera."
-        )
+    # Per-film style from the spec; plans made before styles existed fall back
+    # to the module default, preserving their old prompts byte for byte.
+    style = str((spec.get("extra") or {}).get("style") or "")
+    if style not in HOUSE_STYLES:
+        style = "flat-graphic" if GRAPHIC_STYLE else DEFAULT_HOUSE_STYLE
+    style_head = HOUSE_STYLES[style]["prompt_head"]
 
     project_id = spec.get("projectId") or "project"
     total = spec["format"]["durationSeconds"]
@@ -176,7 +164,7 @@ def _full_video_chunks(
                 "previousShot": None,
                 "nextShot": None,
                 "environment": f"full video segment {index + 1} of {count}",
-                "style": "restrained blue and indigo, flat graphic illustration",
+                "style": style,
             },
             "assembly": {
                 "role": "chunk",

@@ -46,6 +46,7 @@ def command_plan(args: argparse.Namespace) -> int:
             aspect_ratio=args.format,
             fps=args.fps,
             use_ai=not args.no_ai,
+            style=args.style,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -172,6 +173,7 @@ def command_launch(args: argparse.Namespace) -> int:
             timeout_seconds=args.timeout,
             render_mode=args.mode,
             runtime_seconds=args.runtime,
+            style=args.style,
         )
     except (ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -213,6 +215,7 @@ def command_direct(args: argparse.Namespace) -> int:
             aspect_ratio=args.format,
             fps=args.fps,
             runtime_seconds=args.runtime,
+            style=args.style,
         )
     except (ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -241,6 +244,9 @@ def main(argv: list[str] | None = None) -> int:
     plan.add_argument("--format", default="9:16", choices=["4:5", "9:16", "16:9", "1:1"])
     plan.add_argument("--fps", type=int, default=24)
     plan.add_argument("--no-ai", action="store_true", help="skip AI prompt refinement even if configured")
+    plan.add_argument("--style", default="noir",
+                        choices=["noir", "warm-real", "human-real", "flat-graphic", "calm-real"],
+                        help="house visual style (one per film)")
     plan.add_argument("--manifest-out", default=None, help="write the job manifest JSON here instead of stdout")
     plan.set_defaults(func=command_plan)
 
@@ -279,6 +285,9 @@ def main(argv: list[str] | None = None) -> int:
     direct.add_argument("--fps", type=int, default=24)
     direct.add_argument("--runtime", type=int, default=None,
                         help="target total runtime in seconds (storyboard is validated against it)")
+    direct.add_argument("--style", default="noir",
+                        choices=["noir", "warm-real", "human-real", "flat-graphic", "calm-real"],
+                        help="house visual style (one per film)")
     direct.add_argument("--manifest-out", default=None)
     direct.set_defaults(func=command_direct)
 
@@ -298,6 +307,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="stop after queueing; do not submit hunyuan jobs")
     launch.add_argument("--mode", default="full", choices=["shots", "full"],
                         help="full: single whole-video job (product default); shots: one job per clip")
+    launch.add_argument("--style", default="noir",
+                        choices=["noir", "warm-real", "human-real", "flat-graphic", "calm-real"],
+                        help="house visual style (one per film)")
     launch.add_argument("--timeout", type=int, default=None)
     launch.add_argument("--manifest-out", default=None)
     launch.set_defaults(func=command_launch)

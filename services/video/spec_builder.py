@@ -84,6 +84,7 @@ def build_spec(
     fps: int = 24,
     source_path: str | None = None,
     context: dict[str, Any] | None = None,
+    style: str = "noir",
 ) -> dict[str, Any]:
     """Build an (unsaved) VideoSpec dict from parsed script beats."""
     if aspect_ratio not in FORMAT_SIZES:
@@ -151,6 +152,7 @@ def build_spec(
             "visual_style": meta.get("visual_style") or meta.get("style"),
             "emotional_direction": meta.get("emotional_direction") or meta.get("emotion"),
             "audio": meta.get("audio"),
+            "style": style,
         },
         "sources": [
             {"title": beat["visual"].get("source", ""), "url": ""}

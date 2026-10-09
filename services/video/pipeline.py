@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from services.video.defs import (
+    DEFAULT_HOUSE_STYLE,
     DEFAULT_NEGATIVE_PROMPT,
     FORMAT_SIZES,
     HUNYUAN_DEFAULT_PROFILE,
@@ -90,6 +91,7 @@ def plan_video(
     fps: int = 24,
     use_ai: bool = True,
     extra_assets: list[dict[str, Any]] | None = None,
+    style: str = DEFAULT_HOUSE_STYLE,
 ) -> dict[str, Any]:
     """Parse a script file, validate, plan and persist spec + shot plan.
 
@@ -113,6 +115,7 @@ def plan_video(
         fps=fps,
         source_path=str(path),
         context=context,
+        style=style,
     )
     from services.motion_recipes import select_recipe
     from services.visual_bible import adapt_bible, default_bible
@@ -264,6 +267,7 @@ def direct_brief(
     aspect_ratio: str = "9:16",
     fps: int = 24,
     runtime_seconds: int | None = None,
+    style: str = DEFAULT_HOUSE_STYLE,
 ) -> dict[str, Any]:
     """Direct a video from a human creative brief (template-4 phase 20).
 
@@ -318,6 +322,9 @@ def direct_brief(
             raise ModelRetry(error)
         return outline
 
+    from services.video.defs import DEFAULT_HOUSE_STYLE, HOUSE_STYLES
+
+    style_direction = HOUSE_STYLES.get(style, HOUSE_STYLES[DEFAULT_HOUSE_STYLE])["direction"]
     storyteller = CreativeDirector(
         "storyboarding",
         instructions=(
@@ -347,10 +354,7 @@ def direct_brief(
             "the camera between beats. Never reuse the same construction (for "
             "example one person standing in six different rooms); if two beats "
             "would open the same way, rewrite one of them.\n"
-            "Style: describe every beat as flat 2D vector illustration — clean "
-            "geometric shapes, bold flat silhouettes, icon-like forms, simple "
-            "and readable at a glance. Write icons and simple objects rather "
-            "than realistic interiors or equipment."
+            + style_direction
         ),
         output_validator=_validate_outline,
         retries=8,
@@ -406,6 +410,7 @@ def direct_brief(
         fps=fps,
         source_path=None,
         context=context,
+        style=style,
     )
     return _finalize_directed_plan(
         spec_payload, context, use_ai=True,
@@ -578,6 +583,7 @@ def launch(
     timeout_seconds: int | None = None,
     render_mode: str = "full",
     runtime_seconds: int | None = None,
+    style: str = DEFAULT_HOUSE_STYLE,
 ) -> dict[str, Any]:
     """Run the product-launch pipeline end to end (motion-designer.md).
 
@@ -596,6 +602,7 @@ def launch(
         planned = direct_brief(
             brief, project_id=project_id, aspect_ratio=aspect_ratio, fps=fps,
             runtime_seconds=runtime_seconds,
+            style=style,
         )
         if extra_assets:
             video_store.register_assets(planned["spec"]["id"], extra_assets)
@@ -606,6 +613,7 @@ def launch(
             script_path, project_id=project_id, campaign_id=campaign_id,
             aspect_ratio=aspect_ratio, fps=fps,
             extra_assets=extra_assets or None,
+            style=style,
         )
     plan_id = planned["plan"]["id"]
     queued = queue_shot_plan(plan_id, render_mode=render_mode)
