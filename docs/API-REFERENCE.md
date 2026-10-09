@@ -1,6 +1,6 @@
 # AutoEvolve locked API reference
 
-Generated from source by `scripts/gen_api_reference.py` at commit `83c9208` on 2026-10-04T16:20:33Z.
+Generated from source by `scripts/gen_api_reference.py` at commit `1023af7` on 2026-10-09T14:41:29Z.
 
 Every public constant, function, class and method in the shipped packages, with its real signature. Read this as the contract: if a name here disagrees with the code, the code is authoritative and this file must be regenerated.
 
@@ -8,15 +8,15 @@ Every public constant, function, class and method in the shipped packages, with 
 
 | subsystem | modules | functions | classes | methods | constants |
 |---|---|---|---|---|---|
-| Core state and models | 20 | 193 | 38 | 5 | 63 |
+| Core state and models | 20 | 197 | 38 | 5 | 65 |
 | Support services | 26 | 94 | 23 | 37 | 60 |
-| Video pipeline package | 8 | 40 | 6 | 0 | 19 |
+| Video pipeline package | 11 | 56 | 11 | 3 | 35 |
 | Agents | 9 | 65 | 12 | 0 | 43 |
-| HTTP surface | 18 | 162 | 120 | 0 | 50 |
+| HTTP surface | 18 | 172 | 123 | 0 | 51 |
 | Operations scripts | 13 | 50 | 1 | 25 | 61 |
-| **all** | **94** | **604** | **200** | **67** | **296** |
+| **all** | **97** | **634** | **208** | **70** | **315** |
 
-Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the end.
+Plus 187 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the end.
 
 ## Core state and models
 
@@ -36,6 +36,7 @@ Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - const `MARKETING_STAGES`
 - const `SCHEMA_VERSION`
 - const `CONTEXT_ROW_ID`
+- const `WORKFLOW_READINESS_THRESHOLD`
 - `clean_text(value: Any, *, max_length: int | None=None) -> str | None` — Collapse whitespace and trim. Empty, blank, or non-text input is unknown
 - `clean_lines(value: Any, *, max_items: int | None=None) -> list[str]` — Accept a pasted one-per-line block or a list, dropping blanks and repeats
 - `normalize_website(value: Any) -> str | None` — Return a clean public URL, or raise when the value is not an address
@@ -53,7 +54,10 @@ Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - class `ObjectiveFacts`(BaseModel) — The business outcome the founder is working towards
 - class `ContextState`(BaseModel) — Where the company starts from. Phase 1 records the stage only
 - const `REQUIRED_GROUPS`
+- const `WORKFLOW_READY_PERCENT`
 - `missing_required(context: 'CompanyContextSections') -> list[str]` — Label every required group that is still unknown, in requirement order
+- `completeness_ratio(context: 'CompanyContextSections') -> float` — Share of required groups that are known (0.0-1.0)
+- `is_workflow_ready(context: 'CompanyContextSections') -> bool` — True when the context is complete enough to prepare a workflow
 - class `CompanyContextSections`(BaseModel) — The founder-confirmed facts, grouped the way later consumers read them
 - class `CompanyContext`(CompanyContextSections) — The canonical company context
 - `normalize_company_context(raw: Mapping[str, Any] | None) -> CompanyContext` — Turn raw onboarding or API answers into the canonical context
@@ -63,6 +67,8 @@ Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - `get_company_context() -> CompanyContext | None` — Load the stored context, or ``None`` when onboarding has not produced one
 - `save_company_context(context: CompanyContextSections) -> CompanyContext` — Persist the canonical context and return exactly what was stored
 - `clear_company_context() -> None` — Remove the stored record. Used by tests and future "start over" flows
+- `merge_seed(base: CompanyContext, seed: CompanyContextSections) -> CompanyContextSections` — Fill the base context's empty fields from the seed. Never overwrites
+- `seed_from_service(*, service: str, company_name: str | None=None, buyer_industry: str | None=None, buyer_titles: list[str] | None=None, market: str | None=None, contact_count: int=0, provider_names: list[str] | None=None) -> CompanyContext` — Project a service quick-start into the canonical context, merging only
 - `get_recorded_marketing_stage() -> str | None` — The stored stage exactly as written, even if it no longer normalizes
 
 ### `core/company_read.py`
@@ -673,12 +679,27 @@ Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - const `FORMAT_SIZES`
 - const `GRAPHIC_STYLE_DIRECTION`
 - const `GRAPHIC_MOTION_DIRECTION`
+- const `HOUSE_STYLES`
+- const `DEFAULT_HOUSE_STYLE`
 - const `DEFAULT_NEGATIVE_PROMPT`
 - const `VISUAL_TYPES`
 - const `RENDERER_FOR_TYPE`
 - const `ROUTE_KEYWORDS`
 - const `INFO_DISPLAY_CUES`
 - const `MIXED_RENDERER_PRECEDENCE`
+
+### `services/video/ingest.py`
+
+- const `MEDIA_SUFFIXES`
+- const `PACK_SUFFIXES`
+- const `MAX_MEDIA_BYTES`
+- const `MAX_PACK_BYTES`
+- class `IngestError`(RuntimeError) — Raised when an upload cannot be accepted
+- `workspace_root() -> Path` — Root that all uploaded media must stay inside
+- `ingest_dir(project_id: str) -> Path` — Per-project ingest directory, created on demand
+- `probe_media(path: Path) -> dict[str, Any]` — Read duration, resolution and codec from a media file
+- `store_pack(project_id: str, filename: str, data: bytes) -> dict[str, Any]` — Store an uploaded pack and parse it. Returns the parsed concepts
+- `store_media(project_id: str, filename: str, data: bytes, tag: str | None=None) -> dict[str, Any]` — Store an uploaded media file, validate it, and describe it for the UI
 
 ### `services/video/job_builder.py`
 
@@ -687,16 +708,38 @@ Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - `build_render_jobs(spec: dict[str, Any], plan: dict[str, Any], *, priority: int=100, render_mode: str='shots', bible: dict[str, Any] | None=None, recipe: dict[str, Any] | None=None) -> list[dict[str, Any]]` — Build RenderJob dicts (unsaved) in the requested render mode
 - `validate_jobs(spec: dict[str, Any], plan: dict[str, Any], jobs: list[dict[str, Any]], *, render_mode: str='shots') -> None`
 
+### `services/video/md_pack.py`
+
+- const `TIMED_HEADER_RE`
+- const `BEAT_HEADER_RE`
+- const `FIELD_RE`
+- const `CONCEPT_RE`
+- const `DURATION_RE`
+- const `GENERATED_TYPE_CUES`
+- const `NOT_NEEDED`
+- class `PackError`(ValueError) — Raised when a pack cannot be parsed or fails structural validation
+- const `TIMESTAMP_RE`
+- `parse_timestamp(value: str) -> float` — `0:06` or `1:02:03` -> seconds. Raises PackError on bad input
+- `format_timestamp(seconds: float) -> str` — Seconds -> `M:SS`, the pack's own timestamp spelling
+- class `Beat` — One timed beat: the caption to show and how to source the picture
+  - `duration(self) -> float`
+  - `as_dict(self) -> dict[str, Any]`
+- class `Concept` — One `## N.` section of a pack: a title, a buyer and its beats
+  - `as_dict(self) -> dict[str, Any]`
+- `parse_pack(text: str) -> list[Concept]` — Parse pack markdown into concepts. Raises PackError on any defect
+- `beats_json(concepts: list[Concept]) -> dict[str, Any]` — The single source of truth the compose stage consumes
+- `load_pack(path: str | Path) -> list[Concept]` — Read and parse a pack file
+
 ### `services/video/pipeline.py`
 
 - class `CreativeBriefResponse`(BaseModel)
 - class `StoryboardBeat`(BaseModel)
 - class `StoryboardOutline`(BaseModel)
 - `assign_durations(beats: list[StoryboardBeat], runtime_seconds: float) -> list[float]` — Split the runtime across beats proportional to narration weight
-- `plan_video(script_path: str | Path, *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, use_ai: bool=True, extra_assets: list[dict[str, Any]] | None=None) -> dict[str, Any]` — Parse a script file, validate, plan and persist spec + shot plan
+- `plan_video(script_path: str | Path, *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, use_ai: bool=True, extra_assets: list[dict[str, Any]] | None=None, style: str=DEFAULT_HOUSE_STYLE) -> dict[str, Any]` — Parse a script file, validate, plan and persist spec + shot plan
 - const `LETTERING_CUES`
 - `validate_storyboard_generatable(outline: StoryboardOutline) -> str | None` — Require a renderable, typography-free storyboard
-- `direct_brief(brief: str, *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, runtime_seconds: int | None=None) -> dict[str, Any]` — Direct a video from a human creative brief (template-4 phase 20)
+- `direct_brief(brief: str, *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, runtime_seconds: int | None=None, style: str=DEFAULT_HOUSE_STYLE) -> dict[str, Any]` — Direct a video from a human creative brief (template-4 phase 20)
 - `store_spec_payload(spec: dict[str, Any]) -> dict[str, Any]`
 - `queue_shot_plan(plan_id: str, *, priority: int=100, render_mode: str='shots') -> dict[str, Any]` — Enqueue RenderJobs for a planned shot plan in the requested render mode
 - `store_job_rows(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]`
@@ -705,7 +748,19 @@ Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - `worker_env_example() -> dict[str, str]`
 - `reference_asset(path: str | Path) -> dict[str, Any]` — Build a product-reference registry entry for a user-supplied file
 - `assemble_plan(plan_id: str, destination: str | Path | None=None) -> dict[str, Any]` — Concatenate a plan's completed render chunks into one full video
-- `launch(*, brief: str | None=None, script_path: str | Path | None=None, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, references: list[str | Path] | None=None, submit: bool=True, timeout_seconds: int | None=None, render_mode: str='full', runtime_seconds: int | None=None) -> dict[str, Any]` — Run the product-launch pipeline end to end (motion-designer.md)
+- `launch(*, brief: str | None=None, script_path: str | Path | None=None, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, references: list[str | Path] | None=None, submit: bool=True, timeout_seconds: int | None=None, render_mode: str='full', runtime_seconds: int | None=None, style: str=DEFAULT_HOUSE_STYLE) -> dict[str, Any]` — Run the product-launch pipeline end to end (motion-designer.md)
+
+### `services/video/qa_gate.py`
+
+- const `DURATION_TOLERANCE_SECONDS`
+- const `SHEET_COLUMNS`
+- class `QAGateError`(RuntimeError) — Raised when the QA gate cannot run at all (missing ffmpeg, bad input)
+- `has_ffmpeg() -> bool`
+- `probe_clip(path: str | Path) -> dict[str, Any]` — ffprobe one clip: codec, geometry, frame rate, duration, audio
+- `extract_frame(clip: str | Path, at_seconds: float, destination: str | Path) -> Path` — Grab one frame from a clip for the contact sheet
+- `build_contact_sheet(frames: list[Path], destination: str | Path, *, columns: int=SHEET_COLUMNS, label: str='') -> Path` — Tile per-beat frames into one review image
+- `check_caption_grounding(beats: list[dict[str, Any]], source_text: str) -> list[str]` — Every caption line must appear in the source pack byte for byte
+- `run_qa_gate(shots: list[dict[str, Any]], *, canvas: tuple[int, int], source_text: str, output_dir: str | Path, require_audio: bool=False) -> dict[str, Any]` — Run every check. Returns a report; ``passed`` is only true if all pass
 
 ### `services/video/script_parser.py`
 
@@ -737,7 +792,7 @@ Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - `load_indataflow_context() -> dict[str, Any]` — Load brand/product/CTA guardrails from the existing G1 knowledge files
 - `forbidden_phrases(context: dict[str, Any]) -> list[str]`
 - `forbidden_patterns(context: dict[str, Any]) -> list['re.Pattern[str]']`
-- `build_spec(parsed: dict[str, Any], *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, source_path: str | None=None, context: dict[str, Any] | None=None) -> dict[str, Any]` — Build an (unsaved) VideoSpec dict from parsed script beats
+- `build_spec(parsed: dict[str, Any], *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, source_path: str | None=None, context: dict[str, Any] | None=None, style: str='noir') -> dict[str, Any]` — Build an (unsaved) VideoSpec dict from parsed script beats
 - `validate_spec(spec: dict[str, Any]) -> None` — Raise ValueError unless the spec satisfies prompt.md section 12
 
 ## Agents
@@ -1150,11 +1205,19 @@ Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - class `ApprovalPayload`(BaseModel)
 - class `SimulationRun`(BaseModel) — Simulation-only execution request. `targets` are identifiers, never people
 - `async create_validation_plan()` [router.post('/plan', response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])] — Plan the first market-validation experiment. Nothing is executed
+- `async create_workflows_validation_plan()` [automation_router.post('/plan', response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])] — Canonical automation name for plan creation. Same behavior as /plan above
 - `read_validation_plan()` [router.get('/plan', response_model=ValidationPlanRecord)] — The most recent plan, or 404 when none has been generated yet
-- `read_governance()` [router.get('/workflow', response_model=GovernanceRecord)] — The latest governance decision and the lifecycle it has reached
-- `create_workflow_from_plan(payload: WorkflowFromPlan | None=None)` [router.post('/workflow', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])] — Validate a plan and, only if governance allows it, create the workflow
-- `approve_workflow(payload: ApprovalPayload | None=None)` [router.post('/workflow/approve', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])] — Record the founder's approval. Execution stays locked until this exists
-- `run_workflow_from_plan(payload: SimulationRun | None=None)` [router.post('/workflow/run', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])] — Run the approved workflow through the existing runner
+- `read_workflows_validation_plan()` [automation_router.get('/plan', response_model=ValidationPlanRecord)] — Canonical automation name for reading the latest plan
+- `read_governance()` [router.get('/workflow', response_model=GovernanceRecord, deprecated=True)] — Legacy name. Prefer GET /company/automation/governance
+- `read_workflows_governance()` [automation_router.get('/governance', response_model=GovernanceRecord)] — The latest governance decision and the lifecycle it has reached
+- `create_workflow_from_plan(payload: WorkflowFromPlan | None=None)` [router.post('/workflow', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)], deprecated=True)] — Legacy name. Prefer POST /company/automation/governance
+- `create_workflows_governance(payload: WorkflowFromPlan | None=None)` [automation_router.post('/governance', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])] — Validate a plan and, only if governance allows it, create the workflow
+- `approve_workflow(payload: ApprovalPayload | None=None)` [router.post('/workflow/approve', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)], deprecated=True)] — Legacy name. Prefer POST /company/automation/governance/approve
+- `approve_workflows_governance(payload: ApprovalPayload | None=None)` [automation_router.post('/governance/approve', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])] — Record the founder's approval. Execution stays locked until this exists
+- `run_workflow_from_plan(payload: SimulationRun | None=None)` [router.post('/workflow/run', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)], deprecated=True)] — Legacy name. Prefer POST /company/automation/governance/run
+- `run_workflows_governance(payload: SimulationRun | None=None)` [automation_router.post('/governance/run', response_model=GovernanceRecord, dependencies=[Depends(verify_founder_action)])] — Run the approved workflow through the existing runner
+- class `AutomationWorkflowView`(BaseModel) — One governed workflow with its decision, plan link, and engine state
+- `list_automation_workflows(limit: int=20)` [automation_router.get('/workflows', response_model=list[AutomationWorkflowView])] — All governed workflows, newest first, each with its engine document
 
 ### `app/video_api.py`
 
@@ -1175,6 +1238,11 @@ Plus 177 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - `queue_plan(plan_id: str, render_mode: str=Query(default='shots', max_length=16)) -> dict[str, Any]` [action_router.post('/plans/{plan_id}/queue', dependencies=[Depends(verify_founder_action)])]
 - `retry_render_job(job_id: str) -> dict[str, Any]` [action_router.post('/jobs/{job_id}/retry', dependencies=[Depends(verify_founder_action)])]
 - `cancel_render_job(job_id: str) -> dict[str, Any]` [action_router.post('/jobs/{job_id}/cancel', dependencies=[Depends(verify_founder_action)])]
+- class `PackUpload`(BaseModel)
+- class `MediaUpload`(BaseModel)
+- `async ingest_pack(payload: PackUpload, pack: UploadFile=File(...)) -> dict[str, Any]` [action_router.post('/ingest/pack', dependencies=[Depends(verify_founder_action)])] — Store and parse an uploaded scenario pack
+- `async ingest_media(payload: MediaUpload, media: UploadFile=File(...)) -> dict[str, Any]` [action_router.post('/ingest/media', dependencies=[Depends(verify_founder_action)])] — Store and validate an uploaded media asset
+- `list_ingest(project_id: str) -> dict[str, Any]` [router.get('/ingest/{project_id}')] — What a project has uploaded, so the UI can show pack and assets
 - `lease_next_render_job(worker_id: str=Query(min_length=1, max_length=120), renderer: str | None=Query(default=None, max_length=32)) -> dict[str, Any]` [worker_router.get('/render-jobs/next')]
 - `heartbeat_render_job(job_id: str, worker_id: str=Query(min_length=1, max_length=120)) -> dict[str, Any]` [worker_router.post('/render-jobs/{job_id}/heartbeat')]
 - `complete_render_job(job_id: str, payload: JobComplete, worker_id: str=Query(min_length=1, max_length=120)) -> dict[str, Any]` [worker_router.post('/render-jobs/{job_id}/complete')]
@@ -1417,6 +1485,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /doctor` | `app/marketing_api.py` |
 | `GET /doctor` | `app/sales_api.py` |
 | `GET /drafts/reconcile` | `app/sales_api.py` |
+| `GET /governance` | `app/validation_api.py` |
 | `GET /health` | `app/api.py` |
 | `GET /home/` | `app/api.py` |
 | `GET /home` | `app/api.py` |
@@ -1425,6 +1494,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /hunyuan/profile` | `app/video_api.py` |
 | `GET /incidents/{incident_id}` | `app/company_ops_api.py` |
 | `GET /incidents` | `app/company_ops_api.py` |
+| `GET /ingest/{project_id}` | `app/video_api.py` |
 | `GET /integrations/` | `app/api.py` |
 | `GET /integrations` | `app/api.py` |
 | `GET /integrations` | `app/workspace_api.py` |
@@ -1484,9 +1554,10 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /specs/{spec_id}` | `app/video_api.py` |
 | `GET /specs` | `app/video_api.py` |
 | `GET /step` | `app/setup_api.py` |
-| `GET /validation/` | `app/api.py` |
-| `GET /validation` | `app/api.py` |
 | `GET /workflow` | `app/validation_api.py` |
+| `GET /workflows/` | `app/api.py` |
+| `GET /workflows` | `app/api.py` |
+| `GET /workflows` | `app/validation_api.py` |
 | `GET /{company_id:path}` | `app/companies_api.py` |
 | `GET /{contact_id}` | `app/contacts_api.py` |
 | `GET /{path:path}` | `app/api.py` |
@@ -1513,6 +1584,11 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `POST /drafts/{draft_id}/send` | `app/sales_api.py` |
 | `POST /drafts/{draft_id}/update` | `app/sales_api.py` |
 | `POST /email/sales` | `app/sales_api.py` |
+| `POST /governance/approve` | `app/validation_api.py` |
+| `POST /governance/run` | `app/validation_api.py` |
+| `POST /governance` | `app/validation_api.py` |
+| `POST /ingest/media` | `app/video_api.py` |
+| `POST /ingest/pack` | `app/video_api.py` |
 | `POST /jobs/{job_id}/cancel` | `app/video_api.py` |
 | `POST /jobs/{job_id}/retry` | `app/video_api.py` |
 | `POST /keys/test` | `app/setup_api.py` |

@@ -1,19 +1,21 @@
 # AutoEvolve functionality reference
 
 Every capability the product actually has, department by department, verified
-against the source at commit `96d6c8b`. Not a plan and not a roadmap: this is
+against the source at commit `1023af7`. Not a plan and not a roadmap: this is
 what the code does.
 
 **How to read this.** Each section states what the department does, then the
 routes that expose it, then the tables it persists to, then the honest limits.
-Counts: **125 unique HTTP operations across 17 routers**, **24 database
-tables**, **3 engines**, **282 tests**.
+Counts: **149 unique HTTP operations across 17 route prefixes**, **28 database
+tables**, **3 engines**, **448 tests** (445 pass; 3 known failures unrelated to
+video, listed in §11).
 
-A note on counting: [API Reference](API-REFERENCE.md) reports ~169 routes and
-~26 tables because it extracts route decorators and `CREATE TABLE` statements
-textually, so a path served by two routers is listed twice. The 125 / 24 figures
-above come from the OpenAPI contract and a table enumeration that deduplicates.
-Both are correct at what they measure; the OpenAPI number is the one to quote.
+A note on counting: [API Reference](API-REFERENCE.md) reports a higher route
+and table count because it extracts route decorators and `CREATE TABLE`
+statements textually, so a path served by two routers is listed twice. The
+figures above come from the OpenAPI contract and a table enumeration that
+deduplicates. Both are correct at what they measure; the OpenAPI number is the
+one to quote.
 
 **Authority.** Where this document and the code disagree, the code wins. Two
 generated sources are the tie-breakers: the OpenAPI contract (`/openapi.json`)
@@ -32,14 +34,18 @@ One system that runs a company:
    sent by a human, with replies and meetings tracked back to the source.
 3. **Market** — campaigns, scripts, media generation, and publishing to social
    with per-post attribution.
-4. **Produce video** — a brief becomes a storyboard becomes a rendered MP4.
-5. **Improve itself** — the coding agent and orchestrator change the codebase,
+4. **Produce video** — a brief (or a scenario pack) becomes a storyboard
+   becomes a rendered MP4, with a deterministic compose stage for everything a
+   model shouldn't be trusted with.
+5. **Automate** — workflow preparation unlocks at 80% company data, then
+   founder-approved workflows and governance runs.
+6. **Improve itself** — the coding agent and orchestrator change the codebase,
    with checkpoints, validation, and reversible applies.
 
 The through-line is **attribution**: every lead carries the campaign, post, and
 UTM parameters that produced it, so marketing and sales share one record.
 
-### The four operating states
+### The operating states
 
 | Department | Terminal states | Stored in |
 |---|---|---|
@@ -47,6 +53,7 @@ UTM parameters that produced it, so marketing and sales share one record.
 | Draft | approved → sent, or abandoned | `sales_drafts.status` |
 | Campaign | `variants_ready` `drafted` `failed` `needs_campaign_review` | `marketing_campaigns.status` |
 | Render job | `completed` / `failed` / `cancelled` | `video_render_jobs.status` |
+| Company context | `workflow_ready` at ≥80% completeness | `company_context` |
 
 ---
 
@@ -56,6 +63,18 @@ First-run program that turns a company description into a calibrated sales
 motion. Twelve write routes, one read projection, resumable — every step
 persists to `settings` as a single `ProgramState` document, so a half-finished
 onboarding survives a restart.
+
+**Company name is optional.** `CompanyStart.name` and `CompanyConfirm.name` are
+`None`-able: an answer the founder does not have stays unknown rather than
+invented, and the program can run on a website plus an objective alone.
+
+**Workflow preparation unlocks at 80% company data.**
+`core/company_context.py::WORKFLOW_READINESS_THRESHOLD = 0.8` gates
+`is_workflow_ready(context)`; `completeness_percent` and `workflow_ready` are
+projected into the onboarding payload so the UI shows *context 63% · ready for
+workflow preparation* once the threshold is crossed, with the still-missing
+fields listed by name. Progress advances on every saved answer — nothing waits
+for a perfect record.
 
 **Routes** — read: `GET /company/ui/onboarding`. Write (all founder-token):
 `POST /company/setup/onboarding/{company,research-company,company/confirm,strategy/draft,strategy,search,calibration,refinement,buyer,draft,activate}`
@@ -87,12 +106,32 @@ itself — *"Existing lead_score only; not a verified ICP fit score."* Calibrati
 scores lead quality for the founder; it does not train or verify a real ICP fit
 model.
 
+### 2b. Workflow preparation (automation)
+
+The successor to the old market-validation flow, exposed on canonical
+`/company/automation/*` routes (the legacy `/company/marketing/validation/*`
+paths are kept and deprecated — they still work, they are not the contract to
+build against).
+
+`GET|POST /company/automation/plan` · `GET|POST /workflow` ·
+`POST /workflow/approve` · `POST /workflow/run` · `GET|POST /governance` ·
+`POST /governance/approve` · `POST /governance/run` · `GET /workflows`
+
+A workflow becomes approvable and runnable the moment the company context
+crosses 80% completeness — preparation does not wait for full data. Approval
+and run are separate founder-gated actions, mirroring the send/approve split
+sales already uses. The frontend page is `/workflows`
+(`autoevolve-ui/src/pages/WorkflowsPage.tsx`, API in
+`autoevolve-ui/src/api/workflows.ts`), and `/validation` redirects there.
+
+**Tables:** `workflows`, `validation_plans`, `validation_workflows`.
+
 ---
 
 ## 3. Sales
 
-The largest department: 35 routes, 5 tables, 6 provider integrations, and the
-most careful failure handling in the codebase.
+The largest department: **31 routes**, 5 tables, 6 provider integrations, and
+the most careful failure handling in the codebase.
 
 ### 3.1 Lead intake (unauthenticated, shared-secret + rate limited)
 
@@ -209,7 +248,7 @@ opportunity value.
 
 ## 4. Marketing
 
-30 routes, 4 tables, three engines (`g1`, `g2`, `g3`).
+**38 routes**, 4 tables, three engines (`g1`, `g2`, `g3`).
 
 ### 4.1 Campaign lifecycle
 
@@ -311,16 +350,27 @@ showcase and premade outro.
 
 ## 5. Video production
 
-20 routes, 5 tables, a private MI300X worker.
+**20 routes**, 5 tables, a private MI300X worker, plus a deterministic compose
+stage that runs with zero GPU.
 
-### 5.1 Pipeline
+### 5.1 Two ways a video enters the pipeline
+
+**A. Brief or script → AI director.** The original path:
 
 ```
 brief / script → spec → storyboard → shot plan → render job(s) → queue → worker → QA → gates
 ```
 
-`services/video/` split into `defs`, `script_parser`, `spec_builder`,
-`shot_planner`, `job_builder`, `pipeline`.
+**B. Scenario pack → deterministic plan.** The pack path needs no model at all:
+
+```
+pack.md + media → md_pack parse → ingest (ffprobe) → register_pack_concept
+                → real spec + shot plan rows → GPU beats only → compose
+```
+
+`services/video/` splits into `defs`, `script_parser`, `spec_builder`,
+`shot_planner`, `job_builder`, `pipeline`, `md_pack`, `ingest`, `qa_gate`, and
+the `compose/` package.
 
 | command | does |
 |---|---|
@@ -330,8 +380,87 @@ brief / script → spec → storyboard → shot plan → render job(s) → queue
 | `submit` | claim → POST → download → ffprobe QA → complete/fail |
 | `worker-status` | `/health` + `/capacity`, starts no render |
 | `launch` | the whole thing end to end |
+| `launch_batch.py` / `launch_briefs.py` | a fixed brief library, dry-run or submit |
 
-### 5.2 AI creative director
+**Routes:** `GET|POST /specs` · `GET /specs/{spec_id}` ·
+`GET|POST /plans` · `GET /plans/{plan_id}` · `POST /plans/{id}/queue` ·
+`GET /jobs` · `GET /jobs/{job_id}` · `POST /jobs/{id}/retry|cancel` ·
+`GET /queue/stats` · `GET /hunyuan/profile` · `POST /ingest/pack` ·
+`POST /ingest/media` · `GET /ingest/{project_id}` · plus the four
+worker-facing `render-jobs/*` routes in §5.7. **20 operations total.**
+
+### 5.2 The scenario pack
+
+`services/video/md_pack.py` parses the pack the UI uploads — a timed
+transcript plus sourcing beats keyed by **Beat N** — with no LLM involved.
+Timing is validated one-to-one (count mismatch, gaps, overlaps and duration
+mismatch all fail loudly) and every caption must appear byte-exact in the
+source. A beat is GPU-eligible only when it both asks for generated imagery
+(`generate`) *and* carries a real fallback prompt; "Not needed" means
+deterministic.
+
+`services/video/ingest.py` validates the upload boundary: bytes stored
+unchanged, the pack parsed immediately (a malformed scenario fails the upload,
+not the render), media probed with ffprobe and unreadable files deleted so a
+truncated upload can never reach compose.
+
+`services/video/compose/__init__.py::register_pack_concept` turns the pack
+concept into real `video_specs`/`video_shot_plans` rows — FK-bound and
+queryable history, not synthetic ids — with transcripts verbatim.
+`gpu_jobs_for_concept` emits Hunyuan jobs **only** for beats that route to the
+hunyuan renderer; a generate-flagged beat routed to a deterministic draw
+produces zero GPU jobs.
+
+### 5.3 Routing: declared intent first, GPU last
+
+`shot_planner.route_visual` decides what renders each beat. Two rules that
+changed the economics:
+
+- **The pack's `Preferred visual type` routes first.** It is the author's
+  explicit declaration and outranks keyword matching — the same precedence a
+  declared type already had on the brief path.
+- **Illustration language never reaches the GPU.** `vector*`, `icon*`,
+  `illustration*`, `flat 2d`, `silhouette`, `motion graphics` route to
+  `motion_graphics` (a deterministic draw). Sending them to Hunyuan buys a
+  raster approximation of a shape compose draws exactly.
+
+Matching is on **word boundaries** (`_cue_matches`): "port" no longer matches
+"support" or "important", "ship" no longer matches "relationship"; plurals match
+one-directionally, and a trailing `*` does open-suffix stem matching. Real
+captured footage (`founder_footage`, `founder_overlay`) routes to ffmpeg —
+trimmed and composited, never generated.
+
+Information displays — labeled diagrams, logos, taglines, "sign reading X" —
+route to `motion_graphics`, never Hunyuan, because generating them *fabricates
+information*. `INFO_DISPLAY_CUES` enforces this.
+
+### 5.4 Per-film house styles
+
+`defs.HOUSE_STYLES` holds five styles — `noir`, `warm-real`, `human-real`,
+`flat-graphic`, `calm-real` (default `noir`). Each carries two strings: a
+**direction** the storyteller authors beats *in*, and a **prompt head** the
+chunk compiler compiles *in*. Style travels `spec.extra.style` → plan →
+`_full_video_chunks`, is threaded through `plan_video`/`direct_brief`/`launch`,
+and is exposed as `--style` on the CLI. Plans made before styles existed fall
+back to the old module default, so their prompts are unchanged.
+
+Typography rules are style-independent: the lettering gate scans every beat
+whatever the style.
+
+### 5.5 Chunking: one whole video, N windowed renders
+
+`full` (product default) chunks the timeline to the model's 129-frame window
+(`MAX_FRAMES_PER_RENDER`) and assembles the pieces; `shots` is an explicit
+opt-in via `?render_mode=`.
+
+Each chunk prompt carries **its own slice of the storyboard** — the
+`visualPrompt` of the shots overlapping its own time window, not a shared
+summary plus "Segment N of M". (That defect shipped once: six near-identical
+renders. A regression test now locks distinctness with the segment suffix
+stripped.) Seeds derive per chunk so one chunk can be re-rendered alone and
+reproduce.
+
+### 5.6 AI creative director
 
 `services/creative_director.py` routes 7 roles through OmniRoute. It is
 **model-agnostic** — no Claude dependency — and every role has a deterministic
@@ -342,34 +471,57 @@ The AI is **never authoritative over source wording.** Deterministic timing
 (`assign_durations`) exists because the model produced escalating 10/15/20…60s
 beats totalling 385s against a 60s target. Storyboard output is
 schema-validated before any GPU spend (`validate_storyboard_generatable`
-requires at least one routable cinematic beat).
-
-**Routing guard:** information displays — labeled diagrams, holographic data,
-logos, taglines, "sign reading X" — route to `motion_graphics`, never Hunyuan,
-because generating them *fabricates information*. `INFO_DISPLAY_CUES` enforces
-this; real product captures (`product_capture`/`source_capture`) keep their
-acquisition families.
+requires at least one routable cinematic beat), and claims are never invented.
 
 `visual_bible.adapt_bible` switches the default bible's freight environment to a
 tech variant for software briefs (word-boundary matched, so "important" ≠
 "port"), and `motion_recipes` selects among 10 recipes.
 
-### 5.3 Render modes
+### 5.7 Worker protocol
 
-`full` (product default) = one whole-video job. `shots` = one job per clip,
-available only as an explicit opt-in via `?render_mode=`.
+**Push (the path in production today).** `GET /health` (unauthenticated),
+`GET /capacity` (Bearer), synchronous `POST /render`. Auth is
+`RENDER_WORKER_API_TOKEN` from `.env` — never in source, never in logs. The
+endpoint comes only from `RENDER_WORKER_URL`; no worker IP is hard-coded.
+Tailscale-only, UFW-restricted.
 
-### 5.4 Worker protocol
-
-`GET /health` (unauthenticated), `GET /capacity` (Bearer), synchronous
-`POST /render`. Auth is `RENDER_WORKER_API_TOKEN` from `.env` — never in
-source, never in logs. The endpoint comes only from `RENDER_WORKER_URL`; no
-worker IP is hard-coded. Tailscale-only, UFW-restricted.
+**Pull (lease-based, also exposed).** `GET /company/video/render-jobs/next?worker_id=`
+· `POST /render-jobs/{id}/heartbeat` · `/complete` · `/fail`. A worker leases
+one job at a time (`video_store.lease_next_job`), renews with heartbeats, and
+reports its own terminal outcome; `complete_job`/`fail_job` are worker-id
+checked, so a second worker cannot claim or resolve the same job — that's the
+**double-worker** guarantee under test.
 
 Output retrieval is a documented chain: inline bytes → `output_url` → async
 poll + download → `GET /video/{output_name}` → terminal `output_unavailable`.
+A failure preserves its traceback on the job row (`_worker_error_tail`); nothing
+is ever re-POSTed blindly or marked completed without a decoded file.
 
-### 5.5 Measured worker envelope — and its limit
+### 5.8 QA gate
+
+`services/video/qa_gate.py` runs before anything is called done:
+`probe_clip` (decode + geometry + duration), `extract_frame`,
+`build_contact_sheet` for human review, `check_caption_grounding` (captions
+byte-exact against the pack), composed into `run_qa_gate`. A missing shot file
+**fails** rather than being skipped; `DURATION_TOLERANCE_SECONDS = 0.5`.
+`SKIPPED` — e.g. audio on a silent render — is absence of evidence, not
+failure; only `FAIL` fails the gate.
+
+### 5.9 Deterministic compose stage (zero GPU)
+
+`services/video/compose/` renders what no model should be trusted with:
+
+| module | does |
+|---|---|
+| `footage.py` | trim to the beat window, focus-anchored cover-crop (left/centre/right), scale to canvas, eased zoom/pan — one filtergraph, one encode; duration must equal the window exactly |
+| `graphics.py` | Pillow `caption_rail`: canvas-size RGBA card, brand colors (never a hardcoded brand), 2-line max, no orphan words, text **measured** so overflow fails the shot instead of clipping silently |
+
+Verified live: 1080×1350 output at exactly the requested window, all three
+focus anchors; a GPU render captioned with real pack copy
+(`videos/gpu-probe-pack/beat_01_captioned.mp4`) and upscaled to full canvas
+(`beat_01_restored_4x5.mp4`). No browser, no cairosvg — Pillow only.
+
+### 5.10 Measured worker envelope — and its limit
 
 The binding constraint is **wall-clock time, not frame count**: the worker's
 synchronous `/render` gives up after exactly 60 minutes (measured 3600.0s on the
@@ -380,19 +532,23 @@ synchronous `/render` gives up after exactly 60 minutes (measured 3600.0s on the
 | 81 | — | HTTP 500 *after* full 20-step sampling (post-sampling failure) |
 | 144 | — | completed (141 frames delivered) |
 | 240 | ~20 min | **completed** (237 frames delivered) |
+| 360 | ~30 min | **completed** (357 frames delivered; job later cancelled, file orphaned but QA-clean) |
 | 480 | 60 min | HTTP 504 "Render timed out" — hit the wall exactly |
 | 720 | 31 min | HTTP 500 mid-render |
 | 1440 | — | HTTP 504 "Render timed out" |
 
-**A full-length video has never rendered.** 240 frames (10s) is the only proven
-full-video success. Gates, validators, and the queue all behave correctly on
-failure — nothing is ever silently marked complete — but the product's headline
-capability is bounded by hardware, not by code.
+After step-distillation the worker runs ~37 frames/min (was ~12), and it is
+**chunking at ≤129 frames that makes long-form possible at all** — a 29.25s
+video exists today as an assembled
+`videos/batch-04-teaser/full.mp4`, not as one monolithic render.
 
-**Frame-count drift is tolerated, truncation is not.** The worker consistently
-delivers a few frames short of the request (237/240, 141/144). `qa_render_output`
-accepts up to `FRAME_COUNT_TOLERANCE` (2%) and records the true count plus the
-shortfall; anything larger still fails as a truncated render.
+**Frame-count drift is tolerated, truncation is not.** The worker delivers a
+constant 3 frames short (`FRAME_SHORTFALL_BASE = 3`, `services/renderers.py`);
+`qa_render_output` accepts that base plus `FRAME_COUNT_TOLERANCE` (2%) and
+records the true count plus the shortfall. Anything larger still fails as a
+truncated render. The worker also ignores requested pixel dimensions
+(delivers ~480×848 rather than 1080×1920) — upscaling to canvas is compose's
+job, and it is honest about not inventing detail.
 
 ---
 
@@ -489,20 +645,23 @@ commands so verification can't be skipped by accident.
 
 ## 9. Frontend
 
-React is the sole operator UI. 14 pages, 9,894 LOC, 65 exported API functions.
-FastAPI serves the built `dist/` and redirects trailing slashes (308).
+React is the sole operator UI. 15 pages, ~12,600 LOC under `src/`, 158 exported
+declarations across 11 API modules. FastAPI serves the built `dist/` and
+redirects trailing slashes (308).
 
 | page | reads | writes |
 |---|---|---|
-| `/onboarding` | `/company/ui/onboarding` | 12 onboarding routes |
+| `/onboarding` | `/company/ui/onboarding` | 12 onboarding routes; shows `completeness_percent` + workflow readiness |
 | `/home` | `/company/ui/home` | navigation only |
+| `/services` | service discovery views | discovery runs |
+| `/workflows` | `/company/automation/workflows` | plan, workflow approve/run, governance (`/validation` redirects here) |
 | `/research`, `/companies`, `/contacts` | company/contact projections | research, prospect, resolve, draft |
 | `/outreach` | `/company/ui/outreach` | draft update/approve/send |
 | `/replies`, `/meetings` | reply and meeting projections | draft, schedule-meeting |
 | `/campaigns` | `/company/ui/campaigns` | create, approve-script, retry |
+| `/video` | spec/plan/job views | queue a plan, pick render mode (`listSpecs/listPlans/getPlan/queuePlan/listJobs/queueStats`) |
 | `/content` | `/company/ui/content` | asset packs, manual posts, Buffer |
 | `/integrations`, `/settings` | provider and org state | keys, orgs, capabilities |
-| `/operations/history` | retired → redirects to Home | — |
 
 `/meet` and `/calendar` remain public server-rendered booking pages. Unknown
 non-API paths return a genuine JSON 404 — never a fake SPA success.
@@ -515,7 +674,7 @@ only affected queries, and failed refreshes retain prior data.
 
 ---
 
-## 10. Data model — all 24 tables
+## 10. Data model — all 28 tables
 
 | table | holds |
 |---|---|
@@ -528,9 +687,9 @@ only affected queries, and failed refreshes retain prior data.
 | `marketing_variants` | per-platform voice/speed renders |
 | `marketing_events` | campaign audit trail |
 | `marketing_manual_posts` | `campaign_id`/`post_id`/`tracked_url`/`source_detail` |
-| `video_specs` | format, brand, assets, narrative |
-| `video_shot_plans` | shots, timing, prompts |
-| `video_render_jobs` | queue, lease, attempts, error, output |
+| `video_specs` | format, brand, assets, narrative, `extra.style` |
+| `video_shot_plans` | shots, timing, prompts, routing verdict, captions |
+| `video_render_jobs` | queue, lease, attempts, error tail, output |
 | `video_visual_bibles` | environment/style continuity |
 | `video_assets` | registered references |
 | `coding_tasks` | agent task state |
@@ -540,6 +699,9 @@ only affected queries, and failed refreshes retain prior data.
 | `tasks` / `settings` | generic queue; key-value config incl. onboarding program |
 | `service_discovery_runs` / `service_provider_requests` | prospecting runs, credit spend |
 | `memories` | FTS5 brand-scoped memory |
+| `company_context` | canonical company answers, completeness, workflow readiness |
+| `workflows` | automation workflow definitions |
+| `validation_plans` / `validation_workflows` | plan + workflow records for the automation flow |
 
 Schema migrations are guarded and additive (`_migrate_*` functions in
 `core/state.py`, `core/sales_store.py`, `core/marketing_store.py`).
@@ -551,28 +713,51 @@ Schema migrations are guarded and additive (`_migrate_*` functions in
 Being explicit, because a reference doc that implies everything works is worse
 than no doc.
 
-**Verified by tests** — 282 tests, 36 files. Video/director alone: 49 pipeline
-+ creative-director tests, plus Hunyuan renderer tests covering a
-**double-worker** (ensuring a job can't be double-claimed). Smoke suite: 33/33
-pass, report at `logs/smoke-report.md`.
+**Verified by tests** — **448 tests across 41 files; 445 pass.** The 3 failures
+are known and unrelated to video (see below). Video/director alone is 141
+tests: creative director 36, Hunyuan renderer 33 (including the
+**double-worker** case — a job can't be double-claimed), pipeline 20, pack
+parser 20, ingest 11, assembly 10, compose registration + GPU eligibility 7,
+QA gate 4.
 
-**Verified live:** worker `/health` + `/capacity` 200; a 144-frame render
-completed worker-side; `GET /video/shot_001.mp4` returned 782,773 bytes in
-0.34s, decoding as h264/480×848/24fps/5.875s. Note that file held **141 frames
-against the job's 144** — the worker under-delivers on frame count, and QA
-caught it.
+**Verified live, this cycle:**
+
+- A real pack render completed first attempt: `job_dd6d86fc45ad` → 141/144
+  frames, 5.875s, 560×704, `data/renders/…/beat_01.mp4`.
+- A **29.25s assembled video** exists: `videos/batch-04-teaser/full.mp4`
+  (2,842,199 bytes) — six chunks concatenated, not one monolithic render.
+- Deterministic compose output measured, not assumed: footage renders at
+  exactly 1080×1350 and exactly the beat window for all three focus anchors;
+  a Pillow caption card overlays a real GPU render
+  (`beat_01_captioned.mp4`) and the same render upscales to full canvas
+  (`beat_01_restored_4x5.mp4`).
+- Chunk prompt distinctness checked against a live plan: six chunks, six
+  distinct scenes with the segment suffix stripped, none equal to the old
+  whole-plan summary.
+- Worker `/health` + `/capacity` 200; QA caught a real under-delivery
+  (141 frames against a request of 144) rather than passing it.
 
 **Known pre-existing failures** (3, unrelated to video): `test_operations_ui`,
 `test_sales_contracts::test_resend_send_marks_draft_sent`,
 `test_sales_workflow_views_api`.
 
 **Not proven:**
-- No 60s or 30s full-video render has completed. The envelope is the binding
-  constraint.
+- No **single** render beyond 360 frames has completed — long-form works by
+  chunking, and the 60-minute synchronous wall is real (the 480-frame run hit
+  it at exactly 3600s).
+- The worker ignores requested pixel dimensions (delivers ~480×848 or
+  560×704, never 1080×1920). Canvas size is compose's job, and upscaling does
+  not invent detail.
 - Real product footage for I2V shots is absent — no product UI capture has been
   registered, so identity-preserving shots have no reference image.
 - Vision-based review (`review.ai_visual_review`) abstains without a vision key.
 - The `skills/motion-designer` pack is verified byte-identical as a zip but has
   never been piloted end to end (needs a GPT workspace plus Higgsfield).
-- OmniRoute availability is flaky; `auto/best-reasoning` intermittently returns
-  403 `insufficient_quota`.
+- OmniRoute availability is flaky: `auto/best-reasoning` intermittently returns
+  403 `insufficient_quota`, and the gateway has gone fully down mid-run —
+  deterministic paths (pack parse, compose, footage) work without it;
+  `direct`/`launch` do not.
+- The compose stage is two of five intended renderers: `caption_rail` and
+  footage trim/crop/zoom are built and measured; the capture-zoom,
+  founder-overlay and stock-wrapper renderers, and multi-card caption
+  sequencing, are not.
