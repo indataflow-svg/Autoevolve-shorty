@@ -71,11 +71,18 @@ def _routable_context():
     if context is None:
         raise HTTPException(409, "no company context is stored; complete onboarding first")
     if routing.next_stage != "market_validation":
-        raise HTTPException(
-            409,
-            f"company is routed to {routing.next_stage or 'no stage'}; "
-            "a validation plan is only planned for the market_validation state",
+        # Two different blocks wear the same status code: nothing recorded yet,
+        # versus a recorded stage this build cannot route. Say which one it is.
+        detail = (
+            "no starting state is recorded, so the company has no route; "
+            "record state.marketing_stage to route it"
+            if not routing.marketing_stage
+            else (
+                f"company is routed to {routing.next_stage}; "
+                "a validation plan is only planned for the market_validation state"
+            )
         )
+        raise HTTPException(409, detail)
     if not context.workflow_ready:
         # Workflow preparation unlocks at 80%: Get Started keeps progress, and
         # the data the founder already set counts. Below that the model would
