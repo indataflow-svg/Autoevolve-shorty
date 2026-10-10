@@ -366,6 +366,77 @@ def simulate_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[s
     }
 
 
+def draft_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """Create real outreach drafts for the plan's targets. Nothing is sent.
+
+    A draft is local state: the founder reviews and sends it through the
+    existing approved-send path, so this step cannot contact anyone by itself.
+    It exists so an experiment produces an artifact, and so the events it
+    records carry the plan and workflow ids that make later evidence
+    attributable — a count with nothing behind it is not a measurement.
+
+    Targets are lead ids. An id with no stored lead is skipped and reported
+    rather than invented, so a mistyped target list can never become a phantom
+    prospect. ``max_contacts`` is a hard ceiling: this step writes real records,
+    so it under-produces rather than over-produces, and an absent ceiling
+    drafts nothing.
+    """
+    channel = str(config.get("channel") or "email")
+    message = str(config.get("message") or "").strip()
+    if not message:
+        raise ValueError("draft_outreach requires the plan's message")
+    call_to_action = str(config.get("call_to_action") or "").strip()
+    offer = str(config.get("offer") or "").strip()
+    subject = (
+        str(config.get("subject") or "").strip() or call_to_action or offer or "Following up"
+    )[:200]
+
+    plan_id = str(context.get("plan_id") or "")
+    workflow_id = str(context.get("workflow_id") or "")
+    targets = [str(item) for item in (config.get("targets") or []) if str(item).strip()]
+    ceiling = int(config.get("max_contacts") or 0)
+    within = targets[:ceiling] if ceiling > 0 else []
+
+    drafted: list[str] = []
+    skipped: list[str] = []
+    for lead_id in within:
+        if sales_store.get_lead(lead_id) is None:
+            skipped.append(lead_id)
+            continue
+        draft = sales_store.create_draft(lead_id, subject=subject, body=message, channel=channel)
+        # Attribution is what makes the run measurable later: without it the
+        # evidence store cannot separate this experiment's events from
+        # anyone else's, and unrelated meetings would be credited to it.
+        sales_store.add_event(lead_id, "outreach.plan_attributed", {
+            "plan_id": plan_id,
+            "workflow_id": workflow_id,
+            "draft_id": draft["id"],
+            "channel": channel,
+        })
+        drafted.append(draft["id"])
+
+    return {
+        "status": "completed",
+        "output": {
+            "action": "draft_outreach",
+            "channel": channel,
+            "targets": len(targets),
+            "within_limit": len(within),
+            "drafts_created": len(drafted),
+            "skipped": skipped,
+            "sent": 0,
+            "replies": 0,
+            # Nothing is sent and nothing was observed here: null, not 0.
+            "validation_events": None,
+            "external_side_effects": False,
+            "draft_ids": drafted,
+        },
+        "metrics": {"targets": len(targets), "sent": 0, "drafts_created": len(drafted)},
+        "artifacts": [],
+        "next_step": None,
+    }
+
+
 def observe_validation_events(
     *, plan_id: str | None = None, workflow_id: str | None = None
 ) -> ValidationEventObservation:

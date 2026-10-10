@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field, model_validator
 from core.company_context import CompanyContext
 from core.state import connect, now_iso
 from core.validation_plan import GroundingReport, ValidationPlan, enforce_grounding
-from core.workflow_store import SIMULATION_ACTIONS, WORKFLOW_ACTIONS
+from core.workflow_store import EXTERNAL_ACTIONS, GOVERNED_ACTIONS, WORKFLOW_ACTIONS
 
 # Channels the product can govern today. A plan outside this vocabulary is
 # blocked rather than coerced into the nearest channel.
@@ -52,6 +52,12 @@ SUPPORTED_CHANNELS = (
 METHOD_ACTIONS: dict[str, tuple[str, str]] = {
     "targeted_outbound": ("simulate_outreach", "outbound outreach to a named audience"),
     "direct_sales": ("simulate_outreach", "direct sales outreach to a named buyer"),
+    # Produces real drafts held for founder review rather than a simulation, so
+    # the experiment leaves an artifact and its events become attributable.
+    "email_outreach": (
+        "draft_outreach",
+        "outreach drafts for a named audience, held for founder review",
+    ),
 }
 
 _NORMALIZE = re.compile(r"[^a-z0-9]+")
@@ -181,9 +187,16 @@ def validate_plan(
         action_name, rationale = mapping
         if action_name not in WORKFLOW_ACTIONS:
             reasons.append(f"resolved action {action_name!r} is not a registered workflow action")
-        elif action_name not in SIMULATION_ACTIONS:
+        elif action_name in EXTERNAL_ACTIONS:
             reasons.append(
                 f"action {action_name!r} reaches a real external system and is not authorized by governance"
+            )
+        elif action_name not in GOVERNED_ACTIONS:
+            # Registered is not the same as authorized: the runner can execute
+            # these, but a validation plan cannot resolve onto them.
+            reasons.append(
+                f"action {action_name!r} is registered but not authorized by governance; "
+                f"authorized actions: {', '.join(GOVERNED_ACTIONS)}"
             )
 
     # 3. Channel must be supported, and confirmed by the founder when they said.

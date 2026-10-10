@@ -141,23 +141,44 @@ approval, so approval and run stay separate founder-gated actions mirroring the
 sales send/approve split. A blocked plan is still persisted with its reasons —
 a refusal is auditable, not a silent no-op.
 
-**What governance may run, and may not.** One step, `simulate_outreach`, with
-`trigger.config.simulation = true`. The boundary is explicit:
+**What governance may run.** One step, resolved from the plan's method:
+
+| method | action | what it leaves behind |
+|---|---|---|
+| `targeted_outbound`, `direct_sales` | `simulate_outreach` | nothing — a deterministic rehearsal |
+| `email_outreach` | `draft_outreach` | real drafts in `sales_drafts`, unsent |
+
+Both are in `GOVERNED_ACTIONS`; the refusal is two-staged and specific:
 
 ```python
-elif action_name not in SIMULATION_ACTIONS:
-    reasons.append("action ... reaches a real external system and is not authorized by governance")
+elif action_name in EXTERNAL_ACTIONS:      # reaches a system outside this process
+    reasons.append("... reaches a real external system and is not authorized")
+elif action_name not in GOVERNED_ACTIONS:  # registered, but a plan cannot resolve onto it
+    reasons.append("... registered but not authorized by governance")
 ```
 
-`METHOD_ACTIONS` maps only `targeted_outbound` and `direct_sales` onto it; any
-other method is blocked outright. The registered `g1_strategy`,
-`generate_assets`, `publish`, `collect_results` and `evaluate` actions are
-reachable by the runner, but governance never wires them into a validation
-workflow.
+`EXTERNAL_ACTIONS` is deliberately empty until spend, contact and duration caps
+are enforced when a workflow *runs* rather than only when a plan is *validated*.
+The registered `g1_strategy`, `generate_assets`, `publish`, `collect_results`
+and `evaluate` actions stay reachable by the runner but absent from
+`GOVERNED_ACTIONS`, so no plan can resolve onto them.
 
-**Validation events are observed, never assumed.** `simulate_outreach` reports
-`validation_events: null` — a simulation observes nothing, so it must not
-report a measured zero. After the run, `observe_validation_events()` consults
+**Drafting is the middle state between simulating and sending.**
+`draft_outreach` writes one real draft per target lead — subject, body, channel
+— and moves the lead to `draft_ready`. It sends nothing: `sent` stays `0`, no
+`provider_message_id` is written, and the founder still reviews and sends
+through the existing approved-send path, so the step cannot contact anyone by
+itself. An id with no stored lead is skipped and reported rather than invented,
+and `max_contacts` is a hard ceiling that drafts nothing when absent, because
+this step writes real records and must under-produce rather than
+over-produce.
+
+Each draft also records `outreach.plan_attributed` carrying the plan and
+workflow ids. That link is what makes the run measurable.
+
+**Validation events are observed, never assumed.** Both governed actions report
+`validation_events: null` — neither observes a reply, so neither may report a
+measured zero. After the run, `observe_validation_events()` consults
 `sales_events` for rows attributed to the plan or workflow id and attaches the
 answer to `execution`:
 
@@ -172,11 +193,17 @@ produced by this experiment and are never credited to it. The qualifying events
 are the two the sales store already records, `lead.replied` and
 `meeting.scheduled`; sending is activity, not an event.
 
-**Deliberately not real yet.** Outreach does not leave the process — the send
-path exists in `services/sales_service.py` but is not reachable from a governed
-workflow. The spend, contact and duration caps are checked when a plan is
-validated, not when it executes. The page states both rather than implying
-otherwise.
+**Deliberately not real yet.** Nothing leaves the process. The send path exists
+in `services/sales_service.py` — `send_approved()` behind the founder's
+approval — but is not reachable from a governed workflow, so `EXTERNAL_ACTIONS`
+stays empty and `sent` stays `0`. The spend, contact and duration caps are
+checked when a plan is *validated*, not when it *executes*. The page states
+these rather than implying otherwise.
+
+The difference drafting makes to the score: a simulated run reports `—` because
+nothing was measured, while a drafting run reports a real `0 / target` — the
+store was consulted, attribution exists, and no reply has arrived. That zero is
+a result; the em dash is an absence.
 
 A workflow becomes approvable and runnable the moment the company context
 crosses 80% completeness — preparation does not wait for full data. The

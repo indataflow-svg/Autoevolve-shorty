@@ -43,11 +43,26 @@ WORKFLOW_ACTIONS = (
     "collect_results",
     "evaluate",
     "simulate_outreach",
+    "draft_outreach",
 )
 
 # Actions that can only ever simulate. Governance may map a plan onto one of
 # these; it may never authorize an action that reaches a real system.
 SIMULATION_ACTIONS = ("simulate_outreach",)
+
+# Actions that write real artifacts to local state but still reach nothing
+# outside the process. A drafted outreach message is an object the founder
+# reviews and sends by hand; the step itself cannot contact anyone.
+DRAFT_ACTIONS = ("draft_outreach",)
+
+# Everything governance may authorize. Anything registered but absent from this
+# tuple is refused: the runner can execute it, a validation plan cannot.
+GOVERNED_ACTIONS: tuple[str, ...] = SIMULATION_ACTIONS + DRAFT_ACTIONS
+
+# Actions that reach a real external system. Deliberately empty until limits
+# are enforced when a workflow runs rather than only when a plan is validated;
+# anything listed here is refused outright.
+EXTERNAL_ACTIONS: tuple[str, ...] = ()
 
 TERMINAL_STATUSES = {"completed", "failed"}
 
