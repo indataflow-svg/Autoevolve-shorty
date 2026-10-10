@@ -1,18 +1,22 @@
 """Market-validation API: plan generation, then governed execution.
 
-The endpoint chain follows the state machine and stops at a simulated result:
+The endpoint chain follows the state machine and stops at a run:
 
     CompanyContext -> marketing routing -> market_validation
     -> market_validation_v1 prompt -> OmniRoute -> Hermes -> structured plan
-    -> governance (validate + limit + approval) -> workflow -> runner -> simulation
+    -> governance (validate + limit + approval) -> workflow -> runner -> run
 
 Governance decides *whether* execution is allowed; the existing workflow runner
 decides *how*. Nothing here sends a message, publishes content, spends money, or
-calls an external marketing system: the only action governance may authorize is
-the side-effect-free ``simulate_outreach`` step.
+calls an external marketing system: governance may authorize
+``simulate_outreach`` (rehearses) or ``draft_outreach`` (writes local drafts the
+founder sends by hand). Anything that would leave this process is refused by
+``EXTERNAL_ACTIONS``, which is empty, and the approved limits are re-checked
+when the run happens rather than only when the plan was validated.
 """
 
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -21,6 +25,7 @@ from app.sales_api import verify_founder_action
 from core.company_context import get_company_context, is_workflow_ready
 from core.marketing_routing import stored_route_state
 from core.plan_governance import (
+    GovernanceLimits,
     GovernanceRecord,
     latest_governance,
     record_from_decision,
@@ -301,10 +306,76 @@ def run_workflow_from_plan(payload: SimulationRun | None = None):
 def run_workflows_governance(payload: SimulationRun | None = None):
     """Run the approved workflow through the existing runner.
 
-    The only authorized action is ``simulate_outreach``: it returns a simulated
-    result and performs no external side effect.
+    Governance may authorize ``simulate_outreach`` (rehearses, touches nothing)
+    or ``draft_outreach`` (writes local drafts the founder sends by hand).
+    Neither reaches an external system, and the approved limits are re-checked
+    here — a cap tightened after approval still governs this run.
     """
     return _run_governance(payload)
+
+
+def _runtime_limit_violations(record: GovernanceRecord, targets: list[str]) -> list[str]:
+    """Checks only a run can make: the world may have moved since approval.
+
+    Validation-time checks catch a plan that asks for too much. These catch a
+    cap tightened afterwards, a window that has elapsed, or a target list larger
+    than the volume the founder approved — none of which were answerable when
+    the plan was validated.
+    """
+    limits = _stored_plan(record.plan_id).plan.limits
+    caps = GovernanceLimits.load()
+    reasons: list[str] = []
+
+    if limits.max_spend_usd is not None and limits.max_spend_usd > caps.max_spend_usd:
+        reasons.append(
+            f"budget limit {limits.max_spend_usd} USD exceeds the current governance "
+            f"cap of {caps.max_spend_usd} USD"
+        )
+    if (
+        limits.max_outreach_contacts is not None
+        and limits.max_outreach_contacts > caps.max_outreach_contacts
+    ):
+        reasons.append(
+            f"outreach volume limit {limits.max_outreach_contacts} exceeds the current "
+            f"governance cap of {caps.max_outreach_contacts}"
+        )
+    if limits.duration_days is not None and limits.duration_days > caps.max_duration_days:
+        reasons.append(
+            f"duration limit {limits.duration_days} days exceeds the current governance "
+            f"cap of {caps.max_duration_days} days"
+        )
+
+    # The effective ceiling is whichever is tighter: what the plan asked for,
+    # or what the operator allows today.
+    ceiling = caps.max_outreach_contacts
+    if limits.max_outreach_contacts is not None:
+        ceiling = min(ceiling, limits.max_outreach_contacts)
+    if len(targets) > ceiling:
+        reasons.append(
+            f"run would contact {len(targets)} prospects, above the approved limit of {ceiling}"
+        )
+
+    if limits.duration_days is not None:
+        started = _parse_timestamp(record.approved_at or record.created_at)
+        if started is not None:
+            elapsed = datetime.now(timezone.utc) - started
+            if elapsed > timedelta(days=limits.duration_days):
+                reasons.append(
+                    f"the plan's {limits.duration_days}-day window elapsed: it was "
+                    "approved more than that ago, so validate it again before running"
+                )
+    return reasons
+
+
+def _parse_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    # A missing offset is treated as UTC so it can never silently extend a window.
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def _run_governance(payload: SimulationRun | None = None) -> GovernanceRecord:
@@ -325,6 +396,14 @@ def _run_governance(payload: SimulationRun | None = None) -> GovernanceRecord:
     if workflow is None:
         raise HTTPException(409, "the created workflow no longer exists")
     targets = (payload.targets if payload else []) or []
+    violations = _runtime_limit_violations(record, targets)
+    if violations:
+        # Refused rather than truncated: a run that quietly contacts fewer
+        # prospects looks identical to one that hit every contact.
+        raise HTTPException(
+            422,
+            "the approved limits no longer cover this run: " + "; ".join(violations),
+        )
     if targets:
         # Simulation targets are written into the existing step config; nothing
         # is resolved against a provider.

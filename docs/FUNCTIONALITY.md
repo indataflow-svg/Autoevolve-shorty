@@ -193,12 +193,28 @@ produced by this experiment and are never credited to it. The qualifying events
 are the two the sales store already records, `lead.replied` and
 `meeting.scheduled`; sending is activity, not an event.
 
+**Limits are enforced twice.** Validation-time checks catch a plan that asks
+for too much. Run-time checks catch the world having moved since it was
+approved; `_run_governance` refuses with a 422 naming every violation at once:
+
+| check | question it answers |
+|---|---|
+| plan limits vs `GovernanceLimits.load()` | was a cap tightened after approval? |
+| `len(targets)` vs the tighter of plan and cap | is this run larger than the founder approved? |
+| `approved_at + duration_days` | has the experiment's window elapsed? |
+
+Caps are reloaded from the environment rather than replayed from the stored
+record, so lowering `VALIDATION_MAX_OUTREACH` today constrains a run approved
+under the old value. Refusal beats truncation: a run that quietly contacts
+fewer prospects is indistinguishable from one that reached every contact. The
+page says "checked when the plan is validated and again when the run starts",
+and a refused run records no execution.
+
 **Deliberately not real yet.** Nothing leaves the process. The send path exists
 in `services/sales_service.py` — `send_approved()` behind the founder's
-approval — but is not reachable from a governed workflow, so `EXTERNAL_ACTIONS`
-stays empty and `sent` stays `0`. The spend, contact and duration caps are
-checked when a plan is *validated*, not when it *executes*. The page states
-these rather than implying otherwise.
+approval — but no workflow action reaches it, so `EXTERNAL_ACTIONS` stays empty
+and `sent` stays `0`. The enforcement such an action would depend on is the
+run-time half above; the action itself is what is missing.
 
 The difference drafting makes to the score: a simulated run reports `—` because
 nothing was measured, while a drafting run reports a real `0 / target` — the

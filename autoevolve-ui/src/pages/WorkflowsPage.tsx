@@ -160,7 +160,7 @@ function PlanView({ record }: { record: ValidationPlanRecord }) {
       </dl>
       <div className="validation-text"><h3>Message</h3><p>{plan.validation.message}</p><h3>Offer</h3><p>{plan.validation.offer}</p></div>
       <dl className="validation-grid"><div><dt>Alternatives today</dt><dd>{plan.market.alternatives}</dd></div><div><dt>Next action</dt><dd>{plan.next_action}</dd></div></dl>
-      <p className="operational-note"><ShieldCheck size={15} /> Proposed limits: {limits.max_spend_usd === null || limits.max_spend_usd === undefined ? 'spend not set' : `${limits.max_spend_usd} USD`} · {limits.max_outreach_contacts ?? 'outreach volume not set'} contacts · {limits.duration_days ?? 'duration not set'} days · approval {limits.requires_approval ? 'required' : 'not required'}. Limits are not enforced yet.</p>
+      <p className="operational-note"><ShieldCheck size={15} /> Proposed limits: {limits.max_spend_usd === null || limits.max_spend_usd === undefined ? 'spend not set' : `${limits.max_spend_usd} USD`} · {limits.max_outreach_contacts ?? 'outreach volume not set'} contacts · {limits.duration_days ?? 'duration not set'} days · approval {limits.requires_approval ? 'required' : 'not required'}. Checked when the plan is validated and again when the run starts.</p>
     </section>
     <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Evidence</h2><p>Facts come from the founder; anything else is an assumption or an open question.</p></div>
       <Facts title="Known facts" tone="green" items={plan.evidence.known_facts} />
