@@ -524,6 +524,157 @@ class SalesContractsTest(unittest.TestCase):
         self.assertEqual({item["lead"]["company_domain"] for item in results}, {"example.com", "other.example"})
         ProspeoClientMock.return_value.search_person.assert_called_once()
 
+    def test_prospeo_selective_keyword_names_the_offering(self):
+        from services.sales_service import _prospeo_broad_keywords, _prospeo_selective_keyword
+
+        # Right-headed compound: the final pair names the thing being sold.
+        self.assertEqual(
+            _prospeo_selective_keyword("AI sales and marketing workflows"),
+            ["marketing workflows"],
+        )
+        self.assertEqual(_prospeo_selective_keyword("Logistics"), ["Logistics"])
+        # The broad rung is the last resort, permissive enough to return records.
+        self.assertEqual(
+            _prospeo_broad_keywords("AI sales and marketing workflows"),
+            ["sales", "marketing", "workflows"],
+        )
+
+    def test_prospeo_market_research_drops_a_location_prospeo_never_offered(self):
+        from services.sales_service import research_prospeo_market_leads
+
+        payload = {"results": [
+            {"person": {"person_id": "person_1"},
+             "company": {"name": "AI Workflow Co", "website": "aiworkflow.test"}},
+        ]}
+        with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
+            client = ProspeoClientMock.return_value
+            client.search_suggestions.return_value = {
+                "location_suggestions": [{"name": "South Africa"}, {"name": "Nigeria"}],
+            }
+            client.search_person.return_value = payload
+            results = research_prospeo_market_leads(
+                industry="AI sales and marketing workflows", location="Africa", limit=5,
+            )
+
+        self.assertEqual(len(results), 1)
+        filters = client.search_person.call_args_list[0].args[0]
+        # "Africa" was never offered, so sending it would have answered NO_RESULTS.
+        self.assertNotIn("company_location_search", filters)
+        self.assertEqual(
+            filters["company_keywords"]["include"], ["AI sales and marketing workflows"],
+        )
+
+    def test_prospeo_market_research_widens_the_keyword_before_the_market(self):
+        from services.prospeo import ProspeoError
+        from services.sales_service import research_prospeo_market_leads
+
+        no_results = ProspeoError("no results", 400, "NO_RESULTS")
+        payload = {"results": [
+            {"person": {"person_id": "person_1"},
+             "company": {"name": "Marketing Works", "website": "marketingworks.test"}},
+        ]}
+        with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
+            client = ProspeoClientMock.return_value
+            client.search_suggestions.return_value = {"location_suggestions": [{"name": "Africa"}]}
+            client.search_person.side_effect = [no_results, payload]
+            results = research_prospeo_market_leads(
+                industry="AI sales and marketing workflows", location="Africa", limit=5,
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(client.search_person.call_count, 2)
+        first, second = (call.args[0] for call in client.search_person.call_args_list)
+        self.assertEqual(first["company_keywords"]["include"], ["AI sales and marketing workflows"])
+        self.assertEqual(first["company_location_search"], {"include": ["Africa"]})
+        # The market survives the widening; only the unmatchable phrase is relaxed.
+        self.assertEqual(second["company_keywords"]["include"], ["marketing workflows"])
+        self.assertEqual(second["company_location_search"], {"include": ["Africa"]})
+        # Whatever actually ran, plus what was originally asked for, is recorded.
+        self.assertEqual(
+            results[0]["lead"]["metadata"]["research_filters"]["widened_from"],
+            {"industry": "AI sales and marketing workflows", "location": "Africa"},
+        )
+
+    def test_prospeo_market_research_drops_the_location_after_no_results(self):
+        from services.prospeo import ProspeoError
+        from services.sales_service import research_prospeo_market_leads
+
+        no_results = ProspeoError("no results", 400, "NO_RESULTS")
+        payload = {"results": [
+            {"person": {"person_id": "person_1"},
+             "company": {"name": "Global Freight", "website": "globalfreight.test"}},
+        ]}
+        with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
+            client = ProspeoClientMock.return_value
+            client.search_suggestions.return_value = {"location_suggestions": [{"name": "Rwanda"}]}
+            client.search_person.side_effect = [no_results, payload]
+            results = research_prospeo_market_leads(industry="Logistics", location="Rwanda", limit=5)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(client.search_person.call_count, 2)
+        first, second = (call.args[0] for call in client.search_person.call_args_list)
+        self.assertEqual(first["company_location_search"], {"include": ["Rwanda"]})
+        # Nothing about the keyword can be relaxed, so geography gives way instead.
+        self.assertNotIn("company_location_search", second)
+        self.assertEqual(second["company_keywords"]["include"], ["Logistics"])
+        applied = results[0]["lead"]["metadata"]["research_filters"]
+        self.assertEqual(applied["company_keywords"], second["company_keywords"])
+        self.assertNotIn("company_location_search", applied)
+
+    def test_prospeo_market_research_answers_a_healthy_empty_search_with_no_matches(self):
+        from services.prospeo import ProspeoError
+        from services.sales_service import research_prospeo_market_leads
+
+        no_results = ProspeoError("no results", 400, "NO_RESULTS")
+        with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
+            client = ProspeoClientMock.return_value
+            client.search_suggestions.return_value = {"location_suggestions": [{"name": "Rwanda"}]}
+            client.search_person.side_effect = [no_results, no_results]
+            results = research_prospeo_market_leads(industry="Logistics", location="Rwanda", limit=5)
+
+        # A provider that answered is an empty search the founder can retry,
+        # not a failure to report as one.
+        self.assertEqual(results, [])
+        self.assertEqual(client.search_person.call_count, 2)
+
+    def test_prospeo_market_research_does_not_launder_a_real_provider_failure(self):
+        from services.prospeo import ProspeoError
+        from services.sales_service import research_prospeo_market_leads
+
+        blocked = ProspeoError("provider-side access block", 403)
+        with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
+            client = ProspeoClientMock.return_value
+            client.search_suggestions.return_value = {}
+            client.search_person.side_effect = blocked
+            with self.assertRaises(ProspeoError) as ctx:
+                research_prospeo_market_leads(industry="Logistics", limit=5)
+
+        self.assertEqual(ctx.exception.status, 403)
+        # Only NO_RESULTS relaxes the query; anything else stays a provider failure.
+        client.search_person.assert_called_once()
+
+    def test_provider_failure_note_separates_configuration_from_failure(self):
+        from services.apollo import ApolloError
+        from services.lusha import LushaError
+        from services.prospeo import ProspeoError
+        from services.sales_service import _provider_failure_note
+
+        self.assertIn(
+            "not configured",
+            _provider_failure_note("lusha", LushaError("LUSHA_API_KEY is not configured")),
+        )
+        plan_note = _provider_failure_note(
+            "apollo",
+            ApolloError("The api/v1/mixed_people/api_search API is not included in your Free plan"),
+        )
+        self.assertIn("does not include search", plan_note)
+        # A billing gate must not read like a live outage, so it is not relayed raw.
+        self.assertNotIn("Free plan", plan_note)
+        self.assertEqual(
+            _provider_failure_note("prospeo", ProspeoError("boom", 500)),
+            "prospeo: boom",
+        )
+
     def test_prospeo_enrichment_updates_lead(self):
         from core.sales_store import get_lead, upsert_lead
         from services.sales_service import enrich_lead

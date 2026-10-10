@@ -298,22 +298,141 @@ def research_prospeo_leads(
     )
 
 
+# Prospeo requires 3-100 characters per keyword, so "AI" cannot be sent as one.
+_PROSPEO_KEYWORD_STOPWORDS = frozenset({
+    "and", "the", "for", "with", "of", "to", "in", "on", "at", "by", "is",
+    "are", "our", "your", "we", "that", "this", "from", "into", "via",
+})
+
+
+def _prospeo_canonical_location(client: ProspeoClient, location: str) -> str | None:
+    """The location Prospeo will actually match, or None when it has none.
+
+    Location filters must be copied verbatim from Search Suggestions: the API
+    explicitly does not accept an arbitrary string. A market Prospeo does not
+    recognise (a continent, for instance) is therefore dropped rather than sent,
+    because an unrecognised location filter is what turns a valid search into
+    NO_RESULTS. Searching wider is honest where guessing a location is not.
+    """
+    try:
+        payload = client.search_suggestions(location=location)
+    except ProspeoError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    wanted = location.strip().casefold()
+    for key in ("location_suggestions", "locations", "suggestions"):
+        suggestions = _coerce_suggestion_strings(payload.get(key))
+        if not suggestions:
+            continue
+        return next((item for item in suggestions if item.casefold() == wanted), None)
+    return None
+
+
+def _prospeo_content_words(industry: str) -> list[str]:
+    """The ICP phrase reduced to its content words, in their original order."""
+    words: list[str] = []
+    seen: set[str] = set()
+    for word in industry.split():
+        cleaned = word.strip(".,;:()[]{}\"'`/\\-")
+        key = cleaned.casefold()
+        if not cleaned or key in _PROSPEO_KEYWORD_STOPWORDS or key in seen:
+            continue
+        seen.add(key)
+        words.append(cleaned)
+    return words
+
+
+def _prospeo_selective_keyword(industry: str) -> list[str]:
+    """The one keyword likely to name the offering rather than merely mention it.
+
+    English compound nouns are right-headed: the last word says what something
+    is, the words before it say which kind. The final pair of content words is
+    therefore the shortest phrase that still describes the thing being sold.
+    Measured on one ICP, "marketing workflows" returns marketing, software and
+    advertising firms, while the broader alternatives all fail: "sales" and
+    "sales marketing" return museums, printers and medical-device makers, and
+    "AI sales" returns entertainment and e-learning companies, because a single
+    common word matches every company that merely has a sales department.
+    """
+    words = [word for word in _prospeo_content_words(industry) if len(word) >= 3]
+    if not words:
+        words = _prospeo_content_words(industry)
+    if len(words) >= 2:
+        return [" ".join(words[-2:])]
+    return words[:1] or [industry.strip()]
+
+
+def _prospeo_broad_keywords(industry: str) -> list[str]:
+    """Every content word: permissive enough to return records when all else fails."""
+    words = [word for word in _prospeo_content_words(industry) if len(word) >= 3]
+    return words or _prospeo_content_words(industry) or [industry.strip()]
+
+
 def research_prospeo_market_leads(*, industry: str, location: str | None = None, limit: int = 5) -> list[dict]:
+    """Company candidates for an ICP, relaxed rather than failed on first refusal.
+
+    Prospeo answers NO_RESULTS instead of widening a query that matches nothing,
+    so the search walks a ladder: the industry phrase with the canonical
+    location, then one selective phrase for the same market, then every content
+    word anywhere. Each rung gives up exactly one constraint, so the market
+    survives as long as it can and the last rung is always permissive enough to
+    converge on an answer the founder can act on. Only the filters that were
+    really used are written into each candidate's research filters, so what was
+    searched stays auditable, and a genuine provider failure (anything but
+    NO_RESULTS) still propagates instead of being laundered into an empty result.
+    """
     normalized_industry = industry.strip()
     if len(normalized_industry) < 2:
         raise ValueError("industry must be at least 2 characters")
     normalized_location = location.strip() if location else None
     client = ProspeoClient()
-    filters: dict[str, Any] = {
-        "company_keywords": {
-            "include": [normalized_industry],
-            "include_all": False,
-            "search_everywhere": True,
-        },
-    }
-    if normalized_location:
-        filters["company_location_search"] = {"include": [normalized_location]}
-    payload = client.search_person(filters, page=1)
+    canonical_location = (
+        _prospeo_canonical_location(client, normalized_location)
+        if normalized_location
+        else None
+    )
+
+    rungs: list[tuple[list[str], bool]] = []
+    for include, use_location in (
+        ([normalized_industry], bool(canonical_location)),
+        (_prospeo_selective_keyword(normalized_industry), bool(canonical_location)),
+        (_prospeo_broad_keywords(normalized_industry), False),
+    ):
+        # A short ICP can collapse two rungs into one; never repeat a search.
+        if (include, use_location) not in rungs:
+            rungs.append((include, use_location))
+
+    filters: dict[str, Any] = {}
+    payload: dict[str, Any] = {}
+    for include, use_location in rungs:
+        candidate_filters: dict[str, Any] = {
+            "company_keywords": {
+                "include": include,
+                "include_all": False,
+                "search_everywhere": True,
+            },
+        }
+        if use_location:
+            candidate_filters["company_location_search"] = {"include": [canonical_location]}
+        try:
+            payload = client.search_person(candidate_filters, page=1)
+        except ProspeoError as exc:
+            if exc.error_code != "NO_RESULTS":
+                raise
+            continue
+        filters = candidate_filters
+        if include != [normalized_industry] or use_location != bool(canonical_location):
+            filters = {
+                **filters,
+                "widened_from": {"industry": normalized_industry, "location": normalized_location},
+            }
+        break
+    else:
+        # Every rung was a healthy answer with no matches. That is an empty
+        # search the founder can retry, not a provider failure to report.
+        return []
+
     candidates = []
     for entry in _normalize_prospeo_entries(payload):
         company = entry.get("company") if isinstance(entry.get("company"), dict) else {}
@@ -523,6 +642,25 @@ def research_apollo_market_leads(*, industry: str, location: str | None = None, 
     )
 
 
+def _provider_failure_note(provider: str, exc: Exception) -> str:
+    """Say what actually went wrong instead of relaying a transport label.
+
+    The frontend renders every 5xx as "Server or provider failure", so the
+    backend detail is the only place the founder can tell a provider that is
+    down from one that was never configured or is on the wrong plan. Those are
+    fixed by a key or a billing change, not by retrying.
+    """
+    detail = str(exc)
+    if "is not configured" in detail:
+        return f"{provider}: not configured (skipped; add its API key to search it)"
+    if provider == "apollo" and "not included in your Free plan" in detail:
+        return (
+            "apollo: this Apollo plan does not include search "
+            "(upgrade Apollo, or drop it and rely on the others)"
+        )
+    return f"{provider}: {detail}"
+
+
 def research_market_leads(*, industry: str, location: str | None = None, limit_per_provider: int = 5) -> dict[str, Any]:
     normalized_industry = industry.strip()
     normalized_location = location.strip() if location else None
@@ -545,7 +683,7 @@ def research_market_leads(*, industry: str, location: str | None = None, limit_p
             results.extend(provider_results)
         except (ProspeoError, ApolloError, LushaError, ValueError) as exc:
             providers[provider] = 0
-            warnings.append(f"{provider}: {exc}")
+            warnings.append(_provider_failure_note(provider, exc))
 
     deduped: list[dict] = []
     seen: set[str] = set()
