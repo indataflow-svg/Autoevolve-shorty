@@ -309,6 +309,7 @@ def run_workflows_governance(payload: SimulationRun | None = None):
 
 def _run_governance(payload: SimulationRun | None = None) -> GovernanceRecord:
     from core.workflow_store import get_workflow, save_workflow
+    from services.workflow_actions import observe_validation_events
     from services.workflow_runner import run_workflow
 
     record = latest_governance()
@@ -332,11 +333,17 @@ def _run_governance(payload: SimulationRun | None = None) -> GovernanceRecord:
             workflow.steps[index] = step.model_copy(update={"config": config})
         save_workflow(workflow)
     executed = run_workflow(record.workflow_id)
+    # Measured against real evidence after the run, never derived from it: a
+    # workflow that observed nothing reports no score rather than a failing one.
+    observation = observe_validation_events(
+        plan_id=record.plan_id, workflow_id=executed.id
+    )
     execution = {
         "workflow_id": executed.id,
         "status": executed.state.status,
         "current_step": executed.state.current_step,
         "error": executed.state.error,
+        "validation_events": observation.model_dump(mode="json"),
         "steps": [
             {
                 "step_id": item.step_id,

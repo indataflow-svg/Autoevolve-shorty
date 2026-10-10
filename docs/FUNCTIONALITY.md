@@ -117,10 +117,70 @@ build against).
 `POST /workflow/approve` · `POST /workflow/run` · `GET|POST /governance` ·
 `POST /governance/approve` · `POST /governance/run` · `GET /workflows`
 
+**Two gates, in sequence.** A plan request is refused twice, and clearing the
+first immediately exposes the second:
+
+| gate | status | condition | cleared by |
+|---|---|---|---|
+| route | 409 | `state.marketing_stage` unrecorded, so `next_stage` is null | recording the stage — this phase ships `starting_from_zero` → `market_validation` |
+| readiness | 422 | context below `WORKFLOW_READINESS_THRESHOLD` (80%, i.e. 5 of the 6 `REQUIRED_GROUPS`) | answering the missing groups |
+
+A stage that *is* recorded but unsupported gets its own 409 with its own
+message; the two cases never collapse into one sentence.
+
+**Both are clearable in place from `/workflows`.** The page renders one control
+per group the API reports in `context.missing`, keyed by those labels so it
+stays correct as answers land, and PUTs a merged context through the existing
+full-replacement endpoint. Sections the founder did not touch pass through
+unchanged, and the computed fields the read model returns are ignored on the
+way back in rather than echoed as claims.
+
+**Lifecycle:** `validated → workflow_created → approved → executed`. Governance
+authorizes; the workflow is created as a `draft` and only reaches `ready` on
+approval, so approval and run stay separate founder-gated actions mirroring the
+sales send/approve split. A blocked plan is still persisted with its reasons —
+a refusal is auditable, not a silent no-op.
+
+**What governance may run, and may not.** One step, `simulate_outreach`, with
+`trigger.config.simulation = true`. The boundary is explicit:
+
+```python
+elif action_name not in SIMULATION_ACTIONS:
+    reasons.append("action ... reaches a real external system and is not authorized by governance")
+```
+
+`METHOD_ACTIONS` maps only `targeted_outbound` and `direct_sales` onto it; any
+other method is blocked outright. The registered `g1_strategy`,
+`generate_assets`, `publish`, `collect_results` and `evaluate` actions are
+reachable by the runner, but governance never wires them into a validation
+workflow.
+
+**Validation events are observed, never assumed.** `simulate_outreach` reports
+`validation_events: null` — a simulation observes nothing, so it must not
+report a measured zero. After the run, `observe_validation_events()` consults
+`sales_events` for rows attributed to the plan or workflow id and attaches the
+answer to `execution`:
+
+| observation | renders as | means |
+|---|---|---|
+| `observed: false` | Score `—` | no evidence source reported this run |
+| store unreadable | Score `—` + reason | a store we could not read is not a store that reported zero |
+| `observed: true, count: N` | Score `N / target` | a real measurement — including a genuine zero |
+
+Attribution is required: leads already sitting in a meeting stage were not
+produced by this experiment and are never credited to it. The qualifying events
+are the two the sales store already records, `lead.replied` and
+`meeting.scheduled`; sending is activity, not an event.
+
+**Deliberately not real yet.** Outreach does not leave the process — the send
+path exists in `services/sales_service.py` but is not reachable from a governed
+workflow. The spend, contact and duration caps are checked when a plan is
+validated, not when it executes. The page states both rather than implying
+otherwise.
+
 A workflow becomes approvable and runnable the moment the company context
-crosses 80% completeness — preparation does not wait for full data. Approval
-and run are separate founder-gated actions, mirroring the send/approve split
-sales already uses. The frontend page is `/workflows`
+crosses 80% completeness — preparation does not wait for full data. The
+frontend page is `/workflows`
 (`autoevolve-ui/src/pages/WorkflowsPage.tsx`, API in
 `autoevolve-ui/src/api/workflows.ts`), and `/validation` redirects there.
 

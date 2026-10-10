@@ -16,13 +16,20 @@ substitute the underlying service boundary without faking the architecture.
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 from core import marketing_store, sales_store, state
+from core.validation_plan import ValidationEventObservation
 from services import marketing_worker
 
 
 HYPOTHESIS_FIELDS = ("message", "audience", "angle", "offer", "creative_direction", "success_metric")
+
+# sales_events names that count as the plan's validation event. These are the
+# two real outcomes the sales store already records on a lead: the prospect
+# replied, or a meeting was booked. Sending is not an event — it is activity.
+VALIDATION_EVENT_NAMES = ("lead.replied", "meeting.scheduled")
 
 # G1's objective is a closed enum; the workflow objective is free-form business
 # intent. Map the latter onto the former (never invent a G1 objective).
@@ -340,7 +347,10 @@ def simulate_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[s
         "targets": len(results),
         "sent": len(results),
         "replies": 0,
-        "validation_events": 0,
+        # Deliberately None and never 0: a simulation observes nothing, so it
+        # must not report a measured zero. The score stays unscored until
+        # observe_validation_events() consults a real evidence source.
+        "validation_events": None,
         "external_side_effects": False,
         "message_present": bool(message.strip()),
         "results": results,
@@ -348,7 +358,58 @@ def simulate_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[s
     return {
         "status": "completed",
         "output": simulated,
-        "metrics": {"targets": len(results), "sent": len(results), "validation_events": 0},
+        # metrics carries numeric aggregates only; validation_events is an
+        # observation attached after the run, not a number this step can sum.
+        "metrics": {"targets": len(results), "sent": len(results)},
         "artifacts": [],
         "next_step": None,
     }
+
+
+def observe_validation_events(
+    *, plan_id: str | None = None, workflow_id: str | None = None
+) -> ValidationEventObservation:
+    """Measure the plan's validation events against real, attributable evidence.
+
+    Evidence has to be attributable to *this* plan: leads that already happen to
+    sit in a meeting stage were not produced by this experiment, and counting
+    them would credit a run that never happened. Attribution comes from
+    ``sales_events`` rows carrying the plan or workflow id, which is the write
+    the send path performs once outreach actually leaves the process.
+
+    Nothing here fabricates a value in either direction: no attributable
+    activity is ``observed=False`` with a reason, and attributable activity with
+    no qualifying event is a genuine, reportable zero.
+    """
+    needles = [f"%{value}%" for value in (plan_id, workflow_id) if value]
+    if not needles:
+        return ValidationEventObservation(
+            observed=False,
+            reason="no plan or workflow is attached to this execution",
+        )
+    try:
+        with state.connect() as connection:
+            rows = connection.execute(
+                "SELECT event FROM sales_events WHERE "
+                + " OR ".join("payload_json LIKE ?" for _ in needles),
+                needles,
+            ).fetchall()
+    except sqlite3.Error as exc:
+        # A store we could not read is not a store that reported zero.
+        return ValidationEventObservation(
+            observed=False,
+            reason=f"evidence store could not be read: {type(exc).__name__}",
+        )
+    events = [str(row["event"]) for row in rows]
+    source = f"sales_events(plan_id={plan_id or workflow_id})"
+    if not events:
+        return ValidationEventObservation(
+            observed=False,
+            source=source,
+            reason="no outreach has been recorded for this plan, so nothing was measured",
+        )
+    return ValidationEventObservation(
+        observed=True,
+        count=sum(1 for name in events if name in VALIDATION_EVENT_NAMES),
+        source=source,
+    )

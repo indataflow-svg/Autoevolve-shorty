@@ -18,6 +18,27 @@ function Facts({ title, items, tone }: { title: string; items: string[] | undefi
   return <div className="validation-facts"><h3><StateBadge tone={tone}>{title}</StateBadge></h3><ul>{entries.map(item => <li key={item}>{item}</li>)}</ul></div>
 }
 
+/** The evidence report the run attached, if this execution produced one. */
+type EventObservation = { observed?: boolean; count?: number; source?: string | null; reason?: string | null }
+
+function eventObservation(execution: unknown): EventObservation | null {
+  const value = (execution as { validation_events?: EventObservation } | undefined)?.validation_events
+  return value && typeof value === 'object' ? value : null
+}
+
+/**
+ * A validation-event count, or null when nothing observed one.
+ *
+ * Deliberately null rather than 0: an unscored experiment must not render as a
+ * failed one, which is the same reason the QA gate treats SKIPPED as absence of
+ * evidence rather than a fail.
+ */
+function observedEventCount(execution: unknown, stepOutput: Record<string, unknown>): number | null {
+  const observation = eventObservation(execution)
+  if (observation) return observation.observed ? observation.count ?? null : null
+  return typeof stepOutput.validation_events === 'number' ? stepOutput.validation_events : null
+}
+
 /**
  * One founder answer per required group, keyed by the label the API reports as
  * missing. The route and the workflow gate are both decided from these same
@@ -160,6 +181,8 @@ function GovernancePanel({ record, busy, error, onAction }: {
 }) {
   const steps = (record.execution?.steps || []) as Array<{ output?: Record<string, unknown> }>
   const simulated = steps[0]?.output
+  const observation = eventObservation(record.execution)
+  const events = observedEventCount(record.execution, simulated || {})
   return <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Governance</h2><p>AutoEvolve decides whether the plan may run. Hermes never executes anything itself.</p></div>
     <ol className="validation-lifecycle">{[
       { key: 'plan', label: 'Validation Plan', reached: true },
@@ -181,9 +204,11 @@ function GovernancePanel({ record, busy, error, onAction }: {
     {simulated && <dl className="validation-grid">
       <div><dt>Simulation</dt><dd>{String(simulated.status)} · {String(simulated.action)}</dd></div>
       <div><dt>Targets / sent</dt><dd>{String(simulated.targets)} / {String(simulated.sent)}</dd></div>
-      <div><dt>Validation events</dt><dd>{String(simulated.validation_events)}</dd></div>
+      <div><dt>Validation events</dt><dd>{events ?? '—'}</dd></div>
       <div><dt>External side effects</dt><dd>{simulated.external_side_effects === false ? 'none' : 'unexpected'}</dd></div>
     </dl>}
+    {observation && !observation.observed && observation.reason
+      && <p className="operational-note">Not scored: {observation.reason}.</p>}
   </section>
 }
 
@@ -200,8 +225,12 @@ function WorkflowCard({ item }: { item: AutomationWorkflowView }) {
   const steps = docState?.results?.length ? docState.results : ((item.governance.execution?.steps || []) as Array<{ step_id?: string; action?: string; status?: string; output?: Record<string, unknown> }>)
   const first = steps[0]?.output || {}
   const target = (doc.success_metric as { target?: number } | undefined)?.target
-  const events = typeof first.validation_events === 'number' ? first.validation_events : null
+  const observation = eventObservation(item.governance.execution)
+  const events = observedEventCount(item.governance.execution, first)
   const score = events !== null && typeof target === 'number' && target > 0 ? `${events} / ${target}` : '—'
+  const scoreReason = events === null
+    ? (observation?.reason ?? (observation ? 'no evidence source reported this run' : 'this run was not measured'))
+    : undefined
   const title = typeof doc.name === 'string' && doc.name ? doc.name : item.workflow_id || 'Workflow'
   return <div className="workflow-card">
     <div className="workflow-card-head"><strong>{title}</strong><StateBadge tone={item.workflow_status === 'completed' ? 'green' : item.workflow_status === 'failed' ? 'red' : 'blue'}>{item.workflow_status || item.governance.lifecycle}</StateBadge></div>
@@ -209,7 +238,7 @@ function WorkflowCard({ item }: { item: AutomationWorkflowView }) {
       <div><dt>Targets</dt><dd>{String(first.targets ?? '—')}</dd></div>
       <div><dt>Sent</dt><dd>{String(first.sent ?? '—')}</dd></div>
       <div><dt>Validation events</dt><dd>{events ?? '—'}</dd></div>
-      <div><dt>Score</dt><dd>{score}</dd></div>
+      <div><dt>Score</dt><dd title={scoreReason}>{score}</dd></div>
       <div><dt>External side effects</dt><dd>{first.external_side_effects === false ? 'none' : first.external_side_effects === true ? 'unexpected' : '—'}</dd></div>
       <div><dt>Governance</dt><dd>{item.governance.status}{item.governance.approved_at ? ' · approved' : ' · awaiting approval'}</dd></div>
     </dl>

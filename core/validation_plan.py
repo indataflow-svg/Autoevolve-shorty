@@ -153,6 +153,26 @@ class GroundingReport(BaseModel):
 ValidationPlanRecord.model_rebuild()
 
 
+class ValidationEventObservation(BaseModel):
+    """Whether the success metric could be measured, and by what.
+
+    A count with no observation behind it is not a result. The workflow score
+    must never present "we did not look" as "we looked and saw zero" — the same
+    rule the QA gate applies to ``SKIPPED``, and the same reason a provider
+    outage is not reported as an empty search. Downstream, ``observed=False``
+    renders as no score at all rather than a failing one.
+    """
+
+    observed: bool = False
+    count: int = 0
+    # What was consulted, e.g. ``sales_events(plan_id=plan_x)``. Null when
+    # nothing was.
+    source: str | None = None
+    # Why there is no observation. Always present when ``observed`` is False,
+    # so an absent score can always explain itself.
+    reason: str | None = None
+
+
 def _tokens(text: str) -> set[str]:
     return {
         token for token in _TOKEN.findall(text.casefold())
