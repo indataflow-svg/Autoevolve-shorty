@@ -16,7 +16,8 @@ import { ContentPage } from './pages/ContentPage'
 import { RepliesPage } from './pages/RepliesPage'
 import { MeetingsPage } from './pages/MeetingsPage'
 import { OnboardingPage } from './pages/OnboardingPage'
-import { ValidationPage } from './pages/ValidationPage'
+import { CommercialPage } from './pages/CommercialPage'
+import { WorkflowsPage } from './pages/WorkflowsPage'
 import { ServiceDiscoveryPage } from './pages/ServiceDiscoveryPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import './styles.css'
@@ -31,8 +32,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/commercial" element={<CommercialPage />} />
             <Route path="/services" element={<ServiceDiscoveryPage />} />
-            <Route path="/validation" element={<ValidationPage />} />
+            <Route path="/workflows" element={<WorkflowsPage />} />
+            <Route path="/validation" element={<Navigate to="/workflows" replace />} />
             <Route path="/home" element={<HomePage />} />
             <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/outreach" element={<OutreachPage />} />

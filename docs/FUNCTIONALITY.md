@@ -231,6 +231,39 @@ frontend page is `/workflows`
 
 ---
 
+### 2c. Commercial foundation (Phase 1)
+
+Canonical shared model in `data/company.db` (`core/commercial_store.py`), served at
+`/company/commercial/*` (`app/commercial_api.py`), operated from `/commercial`
+(`autoevolve-ui/src/pages/CommercialPage.tsx`). Full specification:
+`docs/PHASE1-COMMERCIAL.md`.
+
+- **Adaptive onboarding:** sessions with path A (from zero) or B (already
+  operating, CSV-first), `current_step` + merged `progress`, resumable.
+- **Offers:** multiple active/archived profiles; never global defaults.
+- **ICPs:** provisional/validated/archived with `version++` on edit; per-field
+  provenance; edits re-fit linked accounts; `POST /icps/{id}/evaluate`
+  explains every criterion and never scores missing evidence positively.
+- **Accounts + CSV:** source preserved (`csv:file:row`); domain dedupe with
+  NULL-tolerant unique; preview (headers, suggested mapping, counts, sample,
+  ambiguous) → commit (idempotent, row-level errors, no silent merges).
+- **Pipelines:** ordered stages with `allowed_next`, `required_fields`, and
+  mandatory reasons for lost/deferred/disqualified — enforced server-side.
+- **Qualification:** fit (weighted criteria + hard exclusions), intent
+  (recorded events only), and rules evaluated separately; `needs_human` when
+  anything is unmet.
+- **Integrations:** catalog states (`healthy/action_required/disconnected` +
+  `available/unavailable/coming_soon`) from stored rows, env presence, and
+  live checks. OAuth/CRM providers are catalog-only with explicit blockers.
+  Secrets never reach the client.
+
+**Tables:** `offer_profiles`, `icp_profiles`, `commercial_accounts`,
+`commercial_pipelines`, `commercial_opportunities`, `qualification_rules`,
+`commercial_activities`, `integration_connections`, `csv_imports`,
+`onboarding_sessions`.
+
+---
+
 ## 3. Sales
 
 The largest department: **31 routes**, 5 tables, 6 provider integrations, and

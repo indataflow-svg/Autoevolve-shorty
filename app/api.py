@@ -235,10 +235,12 @@ from app.company_ops_api import router as company_ops_router
 from app.company_context_api import router as company_context_router
 from app.marketing_api import router as marketing_router
 from app.validation_api import router as validation_router
+from app.validation_api import automation_router as validation_automation_router
 from app.workflows_api import router as workflows_router
 from app.sales_api import action_router as sales_action_router
 from app.sales_api import intake_router as sales_intake_router
 from app.sales_api import router as sales_router
+from app.commercial_api import router as commercial_router
 from app.setup_api import router as setup_router
 from app.video_api import action_router as video_action_router
 from app.video_api import router as video_router
@@ -248,7 +250,9 @@ app.include_router(company_ops_router, dependencies=[Depends(authenticate)])
 app.include_router(company_context_router, dependencies=[Depends(authenticate)])
 app.include_router(marketing_router, dependencies=[Depends(authenticate)])
 app.include_router(validation_router, dependencies=[Depends(authenticate)])
+app.include_router(validation_automation_router, dependencies=[Depends(authenticate)])
 app.include_router(sales_router, dependencies=[Depends(authenticate)])
+app.include_router(commercial_router, dependencies=[Depends(authenticate)])
 app.include_router(contacts_router, dependencies=[Depends(authenticate)])
 app.include_router(companies_router, dependencies=[Depends(authenticate)])
 app.include_router(workspace_router, dependencies=[Depends(authenticate)])
@@ -298,8 +302,10 @@ if _ui_dist.is_dir():
 @app.get("/content/", include_in_schema=False)
 @app.get("/onboarding", include_in_schema=False)
 @app.get("/onboarding/", include_in_schema=False)
-@app.get("/validation", include_in_schema=False)
-@app.get("/validation/", include_in_schema=False)
+@app.get("/commercial", include_in_schema=False)
+@app.get("/commercial/", include_in_schema=False)
+@app.get("/workflows", include_in_schema=False)
+@app.get("/workflows/", include_in_schema=False)
 def ui_app(request: Request):
     if request.url.path.endswith("/"):
         return _ui_redirect(request, request.url.path.rstrip("/"), status_code=308)
