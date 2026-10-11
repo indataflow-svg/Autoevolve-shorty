@@ -1,6 +1,6 @@
 # AutoEvolve locked API reference
 
-Generated from source by `scripts/gen_api_reference.py` at commit `1023af7` on 2026-10-09T14:41:29Z.
+Generated from source by `scripts/gen_api_reference.py` at commit `d2fb3c3` on 2026-10-11T10:03:48Z.
 
 Every public constant, function, class and method in the shipped packages, with its real signature. Read this as the contract: if a name here disagrees with the code, the code is authoritative and this file must be regenerated.
 
@@ -8,15 +8,15 @@ Every public constant, function, class and method in the shipped packages, with 
 
 | subsystem | modules | functions | classes | methods | constants |
 |---|---|---|---|---|---|
-| Core state and models | 20 | 197 | 38 | 5 | 65 |
-| Support services | 26 | 94 | 23 | 37 | 60 |
+| Core state and models | 21 | 203 | 39 | 5 | 68 |
+| Support services | 26 | 96 | 23 | 37 | 62 |
 | Video pipeline package | 11 | 56 | 11 | 3 | 35 |
 | Agents | 9 | 65 | 12 | 0 | 43 |
-| HTTP surface | 18 | 172 | 123 | 0 | 51 |
+| HTTP surface | 19 | 201 | 134 | 0 | 57 |
 | Operations scripts | 13 | 50 | 1 | 25 | 61 |
-| **all** | **97** | **634** | **208** | **70** | **315** |
+| **all** | **99** | **671** | **220** | **70** | **326** |
 
-Plus 187 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the end.
+Plus 218 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the end.
 
 ## Core state and models
 
@@ -30,6 +30,15 @@ Plus 187 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - `company_public_url() -> str`
 - `company_forms_url() -> str`
 - `company_logo_url() -> str`
+
+### `core/commercial_store.py`
+
+- `connect() -> sqlite3.Connection`
+- `new_id(prefix: str) -> str`
+- `active_org_id() -> int`
+- `init_commercial_db() -> None`
+- `evaluate_fit(account: dict, icp: dict) -> dict` — Score account attributes against ICP criteria. No invented positives
+- `evaluate_intent(org: int, account_id: str) -> dict` — Intent from recorded interactions only. Never invents from profile
 
 ### `core/company_context.py`
 
@@ -296,6 +305,7 @@ Plus 187 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - class `PlanProvenance`(BaseModel) — Where the plan came from, so a stored plan is never anonymous
 - class `ValidationPlanRecord`(BaseModel) — A persisted plan. ``planned`` never implies the experiment happened
 - class `GroundingReport`(BaseModel) — What the grounding rule did, so the demotion is never silent
+- class `ValidationEventObservation`(BaseModel) — Whether the success metric could be measured, and by what
 - `grounding_ratio(statement: str, context_text: str) -> float` — Share of a statement's meaningful words that appear in the context
 - `is_grounded(statement: str, context_text: str) -> bool` — True when a claimed fact is recognisably the founder's own wording
 - `context_text(context: CompanyContext) -> str` — Flatten a context into the text a claim must be traceable to
@@ -345,6 +355,9 @@ Plus 187 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - const `DB_PATH`
 - const `WORKFLOW_ACTIONS`
 - const `SIMULATION_ACTIONS`
+- const `DRAFT_ACTIONS`
+- const `GOVERNED_ACTIONS`
+- const `EXTERNAL_ACTIONS`
 - const `TERMINAL_STATUSES`
 - `now_iso() -> str`
 - `new_id(prefix: str='wf') -> str`
@@ -582,7 +595,7 @@ Plus 187 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - `import_hunter_domain(domain: str, limit: int=5) -> list[dict]`
 - `import_apollo_domain(domain: str, limit: int=5) -> list[dict]`
 - `research_prospeo_leads(*, job_title: str, service_keywords: list[str] | None=None, location: str | None=None, company_size: str | None=None, limit: int=5) -> list[dict]`
-- `research_prospeo_market_leads(*, industry: str, location: str | None=None, limit: int=5) -> list[dict]`
+- `research_prospeo_market_leads(*, industry: str, location: str | None=None, limit: int=5) -> list[dict]` — Company candidates for an ICP, relaxed rather than failed on first refusal
 - `research_prospeo_suggestions(*, kind: str, query: str) -> list[str]`
 - `research_lusha_suggestions(*, kind: str, query: str) -> list[str]`
 - `research_lusha_leads(*, job_title: str | None=None, service_keywords: list[str] | None=None, location: str | None=None, company_size: str | None=None, limit: int=5) -> list[dict]`
@@ -625,6 +638,7 @@ Plus 187 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 ### `services/workflow_actions.py`
 
 - const `HYPOTHESIS_FIELDS`
+- const `VALIDATION_EVENT_NAMES`
 - const `G1_OBJECTIVES`
 - const `DEFAULT_G1_OBJECTIVE`
 - `hypotheses_from_g1(result: dict[str, Any]) -> list[dict[str, Any]]` — Map the existing G1 ``concepts`` (exactly three) into experiment hypotheses
@@ -635,6 +649,8 @@ Plus 187 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - `collect_results(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Collect available campaign + sales outcomes from the existing stores
 - `evaluate(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Score the hypotheses and store the winner for the evolution loop
 - `simulate_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Simulate one validation outreach step. Nothing leaves this process
+- `draft_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Create real outreach drafts for the plan's targets. Nothing is sent
+- `observe_validation_events(*, plan_id: str | None=None, workflow_id: str | None=None) -> ValidationEventObservation` — Measure the plan's validation events against real, attributable evidence
 
 ### `services/workflow_runner.py`
 
@@ -961,6 +977,54 @@ Plus 187 HTTP routes, 28 database tables and 8 CLI subcommands, listed at the en
 - `async health()`
 - `ui_app(request: Request)`
 - `missing_page(path: str, request: Request)`
+
+### `app/commercial_api.py`
+
+- class `OfferIn`(BaseModel)
+- `list_offers() -> list[dict]` [router.get('/offers')]
+- `create_offer(payload: OfferIn) -> dict` [router.post('/offers', dependencies=[Depends(verify_founder_action)])]
+- `update_offer(rid: str, payload: dict) -> dict` [router.patch('/offers/{rid}', dependencies=[Depends(verify_founder_action)])]
+- class `ICPIn`(BaseModel)
+- `list_icps() -> list[dict]` [router.get('/icps')]
+- `create_icp(payload: ICPIn) -> dict` [router.post('/icps', dependencies=[Depends(verify_founder_action)])]
+- `update_icp(rid: str, payload: dict) -> dict` [router.patch('/icps/{rid}', dependencies=[Depends(verify_founder_action)])]
+- `evaluate_icp(rid: str, account: dict) -> dict` [router.post('/icps/{rid}/evaluate', dependencies=[Depends(verify_founder_action)])]
+- class `AccountIn`(BaseModel)
+- `list_accounts() -> list[dict]` [router.get('/accounts')]
+- `create_account(payload: AccountIn) -> dict` [router.post('/accounts', dependencies=[Depends(verify_founder_action)])]
+- `update_account(rid: str, payload: dict) -> dict` [router.patch('/accounts/{rid}', dependencies=[Depends(verify_founder_action)])]
+- `get_account(rid: str) -> dict` [router.get('/accounts/{rid}')]
+- class `PipelineIn`(BaseModel)
+- const `DEFAULT_PIPELINE_STAGES`
+- `list_pipelines() -> list[dict]` [router.get('/pipelines')]
+- `create_pipeline(payload: PipelineIn) -> dict` [router.post('/pipelines', dependencies=[Depends(verify_founder_action)])]
+- class `OpportunityIn`(BaseModel)
+- `list_opportunities() -> list[dict]` [router.get('/opportunities')]
+- `create_opportunity(payload: OpportunityIn) -> dict` [router.post('/opportunities', dependencies=[Depends(verify_founder_action)])]
+- class `StageMove`(BaseModel)
+- `move_opportunity(rid: str, payload: StageMove) -> dict` [router.post('/opportunities/{rid}/move', dependencies=[Depends(verify_founder_action)])]
+- class `RuleIn`(BaseModel)
+- `list_rules() -> list[dict]` [router.get('/rules')]
+- `create_rule(payload: RuleIn) -> dict` [router.post('/rules', dependencies=[Depends(verify_founder_action)])]
+- `qualify_account(rid: str) -> dict` [router.post('/accounts/{rid}/qualify')]
+- class `ActivityIn`(BaseModel)
+- `log_activity(payload: ActivityIn) -> dict` [router.post('/activities', dependencies=[Depends(verify_founder_action)])]
+- const `CANONICAL_FIELDS`
+- const `MAX_CSV_BYTES`
+- const `MAX_CSV_ROWS`
+- `async preview_import(entity_type: str='account', file: UploadFile=File(...)) -> dict` [router.post('/imports/preview', dependencies=[Depends(verify_founder_action)])]
+- class `ImportCommit`(BaseModel)
+- `commit_import(rid: str, payload: ImportCommit) -> dict` [router.post('/imports/{rid}/commit', dependencies=[Depends(verify_founder_action)])]
+- const `CATALOG`
+- `integration_catalog() -> list[dict]` [router.get('/integrations')]
+- class `ConnectIn`(BaseModel)
+- `connect_provider(provider: str, payload: ConnectIn) -> dict` [router.post('/integrations/{provider}/connect', dependencies=[Depends(verify_founder_action)])]
+- `disconnect_provider(provider: str) -> dict` [router.post('/integrations/{provider}/disconnect', dependencies=[Depends(verify_founder_action)])]
+- `sync_provider(provider: str) -> dict` [router.post('/integrations/{provider}/sync', dependencies=[Depends(verify_founder_action)])]
+- class `SessionIn`(BaseModel)
+- `list_sessions() -> list[dict]` [router.get('/onboarding-sessions')]
+- `create_session(payload: SessionIn) -> dict` [router.post('/onboarding-sessions', dependencies=[Depends(verify_founder_action)])]
+- `update_session(rid: str, payload: dict) -> dict` [router.patch('/onboarding-sessions/{rid}', dependencies=[Depends(verify_founder_action)])]
 
 ### `app/companies_api.py`
 
@@ -1460,6 +1524,8 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | route | module |
 |---|---|
 | `GET /` | `app/api.py` |
+| `GET /accounts/{rid}` | `app/commercial_api.py` |
+| `GET /accounts` | `app/commercial_api.py` |
 | `GET /asset-packs/{pack_id}/files/{relative_path:path}` | `app/marketing_api.py` |
 | `GET /asset-packs` | `app/marketing_api.py` |
 | `GET /buffer-accounts` | `app/marketing_api.py` |
@@ -1474,6 +1540,8 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /campaigns` | `app/workflow_views_api.py` |
 | `GET /coding/tasks/{task_id}` | `app/company_ops_api.py` |
 | `GET /coding/tasks` | `app/company_ops_api.py` |
+| `GET /commercial/` | `app/api.py` |
+| `GET /commercial` | `app/api.py` |
 | `GET /companies/` | `app/api.py` |
 | `GET /companies` | `app/api.py` |
 | `GET /contacts/` | `app/api.py` |
@@ -1492,11 +1560,13 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /home` | `app/workflow_views_api.py` |
 | `GET /hunter/account` | `app/sales_api.py` |
 | `GET /hunyuan/profile` | `app/video_api.py` |
+| `GET /icps` | `app/commercial_api.py` |
 | `GET /incidents/{incident_id}` | `app/company_ops_api.py` |
 | `GET /incidents` | `app/company_ops_api.py` |
 | `GET /ingest/{project_id}` | `app/video_api.py` |
 | `GET /integrations/` | `app/api.py` |
 | `GET /integrations` | `app/api.py` |
+| `GET /integrations` | `app/commercial_api.py` |
 | `GET /integrations` | `app/workspace_api.py` |
 | `GET /jobs/{job_id}` | `app/video_api.py` |
 | `GET /jobs` | `app/video_api.py` |
@@ -1515,6 +1585,8 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /meetings/{lead_id}` | `app/workflow_views_api.py` |
 | `GET /meetings` | `app/api.py` |
 | `GET /meetings` | `app/workflow_views_api.py` |
+| `GET /offers` | `app/commercial_api.py` |
+| `GET /onboarding-sessions` | `app/commercial_api.py` |
 | `GET /onboarding/` | `app/api.py` |
 | `GET /onboarding` | `app/api.py` |
 | `GET /onboarding` | `app/onboarding_api.py` |
@@ -1528,12 +1600,14 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /operations/sales/email` | `app/api.py` |
 | `GET /operations/sales` | `app/api.py` |
 | `GET /operations` | `app/api.py` |
+| `GET /opportunities` | `app/commercial_api.py` |
 | `GET /orgs/{org_id}/capabilities` | `app/marketing_api.py` |
 | `GET /orgs` | `app/marketing_api.py` |
 | `GET /outreach/` | `app/api.py` |
 | `GET /outreach/{draft_id}` | `app/workflow_views_api.py` |
 | `GET /outreach` | `app/api.py` |
 | `GET /outreach` | `app/workflow_views_api.py` |
+| `GET /pipelines` | `app/commercial_api.py` |
 | `GET /plan` | `app/validation_api.py` |
 | `GET /plans/{plan_id}` | `app/video_api.py` |
 | `GET /plans` | `app/video_api.py` |
@@ -1546,6 +1620,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /replies` | `app/workflow_views_api.py` |
 | `GET /research/` | `app/api.py` |
 | `GET /research` | `app/api.py` |
+| `GET /rules` | `app/commercial_api.py` |
 | `GET /service-discovery` | `app/service_discovery_api.py` |
 | `GET /session` | `app/workspace_api.py` |
 | `GET /settings/` | `app/api.py` |
@@ -1563,7 +1638,14 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /{path:path}` | `app/api.py` |
 | `GET /{workflow_id}/state` | `app/workflows_api.py` |
 | `GET /{workflow_id}` | `app/workflows_api.py` |
+| `PATCH /accounts/{rid}` | `app/commercial_api.py` |
+| `PATCH /icps/{rid}` | `app/commercial_api.py` |
+| `PATCH /offers/{rid}` | `app/commercial_api.py` |
+| `PATCH /onboarding-sessions/{rid}` | `app/commercial_api.py` |
+| `POST /accounts/{rid}/qualify` | `app/commercial_api.py` |
+| `POST /accounts` | `app/commercial_api.py` |
 | `POST /activate` | `app/onboarding_api.py` |
+| `POST /activities` | `app/commercial_api.py` |
 | `POST /asset-packs` | `app/marketing_api.py` |
 | `POST /buyer` | `app/onboarding_api.py` |
 | `POST /calibration` | `app/onboarding_api.py` |
@@ -1587,8 +1669,15 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `POST /governance/approve` | `app/validation_api.py` |
 | `POST /governance/run` | `app/validation_api.py` |
 | `POST /governance` | `app/validation_api.py` |
+| `POST /icps/{rid}/evaluate` | `app/commercial_api.py` |
+| `POST /icps` | `app/commercial_api.py` |
+| `POST /imports/preview` | `app/commercial_api.py` |
+| `POST /imports/{rid}/commit` | `app/commercial_api.py` |
 | `POST /ingest/media` | `app/video_api.py` |
 | `POST /ingest/pack` | `app/video_api.py` |
+| `POST /integrations/{provider}/connect` | `app/commercial_api.py` |
+| `POST /integrations/{provider}/disconnect` | `app/commercial_api.py` |
+| `POST /integrations/{provider}/sync` | `app/commercial_api.py` |
 | `POST /jobs/{job_id}/cancel` | `app/video_api.py` |
 | `POST /jobs/{job_id}/retry` | `app/video_api.py` |
 | `POST /keys/test` | `app/setup_api.py` |
@@ -1616,9 +1705,14 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `POST /manual-posts` | `app/marketing_api.py` |
 | `POST /monitor/run/{service}` | `app/company_ops_api.py` |
 | `POST /monitor/run` | `app/company_ops_api.py` |
+| `POST /offers` | `app/commercial_api.py` |
+| `POST /onboarding-sessions` | `app/commercial_api.py` |
+| `POST /opportunities/{rid}/move` | `app/commercial_api.py` |
+| `POST /opportunities` | `app/commercial_api.py` |
 | `POST /orgs/active` | `app/marketing_api.py` |
 | `POST /orgs/{org_id}/capabilities` | `app/marketing_api.py` |
 | `POST /orgs` | `app/marketing_api.py` |
+| `POST /pipelines` | `app/commercial_api.py` |
 | `POST /plan` | `app/validation_api.py` |
 | `POST /plans/{plan_id}/queue` | `app/video_api.py` |
 | `POST /plans` | `app/video_api.py` |
@@ -1631,6 +1725,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `POST /research/leads` | `app/sales_api.py` |
 | `POST /research/suggestions` | `app/sales_api.py` |
 | `POST /resend/sales` | `app/sales_api.py` |
+| `POST /rules` | `app/commercial_api.py` |
 | `POST /search` | `app/onboarding_api.py` |
 | `POST /search` | `app/service_discovery_api.py` |
 | `POST /specs` | `app/video_api.py` |
@@ -1665,14 +1760,24 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `buffer_org_accounts` | `core/state.py` |
 | `buffer_orgs` | `core/state.py` |
 | `coding_tasks` | `core/ops_store.py` |
+| `commercial_accounts` | `core/commercial_store.py` |
+| `commercial_activities` | `core/commercial_store.py` |
+| `commercial_opportunities` | `core/commercial_store.py` |
+| `commercial_pipelines` | `core/commercial_store.py` |
 | `company_context` | `core/company_context.py` |
+| `csv_imports` | `core/commercial_store.py` |
+| `icp_profiles` | `core/commercial_store.py` |
 | `incidents` | `core/ops_store.py` |
+| `integration_connections` | `core/commercial_store.py` |
 | `marketing_campaigns` | `core/marketing_store.py` |
 | `marketing_events` | `core/marketing_store.py` |
 | `marketing_manual_posts` | `core/marketing_store.py` |
 | `marketing_variants` | `core/marketing_store.py` |
 | `memories` | `core/memory.py` |
+| `offer_profiles` | `core/commercial_store.py` |
+| `onboarding_sessions` | `core/commercial_store.py` |
 | `org_capabilities` | `core/state.py` |
+| `qualification_rules` | `core/commercial_store.py` |
 | `sales_company_profiles` | `core/sales_store.py` |
 | `sales_drafts` | `core/sales_store.py` |
 | `sales_events` | `core/sales_store.py` |
