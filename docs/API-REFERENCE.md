@@ -1,6 +1,6 @@
 # AutoEvolve locked API reference
 
-Generated from source by `scripts/gen_api_reference.py` at commit `d2fb3c3` on 2026-10-11T10:03:48Z.
+Generated from source by `scripts/gen_api_reference.py` at commit `e6a8ee6` on 2026-10-11T10:21:23Z.
 
 Every public constant, function, class and method in the shipped packages, with its real signature. Read this as the contract: if a name here disagrees with the code, the code is authoritative and this file must be regenerated.
 
@@ -12,11 +12,11 @@ Every public constant, function, class and method in the shipped packages, with 
 | Support services | 26 | 96 | 23 | 37 | 62 |
 | Video pipeline package | 11 | 56 | 11 | 3 | 35 |
 | Agents | 9 | 65 | 12 | 0 | 43 |
-| HTTP surface | 19 | 201 | 134 | 0 | 57 |
+| HTTP surface | 19 | 206 | 134 | 0 | 58 |
 | Operations scripts | 13 | 50 | 1 | 25 | 61 |
-| **all** | **99** | **671** | **220** | **70** | **326** |
+| **all** | **99** | **676** | **220** | **70** | **327** |
 
-Plus 218 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the end.
+Plus 223 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the end.
 
 ## Core state and models
 
@@ -985,12 +985,15 @@ Plus 218 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - `create_offer(payload: OfferIn) -> dict` [router.post('/offers', dependencies=[Depends(verify_founder_action)])]
 - `update_offer(rid: str, payload: dict) -> dict` [router.patch('/offers/{rid}', dependencies=[Depends(verify_founder_action)])]
 - class `ICPIn`(BaseModel)
+- const `ICP_TEMPLATES`
+- `icp_templates() -> list[dict]` [router.get('/icp-templates')]
+- `archive_icp(rid: str) -> dict` [router.post('/icps/{rid}/archive', dependencies=[Depends(verify_founder_action)])]
 - `list_icps() -> list[dict]` [router.get('/icps')]
 - `create_icp(payload: ICPIn) -> dict` [router.post('/icps', dependencies=[Depends(verify_founder_action)])]
 - `update_icp(rid: str, payload: dict) -> dict` [router.patch('/icps/{rid}', dependencies=[Depends(verify_founder_action)])]
 - `evaluate_icp(rid: str, account: dict) -> dict` [router.post('/icps/{rid}/evaluate', dependencies=[Depends(verify_founder_action)])]
 - class `AccountIn`(BaseModel)
-- `list_accounts() -> list[dict]` [router.get('/accounts')]
+- `list_accounts(q: str='', lifecycle_status: str='', sort: str='updated', page: int=1, page_size: int=20) -> dict` [router.get('/accounts')]
 - `create_account(payload: AccountIn) -> dict` [router.post('/accounts', dependencies=[Depends(verify_founder_action)])]
 - `update_account(rid: str, payload: dict) -> dict` [router.patch('/accounts/{rid}', dependencies=[Depends(verify_founder_action)])]
 - `get_account(rid: str) -> dict` [router.get('/accounts/{rid}')]
@@ -999,7 +1002,9 @@ Plus 218 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - `list_pipelines() -> list[dict]` [router.get('/pipelines')]
 - `create_pipeline(payload: PipelineIn) -> dict` [router.post('/pipelines', dependencies=[Depends(verify_founder_action)])]
 - class `OpportunityIn`(BaseModel)
-- `list_opportunities() -> list[dict]` [router.get('/opportunities')]
+- `list_opportunities(stage: str='', page: int=1, page_size: int=20) -> dict` [router.get('/opportunities')]
+- `get_opportunity(rid: str) -> dict` [router.get('/opportunities/{rid}')]
+- `update_pipeline(rid: str, payload: dict) -> dict` [router.patch('/pipelines/{rid}', dependencies=[Depends(verify_founder_action)])]
 - `create_opportunity(payload: OpportunityIn) -> dict` [router.post('/opportunities', dependencies=[Depends(verify_founder_action)])]
 - class `StageMove`(BaseModel)
 - `move_opportunity(rid: str, payload: StageMove) -> dict` [router.post('/opportunities/{rid}/move', dependencies=[Depends(verify_founder_action)])]
@@ -1012,6 +1017,7 @@ Plus 218 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - const `CANONICAL_FIELDS`
 - const `MAX_CSV_BYTES`
 - const `MAX_CSV_ROWS`
+- `list_imports() -> list[dict]` [router.get('/imports')]
 - `async preview_import(entity_type: str='account', file: UploadFile=File(...)) -> dict` [router.post('/imports/preview', dependencies=[Depends(verify_founder_action)])]
 - class `ImportCommit`(BaseModel)
 - `commit_import(rid: str, payload: ImportCommit) -> dict` [router.post('/imports/{rid}/commit', dependencies=[Depends(verify_founder_action)])]
@@ -1560,7 +1566,9 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /home` | `app/workflow_views_api.py` |
 | `GET /hunter/account` | `app/sales_api.py` |
 | `GET /hunyuan/profile` | `app/video_api.py` |
+| `GET /icp-templates` | `app/commercial_api.py` |
 | `GET /icps` | `app/commercial_api.py` |
+| `GET /imports` | `app/commercial_api.py` |
 | `GET /incidents/{incident_id}` | `app/company_ops_api.py` |
 | `GET /incidents` | `app/company_ops_api.py` |
 | `GET /ingest/{project_id}` | `app/video_api.py` |
@@ -1600,6 +1608,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /operations/sales/email` | `app/api.py` |
 | `GET /operations/sales` | `app/api.py` |
 | `GET /operations` | `app/api.py` |
+| `GET /opportunities/{rid}` | `app/commercial_api.py` |
 | `GET /opportunities` | `app/commercial_api.py` |
 | `GET /orgs/{org_id}/capabilities` | `app/marketing_api.py` |
 | `GET /orgs` | `app/marketing_api.py` |
@@ -1642,6 +1651,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `PATCH /icps/{rid}` | `app/commercial_api.py` |
 | `PATCH /offers/{rid}` | `app/commercial_api.py` |
 | `PATCH /onboarding-sessions/{rid}` | `app/commercial_api.py` |
+| `PATCH /pipelines/{rid}` | `app/commercial_api.py` |
 | `POST /accounts/{rid}/qualify` | `app/commercial_api.py` |
 | `POST /accounts` | `app/commercial_api.py` |
 | `POST /activate` | `app/onboarding_api.py` |
@@ -1669,6 +1679,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `POST /governance/approve` | `app/validation_api.py` |
 | `POST /governance/run` | `app/validation_api.py` |
 | `POST /governance` | `app/validation_api.py` |
+| `POST /icps/{rid}/archive` | `app/commercial_api.py` |
 | `POST /icps/{rid}/evaluate` | `app/commercial_api.py` |
 | `POST /icps` | `app/commercial_api.py` |
 | `POST /imports/preview` | `app/commercial_api.py` |

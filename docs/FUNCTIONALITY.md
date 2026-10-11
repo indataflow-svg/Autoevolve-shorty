@@ -238,8 +238,12 @@ Canonical shared model in `data/company.db` (`core/commercial_store.py`), served
 (`autoevolve-ui/src/pages/CommercialPage.tsx`). Full specification:
 `docs/PHASE1-COMMERCIAL.md`.
 
-- **Adaptive onboarding:** sessions with path A (from zero) or B (already
-  operating, CSV-first), `current_step` + merged `progress`, resumable.
+- **Adaptive onboarding:** guided Path A (company → icp → accounts → pipeline →
+  rules → integrations → review) and Path B (company → discovery → import →
+  customers → icp → pipeline → rules → integrations) wizards on the onboarding
+  tab; sessions persist server-side with merged progress; per-step completion
+  and final activation derive from saved data, never frontend flags.
+  Integrations stay optional throughout.
 - **Offers:** multiple active/archived profiles; never global defaults.
 - **ICPs:** provisional/validated/archived with `version++` on edit; per-field
   provenance; edits re-fit linked accounts; `POST /icps/{id}/evaluate`

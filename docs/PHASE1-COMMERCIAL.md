@@ -35,7 +35,7 @@ All in `data/company.db`, all rows carry `org_id` (server-derived from `active_o
 
 ## 4. API contracts (`/company/commercial/*`, Basic; writes + founder token)
 
-Offers CRUD; ICPs CRUD + `POST /icps/{id}/evaluate` (fit+intent); accounts CRUD + `GET /accounts/{id}` (detail+intent+activities) + `POST /accounts/{id}/qualify`; pipelines list/create (auto-seed) ; opportunities list/create + `POST /opportunities/{id}/move` (transition + required-field + reason enforcement); rules list/create; activities log; `POST /imports/preview?entity_type=` (multipart CSV) + `POST /imports/{id}/commit`; `GET /integrations` (catalog with truthful states) + `/{provider}/{connect,disconnect,sync}`; onboarding-sessions CRUD. Errors: 404 unknown id, 409 duplicate domain, 422 rule/transition/mapping violations with reasons.
+Offers CRUD; ICPs CRUD + templates + archive + `POST /icps/{id}/evaluate` (fit+intent); accounts CRUD with search/filter/sort/pagination + `GET /accounts/{id}` (detail+intent+activities) + `POST /accounts/{id}/qualify`; pipelines list/create/update (stage edits versioned; in-use stages protected) ; opportunities list/create/detail + `POST /opportunities/{id}/move` (transition + required-field + reason enforcement); rules list/create; activities log; `GET /imports` + `POST /imports/preview?entity_type=` (multipart CSV) + `POST /imports/{id}/commit` (`mode: create_only|upsert`, `skip_rows`); `GET /integrations` (catalog with truthful states) + `/{provider}/{connect,disconnect,sync}`; onboarding-sessions CRUD with progress merge. Errors: 404 unknown id, 409 duplicate domain, 422 rule/transition/mapping violations with reasons.
 
 ## 5. Migration plan
 
@@ -43,7 +43,7 @@ No migration runner: `init_commercial_db()` creates all tables `IF NOT EXISTS`. 
 
 ## 6. Frontend→backend flow
 
-`CommercialPage (/commercial)` + `api/commercial.ts` (hand-typed, like `video.ts` — no schema regen needed): react-query per entity (`c-offers`, `c-icps`, …), in-memory founder token, `run()` helper (token gate → write → invalidate). Tabs: setup (sessions A/B, offers, ICPs, rules), accounts (CRUD + CSV preview/commit + qualify), pipeline (pipelines, opportunities, moves), integrations (catalog states + connect/sync/disconnect). Nav entry added to `Shell.tsx`.
+`CommercialPage (/commercial)` + `api/commercial.ts` (hand-typed, like `video.ts` — no schema regen needed): react-query per entity (`c-offers`, `c-icps`, …), in-memory founder token, `run()` helper (token gate → write → invalidate). Tabs: onboarding (guided Path A/B wizard with per-step completion derived from saved data), setup (sessions A/B, offers, ICPs, rules), accounts (search/filter, CRUD + CSV preview/commit + qualify inspector showing known/missing/unmet), pipeline (pipelines, stage filter, opportunities, moves), integrations (catalog states + connect/sync/disconnect). Nav entry added to `Shell.tsx`.
 
 ## 7. Auth, isolation, security
 

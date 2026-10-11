@@ -101,6 +101,32 @@ class ICPIn(BaseModel):
     status: str = "provisional"
 
 
+ICP_TEMPLATES = [
+    {"key": "smb_services", "name": "SMB services buyer",
+     "criteria": [{"field": "company_size", "operator": "in", "value": ["1-10", "11-50", "51-200"], "weight": 2},
+                  {"field": "industry", "operator": "contains", "value": "", "weight": 1}],
+     "exclusions": [{"field": "region", "value": "sanctioned"}],
+     "note": "Editable starting point. Fill the industry value before validating."},
+    {"key": "midmarket_ops", "name": "Midmarket operations",
+     "criteria": [{"field": "company_size", "operator": "in", "value": ["51-200", "201-500"], "weight": 2},
+                  {"field": "industry", "operator": "contains", "value": "", "weight": 1}],
+     "exclusions": [],
+     "note": "Editable starting point. A template is never a verified truth."},
+]
+
+
+@router.get("/icp-templates")
+def icp_templates() -> list[dict]:
+    return ICP_TEMPLATES
+
+
+@router.post("/icps/{rid}/archive", dependencies=[Depends(verify_founder_action)])
+def archive_icp(rid: str) -> dict:
+    if not store._row("icp_profiles", rid, _org()):
+        raise HTTPException(404, "icp not found")
+    return _update("icp_profiles", rid, _org(), {"status": "archived"})
+
+
 @router.get("/icps")
 def list_icps() -> list[dict]:
     return store._list("icp_profiles", _org())
@@ -184,8 +210,30 @@ class AccountIn(BaseModel):
 
 
 @router.get("/accounts")
-def list_accounts() -> list[dict]:
-    return store._list("commercial_accounts", _org())
+def list_accounts(q: str = "", lifecycle_status: str = "", sort: str = "updated",
+                  page: int = 1, page_size: int = 20) -> dict:
+    org = _org()
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    where = ["org_id=?"]
+    vals: list[Any] = [org]
+    if lifecycle_status:
+        where.append("lifecycle_status=?")
+        vals.append(lifecycle_status)
+    if q.strip():
+        where.append("(company_name LIKE ? OR domain LIKE ? OR industry LIKE ?)")
+        vals.extend([f"%{q.strip()}%"] * 3)
+    order = {"updated": "updated_at DESC", "name": "company_name ASC",
+             "fit": "fit_score DESC"}.get(sort, "updated_at DESC")
+    with store.connect() as db:
+        total = db.execute(
+            f"SELECT COUNT(*) FROM commercial_accounts WHERE {' AND '.join(where)}", vals).fetchone()[0]
+        rows = db.execute(
+            f"SELECT * FROM commercial_accounts WHERE {' AND '.join(where)}"
+            f" ORDER BY {order} LIMIT ? OFFSET ?",
+            (*vals, page_size, (page - 1) * page_size)).fetchall()
+    return {"items": [dict(r) for r in rows], "total": total,
+            "page": page, "page_size": page_size}
 
 
 @router.post("/accounts", dependencies=[Depends(verify_founder_action)])
@@ -291,8 +339,74 @@ class OpportunityIn(BaseModel):
 
 
 @router.get("/opportunities")
-def list_opportunities() -> list[dict]:
-    return store._list("commercial_opportunities", _org())
+def list_opportunities(stage: str = "", page: int = 1, page_size: int = 20) -> dict:
+    org = _org()
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    where = ["org_id=?"]
+    vals: list[Any] = [org]
+    if stage:
+        where.append("stage=?")
+        vals.append(stage)
+    with store.connect() as db:
+        total = db.execute(
+            f"SELECT COUNT(*) FROM commercial_opportunities WHERE {' AND '.join(where)}",
+            vals).fetchone()[0]
+        rows = db.execute(
+            f"SELECT * FROM commercial_opportunities WHERE {' AND '.join(where)}"
+            " ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            (*vals, page_size, (page - 1) * page_size)).fetchall()
+    return {"items": [dict(r) for r in rows], "total": total,
+            "page": page, "page_size": page_size}
+
+
+@router.get("/opportunities/{rid}")
+def get_opportunity(rid: str) -> dict:
+    org = _org()
+    opp = store._row("commercial_opportunities", rid, org)
+    if not opp:
+        raise HTTPException(404, "opportunity not found")
+    acct = store._row("commercial_accounts", opp["account_id"], org) or {}
+    with store.connect() as db:
+        acts = db.execute(
+            "SELECT * FROM commercial_activities WHERE org_id=? AND (opportunity_id=? OR account_id=?)"
+            " ORDER BY timestamp DESC LIMIT 50",
+            (org, rid, opp["account_id"])).fetchall()
+    return {**opp, "account": {"id": acct.get("id"), "company_name": acct.get("company_name")},
+            "activities": [dict(a) for a in acts]}
+
+
+@router.patch("/pipelines/{rid}", dependencies=[Depends(verify_founder_action)])
+def update_pipeline(rid: str, payload: dict) -> dict:
+    org = _org()
+    cur = store._row("commercial_pipelines", rid, org)
+    if not cur:
+        raise HTTPException(404, "pipeline not found")
+    patch: dict[str, Any] = {}
+    if "name" in payload and payload["name"]:
+        patch["name"] = str(payload["name"])[:200]
+    if "active" in payload:
+        patch["active"] = 1 if payload["active"] else 0
+    if "stages" in payload:
+        stages = payload["stages"]
+        if not isinstance(stages, list) or len(stages) < 2:
+            raise HTTPException(422, "a pipeline needs at least 2 stages")
+        keys = [str(s.get("key") or "") for s in stages]
+        if len(set(keys)) != len(keys) or not all(keys):
+            raise HTTPException(422, "stages need unique non-empty keys")
+        # Existing opportunities must keep a valid stage.
+        with store.connect() as db:
+            used = {r["stage"] for r in db.execute(
+                "SELECT DISTINCT stage FROM commercial_opportunities WHERE pipeline_id=?", (rid,))}
+        unknown = used - set(keys)
+        if unknown:
+            raise HTTPException(
+                422, f"stages in use cannot be removed: {sorted(unknown)}")
+        patch["stages_json"] = json.dumps(stages)
+        patch["version"] = int(cur.get("version") or 1) + 1
+    if not patch:
+        raise HTTPException(422, "nothing to update")
+    return _update("commercial_pipelines", rid, org, patch)
 
 
 @router.post("/opportunities", dependencies=[Depends(verify_founder_action)])
@@ -473,6 +587,12 @@ def _suggest_mapping(headers: list[str]) -> dict:
     return mapping
 
 
+@router.get("/imports")
+def list_imports() -> list[dict]:
+    rows = store._list("csv_imports", _org(), 50)
+    return [{k: v for k, v in r.items() if k != "rows_json"} for r in rows]
+
+
 @router.post("/imports/preview", dependencies=[Depends(verify_founder_action)])
 async def preview_import(entity_type: str = "account", file: UploadFile = File(...)) -> dict:
     if entity_type not in ("account", "contact", "lead"):
@@ -516,6 +636,11 @@ async def preview_import(entity_type: str = "account", file: UploadFile = File(.
 class ImportCommit(BaseModel):
     mapping: dict
     resolutions: dict = Field(default_factory=dict)
+    # Rows (1-based) the user chose to skip after reviewing ambiguous matches.
+    skip_rows: list[int] = Field(default_factory=list)
+    # create_only keeps existing records untouched; upsert refreshes matched
+    # accounts with the incoming non-empty fields.
+    mode: str = "create_only"
 
 
 @router.post("/imports/{rid}/commit", dependencies=[Depends(verify_founder_action)])
@@ -531,21 +656,51 @@ def commit_import(rid: str, payload: ImportCommit) -> dict:
     unknown = set(mapping.values()) - CANONICAL_FIELDS
     if unknown:
         raise HTTPException(422, f"unknown canonical fields: {sorted(unknown)}")
-    created, skipped, errors = 0, 0, []
+    if payload.mode not in ("create_only", "upsert"):
+        raise HTTPException(422, "mode must be create_only|upsert")
+    skipped_rows = set(payload.skip_rows or [])
+    created, updated, skipped, errors = 0, 0, 0, []
     with store.connect() as db:
         for idx, row in enumerate(rows, start=1):
+            if idx in skipped_rows:
+                skipped += 1
+                continue
             try:
                 mapped = {dst: row.get(src, "") for src, dst in mapping.items()}
+                # Type check the one numeric field imports may carry.
+                if "hunter_score" in mapped and mapped["hunter_score"] not in ("", None):
+                    try:
+                        int(str(mapped["hunter_score"]))
+                    except ValueError:
+                        errors.append({"row": idx, "error": "hunter_score must be an integer"})
+                        continue
                 if imp["entity_type"] == "account":
                     if not mapped.get("company_name"):
                         skipped += 1
                         errors.append({"row": idx, "error": "company_name is required"})
                         continue
                     dom = (mapped.get("domain") or "").lower() or None
-                    if dom and db.execute(
-                            "SELECT 1 FROM commercial_accounts WHERE org_id=? AND domain=?",
-                            (org, dom)).fetchone():
-                        skipped += 1
+                    existing = db.execute(
+                        "SELECT id FROM commercial_accounts WHERE org_id=? AND domain=?",
+                        (org, dom)).fetchone() if dom else None
+                    if existing:
+                        if payload.mode == "upsert":
+                            fresh = {k: v for k, v in {
+                                "company_name": mapped.get("company_name"),
+                                "industry": mapped.get("industry"),
+                                "company_size": mapped.get("company_size"),
+                                "region": mapped.get("region")}.items() if v}
+                            if fresh:
+                                fresh["updated_at"] = _now()
+                                db.execute(
+                                    f"UPDATE commercial_accounts SET {','.join(f'{k}=?' for k in fresh)}"
+                                    " WHERE id=?",
+                                    (*fresh.values(), existing["id"]))
+                                updated += 1
+                            else:
+                                skipped += 1
+                        else:
+                            skipped += 1
                         continue
                     db.execute(
                         "INSERT INTO commercial_accounts (id, org_id, company_name, domain,"
@@ -577,7 +732,8 @@ def commit_import(rid: str, payload: ImportCommit) -> dict:
                     created += 1
             except Exception as exc:
                 errors.append({"row": idx, "error": f"{type(exc).__name__}: {exc}"})
-    totals = {"rows": len(rows), "created": created, "skipped": skipped, "errors": len(errors)}
+    totals = {"rows": len(rows), "created": created, "updated": updated,
+              "skipped": skipped, "errors": len(errors)}
     _update("csv_imports", rid, org, {"status": "committed", "mapping_json": json.dumps(mapping),
                                       "totals_json": json.dumps(totals),
                                       "row_errors_json": json.dumps(errors[:200])})
