@@ -235,7 +235,11 @@ frontend page is `/workflows`
 
 Canonical shared model in `data/company.db` (`core/commercial_store.py`), served at
 `/company/commercial/*` (`app/commercial_api.py`), operated from `/commercial`
-(`autoevolve-ui/src/pages/CommercialPage.tsx`). Full specification:
+(`autoevolve-ui/src/pages/CommercialPage.tsx` + `commercial/` workspace:
+setup wizard, accounts table, 6-step CSV dialog, ICP detail + qualification
+with account picker, pipeline board + opportunity drawer, grouped
+integrations). Visual language in `.cx-*` styles: one primary action per
+section, 13px body, readable tables, board columns, modal dialogs, stepper. Full specification:
 `docs/PHASE1-COMMERCIAL.md`.
 
 - **Adaptive onboarding:** guided Path A (company → icp → accounts → pipeline →

@@ -187,9 +187,21 @@ class Phase1HardeningTests(CommercialBase):
         icp = self.client.post("/company/commercial/icps", auth=self.auth, headers=self.headers, json={
             "name": "From template", "criteria": tpl[0]["criteria"]}).json()
         self.assertEqual(icp["status"], "provisional")
+        detail = self.client.get(f"/company/commercial/icps/{icp['id']}", auth=self.auth).json()
+        self.assertEqual(detail["name"], "From template")
+        self.assertIn("criteria_json", detail)
+        self.assertEqual(self.client.get("/company/commercial/icps/nope", auth=self.auth).status_code, 404)
         archived = self.client.post(f"/company/commercial/icps/{icp['id']}/archive",
                                     auth=self.auth, headers=self.headers).json()
         self.assertEqual(archived["status"], "archived")
+
+    def test_every_workspace_read_resolves(self):
+        # The refactored UI mounts one tab at a time; each tab's reads must 200.
+        for path in ("offers", "icps", "icp-templates", "accounts", "pipelines",
+                     "opportunities", "rules", "integrations", "imports",
+                     "onboarding-sessions"):
+            r = self.client.get(f"/company/commercial/{path}", auth=self.auth)
+            self.assertEqual(r.status_code, 200, path)
 
     def test_csv_upsert_refresh_skip_and_bad_mapping(self):
         content = "company_name,domain\nAcme,acme.test\nBeta,beta.test\n"

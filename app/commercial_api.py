@@ -132,6 +132,14 @@ def list_icps() -> list[dict]:
     return store._list("icp_profiles", _org())
 
 
+@router.get("/icps/{rid}")
+def get_icp(rid: str) -> dict:
+    icp = store._row("icp_profiles", rid, _org())
+    if not icp:
+        raise HTTPException(404, "icp not found")
+    return icp
+
+
 @router.post("/icps", dependencies=[Depends(verify_founder_action)])
 def create_icp(payload: ICPIn) -> dict:
     if payload.status not in ("provisional", "validated", "archived"):

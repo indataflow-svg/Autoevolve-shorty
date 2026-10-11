@@ -3,6 +3,11 @@ import { api, type Credentials } from './client'
 export type CommercialId = string
 export type Offer = { id: string; name: string; status: string; category?: string; description?: string }
 export type ICP = { id: string; name: string; status: string; version: number; segment?: string }
+export type ICPDetail = ICP & {
+  criteria_json: string; exclusions_json: string; weights_json: string
+  provenance_json: string; evidence_sources_json: string; assumptions_json: string
+  confidence: string; offer_id?: string | null
+}
 export type CAccount = { id: string; company_name: string; domain?: string | null; fit_score?: number | null; fit_grade?: string; lifecycle_status?: string }
 export type Pipeline = { id: string; name: string; stages_json: string }
 export type Opportunity = { id: string; account_id: string; stage: string; outcome: string }
@@ -18,6 +23,7 @@ const write = (credentials: Credentials, token: string, path: string, method: st
 export const commercialApi = (credentials: Credentials) => ({
   offers: () => api<Offer[]>(`${base}/offers`, credentials),
   icps: () => api<ICP[]>(`${base}/icps`, credentials),
+  icp: (id: string) => api<ICPDetail>(`${base}/icps/${encodeURIComponent(id)}`, credentials),
   icpTemplates: () => api<Array<{ key: string; name: string; criteria: unknown[]; exclusions: unknown[]; note: string }>>(`${base}/icp-templates`, credentials),
   accounts: (params: { q?: string; lifecycle_status?: string; sort?: string; page?: number; page_size?: number } = {}) => {
     const qs = new URLSearchParams()
