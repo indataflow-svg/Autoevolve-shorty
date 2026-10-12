@@ -270,6 +270,18 @@ section, 13px body, readable tables, board columns, modal dialogs, stepper. Full
 `commercial_activities`, `integration_connections`, `csv_imports`,
 `onboarding_sessions`.
 
+**Alignment resolutions (D1–D7, `docs/commercial-alignment.excalidraw` was the hypothesis):**
+
+| conflict | owner | resolution |
+|---|---|---|
+| D1 drafts | `sales_drafts` via `create_draft()` | all four creation paths funnel through it; every path now writes `outreach.requested` with its requesting flow; editing an approved draft reverts it to `draft` (`outreach.approval_invalidated`) so a revision can never keep another text's approval |
+| D2 lifecycles | lead `stage` = outreach status; opportunity `stage` = deal stage | distinct enums stay distinct; a send never advances an opportunity and a move never rewrites lead state (tested both directions); lead `won/lost` are legacy-unreachable |
+| D3 onboarding | sessions = entry/state; v2 program = research track | session `progress` carries `track: research` on handoff; the wizard deep-links to `/onboarding` without resetting anything |
+| D4 integrations | `integration_connections` | `GET /company/ui/integrations` projects the registry next to key presence (`connections[]`, `connected_providers`); the page badges Connected/needs-attention and the footnote no longer claims sync is unavailable |
+| D5 engines | generic engine = definitions; automation = governed runs | direct `POST /company/workflows` create/run/pause now require the founder token (the UI client already sent it); reads stay open; governed path unchanged and still the only route to `simulate/draft_outreach` |
+| D6 accounts | `commercial_accounts` | leads link by exact domain match at read time (`linked_leads` on account detail + drawer); no merges, no stored rewrite; context/projection/cache roles documented |
+| D7 scores | `lead_score` = engagement heuristic; fit = ICP match; intent = recorded activity | ContactsPage relabels the heuristic to "Lead score"; the three stay numerically independent (tested) |
+
 ---
 
 ## 3. Sales

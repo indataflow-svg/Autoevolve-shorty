@@ -1,17 +1,21 @@
 """Workflow control-plane API (implementation.md §13).
 
 Thin transport over ``core.workflow_store`` and ``services.workflow_runner``.
-Authentication is applied where the router is mounted in ``app.api``; no
-internal provider credentials ever appear in a workflow document.
+Reads authenticate where the router is mounted in ``app.api``; every mutation
+(create/run/pause) additionally requires the founder action token, so the
+direct engine path cannot execute consequential actions — including
+``publish`` — without the same authorization the governed path enforces.
+No internal provider credentials ever appear in a workflow document.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.sales_api import verify_founder_action
 from core import workflow_store
 from core.workflow_store import Workflow, WorkflowState
 from services.workflow_runner import WorkflowValidationError, pause_workflow, run_workflow, validate_workflow
@@ -31,7 +35,7 @@ class WorkflowRunRequest(BaseModel):
     resume: bool = False
 
 
-@router.post("", response_model=Workflow, status_code=201)
+@router.post("", response_model=Workflow, status_code=201, dependencies=[Depends(verify_founder_action)])
 def create_workflow(payload: WorkflowCreateRequest):
     try:
         workflow = workflow_store.build_workflow(
@@ -66,7 +70,7 @@ def get_workflow(workflow_id: str):
     return workflow
 
 
-@router.post("/{workflow_id}/run", response_model=Workflow)
+@router.post("/{workflow_id}/run", response_model=Workflow, dependencies=[Depends(verify_founder_action)])
 def run(workflow_id: str, payload: WorkflowRunRequest | None = None):
     try:
         return run_workflow(workflow_id, resume=bool(payload and payload.resume))
@@ -76,7 +80,7 @@ def run(workflow_id: str, payload: WorkflowRunRequest | None = None):
         raise HTTPException(400, str(exc)) from exc
 
 
-@router.post("/{workflow_id}/pause", response_model=Workflow)
+@router.post("/{workflow_id}/pause", response_model=Workflow, dependencies=[Depends(verify_founder_action)])
 def pause(workflow_id: str):
     try:
         return pause_workflow(workflow_id)

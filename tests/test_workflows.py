@@ -385,6 +385,17 @@ class WorkflowApiTests(WorkflowTestBase):
         app.include_router(workflows_router)
         return TestClient(app)
 
+    def setUp(self):
+        super().setUp()
+        import os
+        self._env = patch.dict(os.environ, {"SALES_ACTION_TOKEN": "action-secret"}, clear=False)
+        self._env.start()
+        self.headers = {"X-Founder-Action-Token": "action-secret"}
+
+    def tearDown(self):
+        self._env.stop()
+        super().tearDown()
+
     def payload(self):
         return {
             "name": "InDataFlow Launch Experiment",
@@ -396,7 +407,7 @@ class WorkflowApiTests(WorkflowTestBase):
 
     def test_create_list_inspect_run_and_state(self):
         client = self.client()
-        created = client.post("/company/workflows", json=self.payload())
+        created = client.post("/company/workflows", json=self.payload(), headers=self.headers)
         self.assertEqual(created.status_code, 201)
         workflow_id = created.json()["id"]
 
@@ -405,7 +416,7 @@ class WorkflowApiTests(WorkflowTestBase):
         self.assertEqual(client.get(f"/company/workflows/{workflow_id}").json()["state"]["status"], "draft")
 
         with self.patched(self.patch_engines()):
-            run = client.post(f"/company/workflows/{workflow_id}/run", json={})
+            run = client.post(f"/company/workflows/{workflow_id}/run", json={}, headers=self.headers)
         self.assertEqual(run.status_code, 200)
         self.assertEqual(run.json()["state"]["status"], "completed")
 
@@ -417,6 +428,7 @@ class WorkflowApiTests(WorkflowTestBase):
         client = self.client()
         response = client.post(
             "/company/workflows", json={"name": "Broken", "steps": [{"id": "x", "action": "nope"}]},
+            headers=self.headers,
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(client.get("/company/workflows").json(), [])
@@ -424,7 +436,13 @@ class WorkflowApiTests(WorkflowTestBase):
     def test_unknown_workflow_returns_404(self):
         client = self.client()
         self.assertEqual(client.get("/company/workflows/wf_missing").status_code, 404)
-        self.assertEqual(client.post("/company/workflows/wf_missing/run", json={}).status_code, 404)
+        self.assertEqual(client.post("/company/workflows/wf_missing/run", json={}, headers=self.headers).status_code, 404)
+
+    def test_mutations_require_the_founder_token(self):
+        client = self.client()
+        self.assertEqual(client.post("/company/workflows", json=self.payload()).status_code, 403)
+        # Reads stay open under dashboard auth only.
+        self.assertEqual(client.get("/company/workflows").status_code, 200)
 
 
 class WorkflowEndToEndTests(WorkflowTestBase):

@@ -668,7 +668,7 @@ async def create_first_draft(payload: DraftRequest):
     if candidate_id in program.draft_ids:
         return _view(program)
     try:
-        draft = await build_draft(program.buyer_leads[candidate_id])
+        draft = await build_draft(program.buyer_leads[candidate_id], request_source="onboarding")
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     except Exception as exc:

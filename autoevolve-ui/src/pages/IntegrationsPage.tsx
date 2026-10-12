@@ -8,9 +8,16 @@ import { AppShell } from '../components/Shell'
 import { DataState, RightDrawer, StateBadge } from '../components/Primitives'
 
 function status(group: ProviderGroup) {
+  const connections = (group as ProviderGroup & { connections?: Array<{ provider: string; status: string; sync_status: string }> }).connections || []
+  if (connections.some(c => c.status === 'healthy' || c.status === 'connected')) return { label: 'Connected', tone: 'green' as const }
+  if (connections.length) return { label: 'Needs attention', tone: 'yellow' as const }
   if (group.configured_count === 0) return { label: 'Not configured', tone: 'neutral' as const }
   if (group.missing_keys.length) return { label: 'Partially configured', tone: 'yellow' as const }
   return { label: 'Keys configured', tone: 'green' as const }
+}
+
+function groupConnections(group: ProviderGroup) {
+  return (group as ProviderGroup & { connections?: Array<{ provider: string; status: string; sync_status: string }> }).connections || []
 }
 
 function ProviderDrawer({ group, close }: { group: ProviderGroup; close: () => void }) {
@@ -54,15 +61,18 @@ function ProviderDrawer({ group, close }: { group: ProviderGroup; close: () => v
     <div className="drawer-body">
       <section className="detail-card"><h3>Capabilities</h3><div className="tag-list">{group.capabilities.map(capability => <span key={capability}>{capability}</span>)}</div><p className="operational-note">Capabilities describe this integration; they are not health checks.</p></section>
       <section className="detail-card"><h3>Configuration</h3><div className="key-list">{keyNames.map(key => <div key={key}><code>{key}</code><StateBadge tone={group.configured_keys.includes(key) ? 'green' : 'neutral'}>{group.configured_keys.includes(key) ? 'Present' : 'Missing'}</StateBadge></div>)}</div><p className="operational-note">Saved values are never returned by the API.</p></section>
+      {groupConnections(group).length > 0 && <section className="detail-card"><h3>Organization connections</h3><div className="key-list">{groupConnections(group).map(conn => <div key={conn.provider}><code>{conn.provider}</code><StateBadge tone={conn.status === 'healthy' || conn.status === 'connected' ? 'green' : 'yellow'}>{conn.status.replaceAll('_', ' ')} · sync {conn.sync_status.replaceAll('_', ' ')}</StateBadge></div>)}</div><p className="operational-note">Keys say what is configured; only these rows say what is connected.</p></section>}
     </div>
-    <div className="drawer-footer"><form onSubmit={event => submit(event, 'test')}>
+    <div className="drawer-footer">{keyNames.length === 0
+      ? <p className="muted-copy">This row lists organization connections only; there are no keys to configure here. Manage connections from the Commercial workspace.</p>
+      : <form onSubmit={event => submit(event, 'test')}>
       <label className="operational-label">Key to configure<select value={keyName} onChange={event => { setKeyName(event.target.value); setTestedValue(''); setFeedback('') }}>{keyNames.map(key => <option key={key} value={key}>{key}</option>)}</select></label>
       <label className="operational-label">New value<input aria-label="New key value" type={/(KEY|TOKEN|SECRET|PASSWORD)/.test(keyName) ? 'password' : 'text'} autoComplete="off" value={value} onChange={event => { setValue(event.target.value); setTestedValue(''); setFeedback('') }} /></label>
       <label className="operational-label">Founder action token<input type="password" aria-label="Founder action token" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} /></label>
       {group.id === 'ai_gateway' && <p className="muted-copy">Testing an AI gateway URL calls its /models endpoint.</p>}
       {error && <p className="form-error" role="alert">{error}</p>}{feedback && <p className="success-message" role="status">{feedback}</p>}
       <div className="operational-actions"><button className="button secondary" type="submit" disabled={test.isPending || save.isPending}>Test value</button><button className="button primary" type="button" onClick={event => submit(event, 'save')} disabled={test.isPending || save.isPending || testedValue !== value || !value}>Save key</button></div>
-    </form></div>
+      </form>}</div>
   </RightDrawer>
 }
 
@@ -89,7 +99,7 @@ export function IntegrationsPage() {
       {query.isError && query.data && <div className="operational-error" role="alert">Refresh failed: {query.error.message} <button onClick={() => query.refetch()}>Retry</button></div>}
       <div className="table-toolbar operational-toolbar"><div className="view-tabs">{categories.map(item => <button key={item} className={category === item ? 'active' : ''} onClick={() => update({ category: item === 'All' ? null : item, integration: null })}>{item} ({item === 'All' ? groups.length : groups.filter(group => group.category === item).length})</button>)}</div><label className="sort-control">Sort <select aria-label="Sort integrations" value={sort} onChange={event => update({ sort: event.target.value })}><option value="name">Name A–Z</option><option value="configured">Most keys</option></select><ChevronDown size={14} /></label></div>
       <div className="table-panel">{query.isPending ? <DataState title="Loading integrations" detail="Reading configured provider groups." /> : query.isError && !query.data ? <DataState title="Integrations could not be loaded" detail={query.error.message} retry={() => query.refetch()} /> : visible.length ? <div className="table-scroll"><table className="operational-table"><thead><tr><th>Integration</th><th>Category</th><th>Configuration</th><th>Keys present</th><th>Capabilities</th><th>Actions</th></tr></thead><tbody>{visible.map(group => { const current = status(group); return <tr key={group.id} className={selected === group.id ? 'selected' : ''} onClick={() => update({ integration: group.id })}><td><span className="provider-name"><span className="provider-mini"><PlugZap size={17} /></span><strong>{group.label}</strong></span></td><td>{group.category}</td><td><StateBadge tone={current.tone}>{current.label}</StateBadge></td><td>{group.configured_count} / {group.total_keys}</td><td><div className="tag-list">{group.capabilities.map(value => <span key={value}>{value}</span>)}</div></td><td><button className="row-action" onClick={event => { event.stopPropagation(); update({ integration: group.id }) }}>Configure</button></td></tr> })}</tbody></table></div> : <DataState title="No integrations found" detail="Try another category or search." />}</div>
-      <div className="operational-footnote"><Search size={16} /><span>Configuration is shown from saved keys. Provider health, spend, activity, and sync status are unavailable from the current backend.</span></div>
+      <div className="operational-footnote"><Search size={16} /><span>Configuration is shown from saved keys. Organization connections come from the canonical registry; keys alone never imply a working connection.</span></div>
     </div></main>{active && <ProviderDrawer key={active.id} group={active} close={() => update({ integration: null })} />}</div>
   </AppShell>
 }

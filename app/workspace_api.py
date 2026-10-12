@@ -38,6 +38,17 @@ GROUP_CAPABILITIES = {
 }
 
 
+class ConnectionSummary(BaseModel):
+    """A canonical connection row, sans secrets. The registry owns state;
+    this endpoint only projects it next to key presence so the two views
+    cannot disagree about whether an organization is connected."""
+
+    provider: str
+    status: str
+    sync_status: str
+    last_sync_at: str | None = None
+
+
 class ProviderGroup(BaseModel):
     id: str
     label: str
@@ -47,6 +58,7 @@ class ProviderGroup(BaseModel):
     missing_keys: list[str]
     configured_count: int
     total_keys: int
+    connections: list[ConnectionSummary] = []
 
 
 class IntegrationsView(BaseModel):
@@ -55,11 +67,13 @@ class IntegrationsView(BaseModel):
     groups_with_configuration: int
     fully_configured_groups: int
     configured_keys: int
+    connected_providers: int = 0
 
 
 @router.get("/integrations", response_model=IntegrationsView)
 def integrations_view():
     status = group_status()
+    summaries, key_of = _org_connections()
     groups = []
     for group_id, spec in PROVIDER_GROUPS.items():
         current = status[group_id]
@@ -71,6 +85,19 @@ def integrations_view():
             "capabilities": GROUP_CAPABILITIES[group_id],
             "configured_keys": configured, "missing_keys": missing,
             "configured_count": len(configured), "total_keys": len(spec["keys"]),
+            "connections": [s for s in summaries if key_of.get(s["provider"]) in spec["keys"]],
+        })
+    orphans = [s for s in summaries
+               if not any(key_of.get(s["provider"]) in spec["keys"]
+                          for spec in PROVIDER_GROUPS.values())]
+    if orphans:
+        groups.append({
+            "id": "connected_accounts", "label": "Connected accounts",
+            "category": "Connections",
+            "capabilities": ["Organization connections"],
+            "configured_keys": [], "missing_keys": [],
+            "configured_count": 0, "total_keys": 0,
+            "connections": orphans,
         })
     return {
         "groups": groups,
@@ -78,7 +105,39 @@ def integrations_view():
         "groups_with_configuration": sum(bool(group["configured_count"]) for group in groups),
         "fully_configured_groups": sum(not group["missing_keys"] for group in groups),
         "configured_keys": sum(group["configured_count"] for group in groups),
+        "connected_providers": sum(
+            1 for s in summaries if s["status"] in ("healthy", "connected")),
     }
+
+
+def _org_connections() -> tuple[list[dict], dict[str, str]]:
+    """Project the canonical registry next to key presence.
+
+    Key presence answers "are credentials configured"; only the registry
+    answers "is this organization connected". Reading both here keeps the
+    workspace page and the commercial catalog consistent by construction.
+    Returns (connection summaries, provider -> credential-key map); the map
+    is a join key only and never leaves this module.
+    """
+    from core import commercial_store
+
+    try:
+        org = commercial_store.active_org_id()
+    except Exception:
+        return [], {}
+    summaries: list[dict] = []
+    key_of: dict[str, str] = {}
+    for row in commercial_store._list("integration_connections", org, 100):
+        if row.get("status") == "disconnected":
+            continue
+        summaries.append({
+            "provider": row["provider"],
+            "status": row.get("status") or "disconnected",
+            "sync_status": row.get("sync_status") or "idle",
+            "last_sync_at": row.get("last_sync_at"),
+        })
+        key_of[row["provider"]] = row.get("credential_ref") or ""
+    return summaries, key_of
 
 
 class WorkspaceOrg(BaseModel):

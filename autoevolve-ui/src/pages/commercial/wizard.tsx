@@ -1,6 +1,7 @@
 /** One coherent guided setup. Two starting choices, one stepper, no duplicate buttons. */
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import type { Credentials } from '../../api/client'
 import { commercialApi, commercialWrite } from '../../api/commercial'
 import { companyContext, replaceCompanyContext } from '../../api/companyContext'
@@ -12,6 +13,7 @@ const STEPS = ['Company & offer', 'ICP & market', 'Accounts & data', 'Pipeline &
 
 export function SetupWizard({ credentials, token }: { credentials: Credentials; token: string }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const api = commercialApi(credentials)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -79,6 +81,13 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
     }
   }
   function needTokenSilent() { return token.trim().length > 0 }
+  function persistStep(id: string, stepKeyValue: string, progress?: Record<string, unknown>) {
+    if (!needTokenSilent()) return
+    setError('')
+    void commercialWrite(credentials, token).updateSession(id, { current_step: stepKeyValue, ...(progress ? { progress } : {}) })
+      .then(() => queryClient.invalidateQueries({ queryKey: ['c-sessions'] }))
+      .catch(() => undefined)
+  }
 
   const company = (ctxView.data?.context as { company?: { name?: string } } | undefined)?.company
   const done = {
@@ -112,6 +121,7 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
 
   return <div>
     <p className="cx-note">Path {active.path === 'A' ? 'A — starting from zero' : 'B — already operating'} · progress saves automatically · <button className="cx-link" onClick={leave}>leave setup and return later</button></p>
+    {(active.progress || {}).track === 'research' && <p className="cx-note">Research track: strategy work continues in the guided research flow — values carry over, nothing resets.</p>}
     <Stepper steps={STEPS} current={step} onGo={go} />
     {error && <p className="form-error" role="alert">{error}</p>}
     {step === 0 && <CompanyStep company={company} form={form} set={set} details={details} setDetails={setDetails}
@@ -122,6 +132,10 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
       }, ['company-context', 'c-offers'])} />}
     {step === 1 && <IcpStep templates={templates.data || []} busy={busy !== null}
       count={(icps.data || []).length} isB={active.path === 'B'}
+      onResearchTrack={() => {
+        if (active) persistStep(active.id, 'icp', { track: 'research' })
+        navigate('/onboarding')
+      }}
       onSave={v => void write('Saving ICP', () => commercialWrite(credentials, token).createICP(v), ['c-icps'])} />}
     {step === 2 && <div>
       <div className="cx-form">
@@ -228,9 +242,10 @@ function CompanyStep({ company, form, set, details, setDetails, busy, onSave }: 
   </div>
 }
 
-function IcpStep({ templates, busy, count, isB, onSave }: {
+function IcpStep({ templates, busy, count, isB, onResearchTrack, onSave }: {
   templates: Array<{ key: string; name: string; criteria: unknown[]; exclusions: unknown[]; note: string }>
   busy: boolean; count: number; isB: boolean
+  onResearchTrack: () => void
   onSave: (v: Record<string, unknown>) => void
 }) {
   const [name, setName] = useState('')
@@ -249,7 +264,7 @@ function IcpStep({ templates, busy, count, isB, onSave }: {
         {templates.map(t => <option key={t.key} value={t.key}>{t.name}</option>)}
       </select></Field>
     {tpl && <p className="cx-note">{tpl.note}</p>}
-    <p className="cx-note">{count} profile(s) saved. New profiles are provisional.</p>
+    <p className="cx-note">{count} profile(s) saved. New profiles are provisional. Need research-backed strategy first? <button className="cx-link" onClick={onResearchTrack}>Continue in the guided research flow</button> — this session keeps everything.</p>
     <div className="modal-actions">
       <button className="button primary" disabled={busy || !name.trim()}
         onClick={() => {

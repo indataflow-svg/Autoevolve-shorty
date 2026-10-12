@@ -85,6 +85,32 @@ class SalesContractsTest(unittest.TestCase):
         self.assertEqual(updated["subject"], "New subject")
         self.assertIn("updated body", updated["body"])
 
+    def test_editing_an_approved_draft_invalidates_its_approval(self):
+        # D1: a generated revision must not silently keep an approval granted
+        # to different text. The draft returns to draft and must be re-approved.
+        from core.sales_store import approve_draft, create_draft, get_draft, list_events, update_draft, upsert_lead
+        lead, _ = upsert_lead({"email": "ops@example.com", "source": "website"})
+        draft = create_draft(lead["id"], "Old subject", "This is the original body long enough for editing.")
+        approve_draft(draft["id"])
+        updated = update_draft(draft["id"], body="This is a revised body long enough to pass validation checks.")
+        self.assertEqual(updated["status"], "draft")
+        self.assertIsNone(updated["approved_at"])
+        self.assertEqual(get_draft(draft["id"])["status"], "draft")
+        events = [e["event"] for e in list_events(lead_id=lead["id"])]
+        self.assertIn("outreach.approval_invalidated", events)
+
+    def test_every_draft_request_is_attributed(self):
+        # D1: sales, onboarding, and governed paths all record who asked.
+        import asyncio
+        from core.sales_store import list_events, upsert_lead
+        from services.sales_service import build_draft
+        lead, _ = upsert_lead({"email": "ops@example.com", "source": "website"})
+        draft = asyncio.run(build_draft(lead["id"], request_source="onboarding"))
+        requested = [e for e in list_events(lead_id=lead["id"]) if e["event"] == "outreach.requested"]
+        self.assertEqual(len(requested), 1)
+        self.assertEqual(requested[0]["payload"]["draft_id"], draft["id"])
+        self.assertEqual(requested[0]["payload"]["request_source"], "onboarding")
+
     def test_reply_draft_preserves_thread_reference(self):
         from core.sales_store import create_draft, get_draft, mark_replied, upsert_lead
         lead, _ = upsert_lead({"email": "ops@example.com", "source": "website"})

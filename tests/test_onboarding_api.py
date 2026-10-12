@@ -274,7 +274,8 @@ class OnboardingApiTests(unittest.TestCase):
         self.assertEqual(context["program_strategy"]["approved_claims"], ["Guided setup"])
         self.assertEqual(context["program_strategy"]["prohibited_claims"], ["Guaranteed revenue"])
 
-        async def saved_draft(lead_id):
+        async def saved_draft(lead_id, *, request_source="sales"):
+            assert request_source == "onboarding"
             return sales_store.create_draft(lead_id, "A real draft", "Hello, this is a saved draft for review.")
 
         with patch("app.onboarding_api.build_draft", side_effect=saved_draft):

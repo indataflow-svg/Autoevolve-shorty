@@ -298,6 +298,103 @@ class Phase1HardeningTests(CommercialBase):
         self.assertEqual(u2["current_step"], "import")
 
 
+    def test_workspace_and_catalog_read_the_same_registry(self):
+        # D4: key presence and connection state come from one read. A stored
+        # healthy connection must appear on the workspace view; key names stay,
+        # key values never do.
+        import json as j
+        from core import commercial_store
+        with commercial_store.connect() as db:
+            db.execute(
+                "INSERT INTO integration_connections (id, org_id, provider,"
+                " external_account_ref, status, sync_status, credential_ref,"
+                " created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                ("conn_test", 0, "hunter", "acme", "healthy", "idle",
+                 "HUNTER_API_KEY", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+            )
+        body = self.client.get("/company/ui/integrations", auth=self.auth).json()
+        prospecting = next(g for g in body["groups"] if g["id"] == "prospecting")
+        self.assertEqual(
+            [(c["provider"], c["status"]) for c in prospecting["connections"]],
+            [("hunter", "healthy")],
+        )
+        self.assertEqual(body["connected_providers"], 1)
+        blob = j.dumps(body)
+        for var in ("HUNTER_API_KEY",):
+            self.assertIn(var, blob)  # names are public
+        for secret in [os.getenv("HUNTER_API_KEY") or ""]:
+            if secret:
+                self.assertNotIn(secret, blob)
+
+
+    def test_linked_leads_resolve_by_domain_without_merging(self):
+        # D6: leads link to the registry at read time; similar names with no
+        # shared domain stay separate records.
+        from core import sales_store
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Acme", "domain": "acme.test"}).json()
+        sales_store.upsert_lead({"email": "ops@acme.test", "company_domain": "acme.test",
+                                 "source": "manual"})
+        sales_store.upsert_lead({"email": "other@else.test", "company": "Acme Similar",
+                                 "source": "manual"})
+        detail = self.client.get(f"/company/commercial/accounts/{acct['id']}",
+                                 auth=self.auth).json()
+        self.assertEqual([l["email"] for l in detail["linked_leads"]], ["ops@acme.test"])
+        # The leads themselves are untouched: no account_id rewrite, no merge.
+        self.assertEqual(sales_store.get_lead_by_email("other@else.test")["company"],
+                         "Acme Similar")
+
+
+    def test_lead_outreach_status_and_opportunity_stage_are_independent(self):
+        # D2: a sent email must not advance an opportunity; moving an
+        # opportunity must not rewrite lead outreach state.
+        from core import sales_store
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Split Co", "domain": "split.test"}).json()
+        lead, _ = sales_store.upsert_lead({"email": "ops@split.test",
+                                           "company_domain": "split.test", "source": "manual"})
+        opp = self.client.post("/company/commercial/opportunities", auth=self.auth,
+                               headers=self.headers,
+                               json={"account_id": acct["id"]}).json()
+        sales_store.mark_sent(sales_store.claim_draft_for_send(sales_store.approve_draft(
+            sales_store.create_draft(
+                lead["id"], "Hello there", "A sufficiently long body for the send.")["id"]
+        )["id"])["id"], "msg-1")
+        self.assertEqual(sales_store.get_lead(lead["id"])["stage"], "contacted")
+        still = self.client.get(f"/company/commercial/opportunities/{opp['id']}",
+                                auth=self.auth).json()
+        self.assertEqual(still["stage"], "prospect")
+        self.client.post(f"/company/commercial/opportunities/{opp['id']}/move",
+                         auth=self.auth, headers=self.headers, json={"stage": "qualified"})
+        self.assertEqual(sales_store.get_lead(lead["id"])["stage"], "contacted")
+
+    def test_scores_keep_distinct_meanings(self):
+        # D7: the legacy heuristic, ICP fit, and recorded intent are three
+        # different numbers from three different evidence sources.
+        from core import sales_store
+        icp = self.client.post("/company/commercial/icps", auth=self.auth, headers=self.headers, json={
+            "name": "Strict Fit",
+            "criteria": [{"field": "industry", "operator": "equals", "value": "logistics"}]}).json()
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Score Co", "industry": "logistics",
+                                      "icp_id": icp["id"]}).json()
+        lead, _ = sales_store.upsert_lead({"email": "ops@score.test", "source": "website",
+                                           "consent": True})
+        q = self.client.post(f"/company/commercial/accounts/{acct['id']}/qualify",
+                             auth=self.auth, headers=self.headers).json()
+        self.assertGreaterEqual(lead["lead_score"], 0)
+        self.assertEqual(q["fit"]["grade"], "fit")
+        self.assertEqual(q["fit"]["score"], 100)
+        self.assertEqual(q["intent"]["level"], "none")
+        self.assertEqual(q["intent"]["score"], 0)
+        # Same world, three answers: heuristic > 0, fit full, intent empty.
+        self.assertTrue(lead["lead_score"] != q["fit"]["score"]
+                        or q["fit"]["score"] != q["intent"]["score"])
+
+
 DEFAULT_STAGES = [
     {"key": "prospect", "label": "Prospect", "allowed_next": ["qualified", "disqualified"]},
     {"key": "qualified", "label": "Qualified", "allowed_next": ["proposal", "disqualified"]},

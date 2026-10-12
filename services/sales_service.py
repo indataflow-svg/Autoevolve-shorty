@@ -1284,7 +1284,7 @@ async def preview_draft(lead_id: str) -> dict[str, Any]:
     }
 
 
-async def build_draft(lead_id: str) -> dict:
+async def build_draft(lead_id: str, *, request_source: str = "sales") -> dict:
     lead = get_lead(lead_id)
     if not lead:
         raise ValueError("lead not found")
@@ -1304,13 +1304,25 @@ async def build_draft(lead_id: str) -> dict:
     subject = draft.subject
     if is_reply and not subject.lower().startswith("re:"):
         subject = f"Re: {latest.get('subject') or subject}"
-    return create_draft(
+    stored = create_draft(
         lead_id,
         subject,
         draft.body,
         kind="reply" if is_reply else "first_outreach",
         in_reply_to=latest.get("provider_message_id") if is_reply else None,
     )
+    # Every draft carries who asked for it, so later evidence (replies,
+    # meetings) can be attributed to the requesting flow, not just the row.
+    add_event(lead_id, "outreach.requested", {
+        "draft_id": stored["id"],
+        "kind": stored.get("kind"),
+        "channel": stored.get("channel"),
+        "request_source": request_source,
+        "lead_source": lead.get("source"),
+        "campaign_id": lead.get("campaign_id") or context.get("campaign_id"),
+        "onboarding_program_id": context.get("onboarding_program_id"),
+    })
+    return stored
 
 
 LINKEDIN_PIECES = ("invite", "dm1", "dm2")
@@ -1386,7 +1398,7 @@ async def preview_linkedin_draft(lead_id: str, piece: str) -> dict[str, Any]:
     }
 
 
-async def build_linkedin_draft(lead_id: str, piece: str) -> dict:
+async def build_linkedin_draft(lead_id: str, piece: str, *, request_source: str = "sales") -> dict:
     from core.sales_store import linkedin_url_for_lead
 
     if piece not in LINKEDIN_PIECES:
@@ -1409,13 +1421,22 @@ async def build_linkedin_draft(lead_id: str, piece: str) -> dict:
     text = draft.note if piece == "invite" else draft.text
     name = lead.get("full_name") or lead.get("company") or lead_id
     subject = f"LinkedIn invite — {name}" if piece == "invite" else f"LinkedIn {piece} — {name}"
-    return create_draft(
+    stored = create_draft(
         lead_id,
         subject,
         f"Profile: {profile_url}\n\n{text}",
         channel="linkedin",
         kind=LINKEDIN_KINDS[piece],
     )
+    add_event(lead_id, "outreach.requested", {
+        "draft_id": stored["id"],
+        "kind": stored.get("kind"),
+        "channel": "linkedin",
+        "request_source": request_source,
+        "lead_source": lead.get("source"),
+        "campaign_id": lead.get("campaign_id"),
+    })
+    return stored
 
 
 def _resolved_resend_sender() -> str:

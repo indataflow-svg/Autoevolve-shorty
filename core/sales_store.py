@@ -700,6 +700,7 @@ def update_draft(draft_id: str, *, subject: str | None = None, body: str | None 
         raise ValueError("draft not found")
     if draft["status"] not in {"draft", "approved"}:
         raise ValueError("sent or sending drafts cannot be edited")
+    was_approved = draft["status"] == "approved"
     updates = {}
     if subject is not None:
         cleaned = subject.strip()
@@ -715,13 +716,26 @@ def update_draft(draft_id: str, *, subject: str | None = None, body: str | None 
         raise ValueError("subject or body is required")
     timestamp = now_iso()
     updates["updated_at"] = timestamp
+    if was_approved:
+        # An edited draft is no longer the text the founder approved: it goes
+        # back to draft and must be re-approved before it can be sent.
+        updates["status"] = "draft"
+        updates["approved_at"] = None
     assignments = ", ".join(f"{key} = ?" for key in updates)
     with connect() as connection:
         connection.execute(
             f"UPDATE sales_drafts SET {assignments} WHERE id = ?",
             (*updates.values(), draft_id),
         )
+        if was_approved:
+            connection.execute(
+                "UPDATE sales_leads SET stage = 'draft_ready', updated_at = ? "
+                "WHERE id = ? AND stage = 'approved'",
+                (timestamp, draft["lead_id"]),
+            )
     add_event(draft["lead_id"], "outreach.draft_updated", {"draft_id": draft_id, "fields": sorted(set(updates) - {"updated_at"})})
+    if was_approved:
+        add_event(draft["lead_id"], "outreach.approval_invalidated", {"draft_id": draft_id})
     updated = get_draft(draft_id)
     assert updated
     return updated

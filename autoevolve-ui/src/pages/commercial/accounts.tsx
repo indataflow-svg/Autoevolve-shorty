@@ -12,6 +12,7 @@ export type AccountDetail = CAccount & {
   verification_status?: string; owner?: string
   intent?: { score: number; level: string; note: string }
   activities?: Array<{ id: string; type: string; timestamp: string; outcome: string }>
+  linked_leads?: Array<{ id: string; email: string; full_name: string; stage: string; source: string }>
 }
 
 export function AccountsSection({ credentials, token, onQualify }: {
@@ -94,6 +95,9 @@ function AccountDetailView({ account, onQualify }: { account: AccountDetail; onQ
     {account.next_action && <p className="cx-note">Next: {account.next_action}</p>}
     <div className="validation-actions"><button className="button primary" onClick={onQualify}>Qualify this account</button></div>
     <h3>Activity</h3>
+    {(account.linked_leads || []).length > 0 && <><h3>Linked outreach ({account.linked_leads!.length})</h3>
+      <ul className="activity-list">{account.linked_leads!.map(l =>
+        <li key={l.id}><strong>{l.full_name || l.email}</strong><span>{l.email} · {l.stage}</span></li>)}</ul></>}
     {(account.activities || []).length === 0
       ? <p className="cx-note">No recorded activity yet.</p>
       : <ul className="activity-list">{account.activities!.map(a =>

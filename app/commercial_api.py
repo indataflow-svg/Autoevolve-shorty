@@ -290,7 +290,17 @@ def get_account(rid: str) -> dict:
         acts = db.execute(
             "SELECT * FROM commercial_activities WHERE org_id=? AND account_id=? ORDER BY timestamp DESC LIMIT 50",
             (_org(), rid)).fetchall()
-    return {**rec, "intent": intent, "activities": [dict(a) for a in acts]}
+        # Leads reference the registry; they are never merged into it. A lead
+        # links by exact domain match only — name-only similarities stay separate.
+        linked: list[dict] = []
+        if (rec.get("domain") or "").strip():
+            rows = db.execute(
+                "SELECT id, email, full_name, stage, source FROM sales_leads"
+                " WHERE LOWER(company_domain)=LOWER(?) LIMIT 50",
+                (rec["domain"].strip(),)).fetchall()
+            linked = [dict(r) for r in rows]
+    return {**rec, "intent": intent, "activities": [dict(a) for a in acts],
+            "linked_leads": linked}
 
 
 # ---------- pipelines & opportunities ----------
@@ -910,7 +920,17 @@ class SessionIn(BaseModel):
 
 @router.get("/onboarding-sessions")
 def list_sessions() -> list[dict]:
-    return store._list("onboarding_sessions", _org(), 20)
+    rows = store._list("onboarding_sessions", _org(), 20)
+    # Progress rides along so the UI can resume exactly, including which
+    # track (self-guided or research flow) the session is on.
+    out = []
+    for row in rows:
+        try:
+            progress = json.loads(row.get("progress_json") or "{}")
+        except ValueError:
+            progress = {}
+        out.append({**row, "progress": progress})
+    return out
 
 
 @router.post("/onboarding-sessions", dependencies=[Depends(verify_founder_action)])

@@ -51,7 +51,7 @@ function ContactTable({ items, selected, onSelect }: { items: Contact[]; selecte
     column.accessor('company', { header: 'Company', cell: info => <div className="company-cell"><span className="company-icon"><Building2 size={14} /></span><span className="cell-truncate">{info.getValue() || info.row.original.company_domain || '—'}</span></div> }),
     column.accessor('job_title', { header: 'Role', cell: info => <span className="cell-truncate">{info.getValue() || '—'}</span> }),
     column.display({ id: 'email', header: 'Email status', cell: info => emailState(info.row.original) }),
-    column.accessor('lead_score', { header: 'Fit', cell: info => <span className={`score ${info.getValue() >= 80 ? 'high' : info.getValue() >= 60 ? 'medium' : 'low'}`}>{info.getValue()}</span> }),
+    column.accessor('lead_score', { header: 'Lead score', cell: info => <span title="Engagement heuristic, not ICP fit. Qualify from the Commercial workspace for fit and intent." className={`score ${info.getValue() >= 80 ? 'high' : info.getValue() >= 60 ? 'medium' : 'low'}`}>{info.getValue()}</span> }),
     column.accessor('source', { header: 'Source', cell: info => <span className="source-cell cell-truncate">{info.getValue()}</span> }),
     column.accessor('last_touch_at', { header: 'Last touch', cell: info => <span title={info.getValue() || undefined}>{dateText(info.getValue())}</span> }),
     column.display({ id: 'action', header: 'Next action', cell: info => <button className="row-action" onClick={event => { event.stopPropagation(); onSelect(info.row.original.id) }}>{nextAction(info.row.original)}</button> }),
@@ -106,7 +106,7 @@ function ContactDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       <div className="drawer-tabs" role="tablist" aria-label="Contact detail sections">{(['overview', 'company', 'activity'] as const).map(value => <button key={value} role="tab" aria-selected={tab === value} onClick={() => setTab(value)}>{value[0].toUpperCase() + value.slice(1)}</button>)}</div>
       <div className="drawer-body">
         {tab === 'overview' && <>
-          <section className="detail-card"><h3>About</h3>{companyDescription && <p className="about-summary">{companyDescription}</p>}<dl className="detail-grid"><div><dt>Fit score</dt><dd>{contact.lead_score}</dd></div><div><dt>Email</dt><dd>{emailState(contact)}</dd></div><div><dt>Source</dt><dd>{contact.source}</dd></div><div><dt>Last touch</dt><dd>{dateText(contact.last_touch_at)}</dd></div></dl></section>
+          <section className="detail-card"><h3>About</h3>{companyDescription && <p className="about-summary">{companyDescription}</p>}<dl className="detail-grid"><div><dt>Lead score</dt><dd title="Engagement heuristic, not ICP fit">{contact.lead_score}</dd></div><div><dt>Email</dt><dd>{emailState(contact)}</dd></div><div><dt>Source</dt><dd>{contact.source}</dd></div><div><dt>Last touch</dt><dd>{dateText(contact.last_touch_at)}</dd></div></dl></section>
           <section className="detail-card"><h3>Contact context</h3>{contact.message ? <p className="long-text">{contact.message}</p> : <p className="muted-copy">No intake message on record.</p>}{contact.source_detail && <p className="source-detail">Source detail: {contact.source_detail}</p>}</section>
           <section className="detail-card"><h3>Latest draft</h3>{contact.drafts.length ? <><strong>{contact.drafts[0].subject}</strong><p className="muted-copy">Status: {contact.drafts[0].status}</p></> : <p className="muted-copy">No outreach draft yet.</p>}</section>
         </>}

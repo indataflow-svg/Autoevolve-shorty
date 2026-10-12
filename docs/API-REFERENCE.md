@@ -1,6 +1,6 @@
 # AutoEvolve locked API reference
 
-Generated from source by `scripts/gen_api_reference.py` at commit `e6a8ee6` on 2026-10-11T10:21:23Z.
+Generated from source by `scripts/gen_api_reference.py` at commit `9a91764` on 2026-10-12T13:17:45Z.
 
 Every public constant, function, class and method in the shipped packages, with its real signature. Read this as the contract: if a name here disagrees with the code, the code is authoritative and this file must be regenerated.
 
@@ -12,11 +12,11 @@ Every public constant, function, class and method in the shipped packages, with 
 | Support services | 26 | 96 | 23 | 37 | 62 |
 | Video pipeline package | 11 | 56 | 11 | 3 | 35 |
 | Agents | 9 | 65 | 12 | 0 | 43 |
-| HTTP surface | 19 | 206 | 134 | 0 | 58 |
+| HTTP surface | 19 | 207 | 135 | 0 | 58 |
 | Operations scripts | 13 | 50 | 1 | 25 | 61 |
-| **all** | **99** | **676** | **220** | **70** | **327** |
+| **all** | **99** | **677** | **221** | **70** | **327** |
 
-Plus 223 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the end.
+Plus 224 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the end.
 
 ## Core state and models
 
@@ -609,11 +609,11 @@ Plus 223 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - `enrich_lead(lead_id: str, provider: str='hunter') -> dict`
 - class `_FallbackDraft`
 - `async preview_draft(lead_id: str) -> dict[str, Any]`
-- `async build_draft(lead_id: str) -> dict`
+- `async build_draft(lead_id: str, *, request_source: str='sales') -> dict`
 - const `LINKEDIN_PIECES`
 - const `LINKEDIN_KINDS`
 - `async preview_linkedin_draft(lead_id: str, piece: str) -> dict[str, Any]`
-- `async build_linkedin_draft(lead_id: str, piece: str) -> dict`
+- `async build_linkedin_draft(lead_id: str, piece: str, *, request_source: str='sales') -> dict`
 - `maybe_auto_contact_lead(lead_id: str, *, created: bool) -> dict | None`
 - `verify_resend_webhook(payload: str, headers: dict[str, str]) -> dict`
 - `ingest_resend_event(payload: dict) -> dict`
@@ -989,6 +989,7 @@ Plus 223 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - `icp_templates() -> list[dict]` [router.get('/icp-templates')]
 - `archive_icp(rid: str) -> dict` [router.post('/icps/{rid}/archive', dependencies=[Depends(verify_founder_action)])]
 - `list_icps() -> list[dict]` [router.get('/icps')]
+- `get_icp(rid: str) -> dict` [router.get('/icps/{rid}')]
 - `create_icp(payload: ICPIn) -> dict` [router.post('/icps', dependencies=[Depends(verify_founder_action)])]
 - `update_icp(rid: str, payload: dict) -> dict` [router.patch('/icps/{rid}', dependencies=[Depends(verify_founder_action)])]
 - `evaluate_icp(rid: str, account: dict) -> dict` [router.post('/icps/{rid}/evaluate', dependencies=[Depends(verify_founder_action)])]
@@ -1349,11 +1350,11 @@ Plus 223 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 
 - class `WorkflowCreateRequest`(BaseModel)
 - class `WorkflowRunRequest`(BaseModel)
-- `create_workflow(payload: WorkflowCreateRequest)` [router.post('', response_model=Workflow, status_code=201)]
+- `create_workflow(payload: WorkflowCreateRequest)` [router.post('', response_model=Workflow, status_code=201, dependencies=[Depends(verify_founder_action)])]
 - `list_workflows(limit: int=Query(50, ge=1, le=200), status: str | None=Query(None))` [router.get('', response_model=list[Workflow])]
 - `get_workflow(workflow_id: str)` [router.get('/{workflow_id}', response_model=Workflow)]
-- `run(workflow_id: str, payload: WorkflowRunRequest | None=None)` [router.post('/{workflow_id}/run', response_model=Workflow)]
-- `pause(workflow_id: str)` [router.post('/{workflow_id}/pause', response_model=Workflow)]
+- `run(workflow_id: str, payload: WorkflowRunRequest | None=None)` [router.post('/{workflow_id}/run', response_model=Workflow, dependencies=[Depends(verify_founder_action)])]
+- `pause(workflow_id: str)` [router.post('/{workflow_id}/pause', response_model=Workflow, dependencies=[Depends(verify_founder_action)])]
 - `get_state(workflow_id: str)` [router.get('/{workflow_id}/state', response_model=WorkflowState)]
 
 ### `app/workspace_api.py`
@@ -1362,6 +1363,7 @@ Plus 223 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - `session_status()` [router.get('/session', response_model=SessionStatus)] — Validate dashboard Basic credentials without reading a product domain
 - const `GROUP_CATEGORIES`
 - const `GROUP_CAPABILITIES`
+- class `ConnectionSummary`(BaseModel) — A canonical connection row, sans secrets. The registry owns state;
 - class `ProviderGroup`(BaseModel)
 - class `IntegrationsView`(BaseModel)
 - `integrations_view()` [router.get('/integrations', response_model=IntegrationsView)]
@@ -1567,6 +1569,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /hunter/account` | `app/sales_api.py` |
 | `GET /hunyuan/profile` | `app/video_api.py` |
 | `GET /icp-templates` | `app/commercial_api.py` |
+| `GET /icps/{rid}` | `app/commercial_api.py` |
 | `GET /icps` | `app/commercial_api.py` |
 | `GET /imports` | `app/commercial_api.py` |
 | `GET /incidents/{incident_id}` | `app/company_ops_api.py` |
