@@ -147,6 +147,19 @@ def read_validation_plan():
     return _read_plan()
 
 
+@automation_router.get("/evidence")
+def read_evidence() -> dict:
+    """Everything the business has told or shown us, in one place.
+
+    Read-only and transparent: this is exactly what the account, workflow,
+    and campaign suggesters see, so a recommendation can always be traced
+    back to the evidence behind it. Unknown slots stay unknown.
+    """
+    from core.evidence import collect_evidence
+
+    return collect_evidence()
+
+
 @automation_router.get("/plan", response_model=ValidationPlanRecord)
 def read_workflows_validation_plan():
     """Canonical automation name for reading the latest plan."""

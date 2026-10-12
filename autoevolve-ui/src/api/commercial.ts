@@ -39,6 +39,7 @@ export const commercialApi = (credentials: Credentials) => ({
   integrations: () => api<Integration[]>(`${base}/integrations`, credentials),
   imports: () => api<Array<{ id: string; entity_type: string; filename: string; status: string; totals: unknown }>>(`${base}/imports`, credentials),
   sessions: () => api<OBSession[]>(`${base}/onboarding-sessions`, credentials),
+  suggestAccounts: () => api<{ suggestions: Array<{ company_name: string; domain: string; evidence: { lead_count: number; stages: string[]; sources: string[]; research_candidate: boolean }; reason: string }>; total: number; generated_from: Record<string, number> }>(`${base}/accounts/suggest`, credentials, { method: 'POST', body: '{}' }),
 })
 
 export const commercialWrite = (credentials: Credentials, token: string) => ({

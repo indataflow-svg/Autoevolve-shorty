@@ -1,5 +1,5 @@
 /** Accounts as a working table: search, filter, paginate, open, add, import. */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Credentials } from '../../api/client'
 import { commercialApi, commercialWrite, type CAccount } from '../../api/commercial'
@@ -27,6 +27,7 @@ export function AccountsSection({ credentials, token, onQualify }: {
   const [openId, setOpenId] = useState<string | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [showCsv, setShowCsv] = useState(false)
+  const [showSuggest, setShowSuggest] = useState(false)
 
   const list = useQuery({ queryKey: ['c-accounts', q, lifecycle, page], queryFn: () => api.accounts({ q, lifecycle_status: lifecycle, page, page_size: 15 }) })
   const detail = useQuery({
@@ -39,6 +40,7 @@ export function AccountsSection({ credentials, token, onQualify }: {
 
   return <Section title="Accounts" intro={`${total} account${total === 1 ? '' : 's'} on record. Sources are preserved; fit shows only when an ICP has scored the account.`}
     action={<><button className="button secondary" onClick={() => setShowCsv(true)}>Import CSV</button>
+      <button className="button secondary" onClick={() => setShowSuggest(true)}>Suggest accounts</button>
       <button className="button primary" onClick={() => setShowAdd(true)}>Add account</button></>}>
     <div className="cx-toolbar">
       <input aria-label="Search accounts" value={q} onChange={e => { setQ(e.target.value); setPage(1) }} placeholder="Search name, domain, industry…" />
@@ -76,6 +78,8 @@ export function AccountsSection({ credentials, token, onQualify }: {
     {showAdd && <AddAccountDialog credentials={credentials} token={token} onClose={() => setShowAdd(false)}
       onSaved={() => { setShowAdd(false); void queryClient.invalidateQueries({ queryKey: ['c-accounts'] }) }} />}
     {showCsv && <CsvWizard credentials={credentials} token={token} onClose={() => setShowCsv(false)} />}
+    {showSuggest && <SuggestDialog credentials={credentials} token={token} onClose={() => setShowSuggest(false)}
+      onCreated={() => void queryClient.invalidateQueries({ queryKey: ['c-accounts'] })} />}
   </Section>
 }
 
@@ -137,5 +141,66 @@ function AddAccountDialog({ credentials, token, onClose, onSaved }: {
       <div className="modal-actions"><button className="button secondary" onClick={onClose}>Cancel</button>
         <button className="button primary" disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save account'}</button></div>
     </div>
+  </Dialog>
+}
+
+type Suggestion = {
+  company_name: string; domain: string
+  evidence: { lead_count: number; stages: string[]; sources: string[]; research_candidate: boolean }
+  reason: string
+}
+
+function SuggestDialog({ credentials, token, onClose, onCreated }: {
+  credentials: Credentials; token: string
+  onClose: () => void; onCreated: () => void
+}) {
+  const api = commercialApi(credentials)
+  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null)
+  const [from, setFrom] = useState<Record<string, number>>({})
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [created, setCreated] = useState<string[]>([])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void load() }, [])
+  async function load() {
+    setError(''); setBusy('loading')
+    try {
+      const out = await api.suggestAccounts()
+      setSuggestions(out.suggestions)
+      setFrom(out.generated_from)
+    } catch (e) { setError(e instanceof Error ? e.message : 'Suggestions could not be loaded.') }
+    finally { setBusy(null) }
+  }
+  async function create(s: Suggestion) {
+    if (!token.trim()) { setError('Enter the founder action token at the top of the page first.'); return }
+    setError(''); setBusy(s.domain)
+    try {
+      await commercialWrite(credentials, token).createAccount({
+        company_name: s.company_name, domain: s.domain,
+        source: `suggested:${s.evidence.sources.join(',')}`,
+      })
+      setCreated(c => [...c, s.domain])
+      setSuggestions(list => (list || []).filter(x => x.domain !== s.domain))
+      onCreated()
+    } catch (e) { setError(e instanceof Error ? e.message : `“${s.company_name}” could not be created.`) }
+    finally { setBusy(null) }
+  }
+  return <Dialog wide title="Suggested accounts" intro="Unclaimed lead domains and research candidates, each with its reasons. Creating one runs the same validation as manual entry." onClose={onClose}>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {busy === 'loading' || suggestions === null ? <p className="cx-note">Reading leads, imports, and research…</p>
+      : suggestions.length === 0 ? <Empty title={created.length ? 'All caught up' : 'Nothing to suggest'}
+        detail={created.length ? `${created.length} account(s) created from suggestions.` : 'Every lead domain already has an account, or there are no leads yet.'} />
+      : <>
+        <p className="cx-note">Based on {from.unclaimed_lead_domains ?? 0} unclaimed domain(s){from.research_candidates ? `, including ${from.research_candidates} research candidate(s)` : ''}.</p>
+        <ul className="cx-cards">{suggestions.map(s => <li key={s.domain} className="cx-card">
+          <div><strong>{s.company_name}</strong> <small>{s.domain} · {s.evidence.lead_count} lead(s) · {s.evidence.stages.join(', ') || 'new'}</small></div>
+          <p>{s.reason}</p>
+          <div className="cx-card-actions">
+            <button className="button primary" disabled={busy !== null} onClick={() => void create(s)}>
+              {busy === s.domain ? 'Creating…' : 'Create account'}</button>
+          </div>
+        </li>)}</ul>
+      </>}
+    <div className="modal-actions"><button className="button secondary" onClick={onClose}>Close</button></div>
   </Dialog>
 }

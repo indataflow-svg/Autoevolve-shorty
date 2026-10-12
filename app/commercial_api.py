@@ -275,6 +275,20 @@ def create_account(payload: AccountIn) -> dict:
     return out
 
 
+@router.post("/accounts/suggest")
+def suggest_new_accounts() -> dict:
+    """Propose accounts from evidence nobody has claimed yet.
+
+    Unclaimed lead domains and research candidates, each with its reasons.
+    Nothing is created here: confirming a suggestion is the existing
+    POST /accounts, so every account still passes the same validation and
+    domain-dedupe as a hand-entered one.
+    """
+    from core.evidence import suggest_accounts
+
+    return suggest_accounts(_org())
+
+
 @router.patch("/accounts/{rid}", dependencies=[Depends(verify_founder_action)])
 def update_account(rid: str, payload: dict) -> dict:
     return _update("commercial_accounts", rid, _org(), payload)
