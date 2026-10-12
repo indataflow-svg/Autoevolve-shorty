@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { companyContext, MARKETING_STAGES, replaceCompanyContext, type CompanyContextSections, type CompanyContextView } from '../api/companyContext'
 import {
   approveGovernedWorkflow, automationWorkflows, createGovernedWorkflow, generateValidationPlan, runWorkflowSimulation,
-  validationGovernance, validationPlan, type AutomationWorkflowView, type GovernanceRecord, type ValidationPlanRecord,
+  suggestCampaign, suggestWorkflows, validationGovernance, validationPlan, type AutomationWorkflowView, type CampaignSuggestion, type GovernanceRecord, type ValidationPlanRecord, type WorkflowSuggestions,
 } from '../api/validation'
 import { ApiError } from '../api/client'
 import { useCredentials } from '../app/Auth'
@@ -246,6 +246,52 @@ function WorkflowCard({ item }: { item: AutomationWorkflowView }) {
   </div>
 }
 
+function SuggestPanel() {
+  const credentials = useCredentials()
+  const [suggestions, setSuggestions] = useState<WorkflowSuggestions | null>(null)
+  const [campaign, setCampaign] = useState<CampaignSuggestion | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  async function ask(kind: 'runs' | 'campaign') {
+    setError(''); setBusy(kind)
+    try {
+      if (kind === 'runs') setSuggestions(await suggestWorkflows(credentials))
+      else setCampaign(await suggestCampaign(credentials))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Suggestions could not be computed.')
+    } finally { setBusy(null) }
+  }
+  return <section className="onboarding-panel"><div className="onboarding-panel-head">
+    <h2>What next</h2><p>Ranked from everything the business has recorded — accounts, leads, imports, replies, past runs. Advisory only: nothing here plans, approves, or runs.</p></div>
+    <div className="validation-actions">
+      <button className="button secondary" disabled={busy !== null} onClick={() => void ask('runs')}>{busy === 'runs' ? 'Reading evidence…' : 'Suggest next run'}</button>
+      <button className="button secondary" disabled={busy !== null} onClick={() => void ask('campaign')}>{busy === 'campaign' ? 'Reading evidence…' : 'Suggest campaign'}</button>
+    </div>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {suggestions && (suggestions.recommendations.length === 0
+      ? <p className="operational-note">No recommendation fits the current evidence.</p>
+      : <ul className="cx-cards">{suggestions.recommendations.map(rec =>
+        <li key={`${rec.rank}-${rec.method}`} className="cx-card">
+          <div><strong>{rec.rank}. {rec.title}</strong> <StateBadge tone={rec.due_now ? 'green' : 'neutral'}>{rec.due_now ? 'due now' : 'scheduled'}</StateBadge></div>
+          <p>Run <strong>{rec.method.replaceAll('_', ' ')}</strong> · {rec.duration_days} days · expect {rec.expected_range.low}–{rec.expected_range.high} {rec.expected_range.unit}</p>
+          <p>{rec.rationale}</p>
+          <small>Basis: {rec.expected_range.basis}. Evidence: {rec.evidence_refs.join(' · ') || 'none yet'}.</small>
+        </li>)}</ul>)}
+    {campaign && <div className="cx-result">
+      <h3>Campaign: {campaign.campaign.path}</h3>
+      <p className="cx-note">{campaign.campaign.rationale} ({campaign.campaign.evidence_refs.join(' · ')})</p>
+      <h4>Video lines (each traced to its source)</h4>
+      <ul className="cx-list">{campaign.video_prompt.lines.map((line, i) =>
+        <li key={i}>“{line.text}” <small>— {line.source}</small></li>)}</ul>
+      {campaign.video_prompt.omitted.length > 0 && <><h4>Missing footage lines</h4>
+        <ul className="cx-list">{campaign.video_prompt.omitted.map(o =>
+          <li key={o.slot}>{o.slot}: {o.note} ({o.missing_field})</li>)}</ul></>}
+      <h4>Provider</h4>
+      <p className="cx-note">{campaign.provider.channel || 'no channel'} via {campaign.provider.via} — {campaign.provider.rationale} Rate: {campaign.provider.reply_rate ?? 'unknown'} ({campaign.provider.rate_basis}).</p>
+    </div>}
+  </section>
+}
+
 export function WorkflowsPage() {
   const credentials = useCredentials()
   const queryClient = useQueryClient()
@@ -316,6 +362,7 @@ export function WorkflowsPage() {
         {record && !showPlan && <p className="operational-note"><Compass size={15} /> A plan is stored and reviewable. Nothing has been sent, published, or spent.</p>}
         {record && showPlan && <PlanView record={record} />}
         {decision && <GovernancePanel record={decision} busy={pending.startsWith('Governance') || pending === 'Recording approval' || pending === 'Running the simulated workflow' ? pending : ''} error={error} onAction={action => void govern(action)} />}
+        <SuggestPanel />
         {noDecisionYet && record && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Governance</h2><p>Validating the plan checks its channel, limits, constraints, and approval requirement before any workflow exists.</p></div><div className="validation-actions"><button className="button secondary" disabled={pending !== ''} onClick={() => void govern('validate')}>Validate Plan</button></div></section>}
         {showcase.data && showcase.data.length > 0 && <WorkflowShowcase items={showcase.data} />}
         {noPlanYet && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>What happens here</h2><p>AutoEvolve reads the confirmed company context and asks Hermes for the smallest credible validation experiment.</p></div><p className="operational-note"><FileText size={15} /> The result is a reviewable plan: hypothesis, market, validation experiment, evidence, and limits. Sending, publishing, and spending are not part of this stage.</p></section>}

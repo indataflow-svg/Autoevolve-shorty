@@ -125,5 +125,29 @@ class SuggestTests(SuggestBase):
             self.assertIn(rec["method"], METHOD_ACTIONS)
 
 
+    def test_campaign_suggest_grounds_every_line(self):
+        from core.suggest import suggest_campaign
+        save_company_context(normalize_company_context(NORTHLIGHT_CONTEXT))
+        out = suggest_campaign(0)
+        for line in out["video_prompt"]["lines"]:
+            self.assertTrue(line["source"].startswith("context:"))
+            self.assertTrue(line["text"])
+        # Empty slots are listed with the field to fill, never invented.
+        self.assertTrue(all("missing_field" in o for o in out["video_prompt"]["omitted"]))
+        self.assertIn(out["campaign"]["path"], ("g1", "g1+g2", "full"))
+        self.assertIn("reply_rate", out["provider"])
+        r = self.client.post("/company/automation/suggest-campaign", auth=self.auth)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("video_prompt", r.json())
+
+    def test_campaign_suggest_without_context_omits_everything(self):
+        from core.suggest import suggest_campaign
+        out = suggest_campaign(0)
+        self.assertEqual(out["video_prompt"]["lines"], [])
+        self.assertEqual(len(out["video_prompt"]["omitted"]), 4)
+        self.assertEqual(out["campaign"]["path"], "g1")
+        self.assertEqual(out["provider"]["via"], "undecided")
+
+
 if __name__ == "__main__":
     unittest.main()

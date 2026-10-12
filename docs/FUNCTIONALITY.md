@@ -221,6 +221,24 @@ nothing was measured, while a drafting run reports a real `0 / target` — the
 store was consulted, attribution exists, and no reply has arrived. That zero is
 a result; the em dash is an absence.
 
+**The loop reads before it proposes.** `core/evidence.py` unions manual
+context, offers, ICPs, accounts, leads by stage/source, unclaimed domains,
+research candidates, committed imports, per-channel engagement (reply rates
+stay unknown without sends, never zero), governed history with plan durations,
+and declared vs connected channels. `GET /automation/evidence` exposes exactly
+what the suggesters see, so a recommendation always traces back to its inputs.
+
+**Suggestions are advisory, scheduled, and ranged.** `POST /automation/suggest`
+ranks the next runs — discovery, first drafts, message change, meeting push,
+raise the bar — with `scheduled_for`/`due_now` derived from the last run's
+window, `duration_days`, and an expected range whose basis is recorded data or
+an explicit no-baseline statement. `POST /automation/suggest-campaign` proposes
+video lines with per-line source fields (missing slots name the exact field to
+fill), a G1/G2/G3 path, and a provider with an honest rate or `unknown`.
+Nothing here generates, governs, approves, or runs; the `/workflows` "What
+next" panel renders both. Known gap: a suggestion cannot yet pin a generated
+plan's method — Hermes still chooses, governance still checks.
+
 A workflow becomes approvable and runnable the moment the company context
 crosses 80% completeness — preparation does not wait for full data. The
 frontend page is `/workflows`

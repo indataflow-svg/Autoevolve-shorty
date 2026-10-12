@@ -174,6 +174,19 @@ def suggest_next_runs() -> dict:
     return suggest_workflows()
 
 
+@automation_router.post("/suggest-campaign")
+def suggest_campaign_move() -> dict:
+    """Propose the marketing move from evidence. Advisory only.
+
+    Video lines carry their source fields, missing slots are listed with the
+    exact field to fill, and the campaign path and provider follow recorded
+    results. Nothing is created or queued.
+    """
+    from core.suggest import suggest_campaign
+
+    return suggest_campaign()
+
+
 @automation_router.get("/plan", response_model=ValidationPlanRecord)
 def read_workflows_validation_plan():
     """Canonical automation name for reading the latest plan."""

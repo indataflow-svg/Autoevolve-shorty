@@ -220,3 +220,92 @@ def _reply_basis(evidence: dict[str, Any]) -> tuple[float | None, str]:
     if sent >= 10:
         return replied / sent, f"recorded rate {replied}/{sent} across channels"
     return None, "no baseline yet: 10+ sends establish one"
+
+
+def suggest_campaign(org: int = 0) -> dict[str, Any]:
+    """Propose the marketing move from evidence: video lines, campaign path, provider.
+
+    Every video line carries its source field; slots with no source are listed
+    under omitted with the exact field to fill, never papered over with
+    invented copy. The campaign path and provider follow recorded results and
+    declared resources, defaulting to honest unknowns.
+    """
+    from core.company_context import get_company_context
+
+    evidence = collect_evidence(org)
+    context = get_company_context()
+    fields: dict[str, str] = {}
+    if context is not None:
+        dump = context.model_dump() if hasattr(context, "model_dump") else {}
+        for section in ("company", "product", "customer", "market", "offer"):
+            part = dump.get(section) or {}
+            if isinstance(part, dict):
+                for key, value in part.items():
+                    if isinstance(value, str) and value.strip():
+                        fields[f"{section}.{key}"] = value.strip()
+
+    wanted = [
+        ("hook", [("company.name", "company.description"), ("product.name", "product.value_proposition")]),
+        ("audience", [("customer.ideal_customer",)]),
+        ("problem", [("market.problem",)]),
+        ("offer", [("product.description",), ("offer.description",)]),
+    ]
+    lines: list[dict[str, str]] = []
+    omitted: list[dict[str, str]] = []
+    for slot, options in wanted:
+        texts = [fields[f] for group in options for f in group if fields.get(f)]
+        if texts:
+            # First non-empty phrasing wins; its field is the provenance.
+            for group in options:
+                hit = next((f for f in group if fields.get(f)), None)
+                if hit:
+                    lines.append({"slot": slot, "text": fields[hit], "source": f"context:{hit}"})
+                    break
+        else:
+            omitted.append({
+                "slot": slot,
+                "missing_field": options[0][0],
+                "note": "add it in company context and the line appears",
+            })
+
+    accounts = (evidence.get("accounts") or {}).get("total", 0)
+    meetings = (evidence.get("engagement") or {}).get("meetings", 0)
+    icps = evidence.get("icps") or []
+    validated = [i for i in icps if i.get("status") == "validated"]
+    if meetings > 0 and validated:
+        path, path_why = ("full", f"{meetings} meeting(s) and a validated ICP: position, produce, and publish")
+    elif accounts > 0 and (validated or accounts >= 3):
+        path, path_why = ("g1+g2", "enough audience to position and produce for; publishing waits for signal")
+    else:
+        path, path_why = ("g1", "positioning first: strategy before assets, assets before publishing")
+
+    channel = _best_channel(evidence)
+    connected = (evidence.get("channels") or {}).get("connected") or []
+    if channel == "email" and "resend" in connected:
+        via = "resend"
+        via_why = "Resend is connected and email leads the recorded channels."
+    elif channel == "email":
+        via = "resend-unconfigured"
+        via_why = "Email is the channel but Resend is not connected; connect it before planning sends."
+    elif channel in ("linkedin", "phone", "sms"):
+        via = "manual"
+        via_why = f"{channel} has no send API: outreach runs as manual tasks from drafts."
+    else:
+        via = "undecided"
+        via_why = "No channel evidence yet: declare channels in company context first."
+    rate, basis = _reply_basis(evidence)
+
+    return {
+        "video_prompt": {"lines": lines, "omitted": omitted},
+        "campaign": {"path": path, "rationale": path_why,
+                     "evidence_refs": [f"accounts:{accounts}",
+                                       f"meetings:{meetings}",
+                                       f"icps:validated:{len(validated)}"]},
+        "provider": {"channel": channel, "via": via, "rationale": via_why,
+                     "reply_rate": rate, "rate_basis": basis},
+        "evidence_summary": {
+            "accounts": accounts,
+            "meetings": meetings,
+            "validated_icps": len(validated),
+        },
+    }

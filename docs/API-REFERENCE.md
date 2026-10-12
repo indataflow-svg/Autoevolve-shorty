@@ -1,6 +1,6 @@
 # AutoEvolve locked API reference
 
-Generated from source by `scripts/gen_api_reference.py` at commit `9a91764` on 2026-10-12T13:17:45Z.
+Generated from source by `scripts/gen_api_reference.py` at commit `51ea662` on 2026-10-12T14:19:25Z.
 
 Every public constant, function, class and method in the shipped packages, with its real signature. Read this as the contract: if a name here disagrees with the code, the code is authoritative and this file must be regenerated.
 
@@ -8,15 +8,15 @@ Every public constant, function, class and method in the shipped packages, with 
 
 | subsystem | modules | functions | classes | methods | constants |
 |---|---|---|---|---|---|
-| Core state and models | 21 | 203 | 39 | 5 | 68 |
-| Support services | 26 | 96 | 23 | 37 | 62 |
+| Core state and models | 23 | 208 | 39 | 5 | 69 |
+| Support services | 26 | 97 | 23 | 37 | 62 |
 | Video pipeline package | 11 | 56 | 11 | 3 | 35 |
 | Agents | 9 | 65 | 12 | 0 | 43 |
-| HTTP surface | 19 | 207 | 135 | 0 | 58 |
+| HTTP surface | 19 | 211 | 135 | 0 | 58 |
 | Operations scripts | 13 | 50 | 1 | 25 | 61 |
-| **all** | **99** | **677** | **221** | **70** | **327** |
+| **all** | **101** | **687** | **221** | **70** | **328** |
 
-Plus 224 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the end.
+Plus 228 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the end.
 
 ## Core state and models
 
@@ -97,6 +97,12 @@ Plus 224 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 
 - const `BUSY_TIMEOUT_SECONDS`
 - `open_db(path: str | Path, *, row_factory: Any=None, timeout: float=BUSY_TIMEOUT_SECONDS) -> sqlite3.Connection`
+
+### `core/evidence.py`
+
+- `collect_evidence(org: int=0) -> dict[str, Any]` — Assemble the evidence union for one organization. Never raises on
+- `resolve_research_terms(org: int=0) -> dict[str, Any]` — Decide what a governed research run searches for, from evidence
+- `suggest_accounts(org: int=0) -> dict[str, Any]` — Propose accounts from evidence nobody has claimed yet
 
 ### `core/marketing_config.py`
 
@@ -291,6 +297,11 @@ Plus 224 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - `fail_task(task_id: int, error: str) -> None`
 - `get_recent_tasks(limit: int=20) -> list[dict]`
 
+### `core/suggest.py`
+
+- `suggest_workflows(org: int=0, now: datetime | None=None) -> dict[str, Any]` — Rank the next governed runs from evidence. Read-only
+- `suggest_campaign(org: int=0) -> dict[str, Any]` — Propose the marketing move from evidence: video lines, campaign path, provider
+
 ### `core/validation_plan.py`
 
 - const `WORKFLOW_TEMPLATE`
@@ -356,6 +367,7 @@ Plus 224 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - const `WORKFLOW_ACTIONS`
 - const `SIMULATION_ACTIONS`
 - const `DRAFT_ACTIONS`
+- const `READ_ACTIONS`
 - const `GOVERNED_ACTIONS`
 - const `EXTERNAL_ACTIONS`
 - const `TERMINAL_STATUSES`
@@ -650,6 +662,7 @@ Plus 224 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - `evaluate(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Score the hypotheses and store the winner for the evolution loop
 - `simulate_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Simulate one validation outreach step. Nothing leaves this process
 - `draft_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Create real outreach drafts for the plan's targets. Nothing is sent
+- `research_prospects(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Research named companies through the provider ladder. Reads only
 - `observe_validation_events(*, plan_id: str | None=None, workflow_id: str | None=None) -> ValidationEventObservation` — Measure the plan's validation events against real, attributable evidence
 
 ### `services/workflow_runner.py`
@@ -996,6 +1009,7 @@ Plus 224 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - class `AccountIn`(BaseModel)
 - `list_accounts(q: str='', lifecycle_status: str='', sort: str='updated', page: int=1, page_size: int=20) -> dict` [router.get('/accounts')]
 - `create_account(payload: AccountIn) -> dict` [router.post('/accounts', dependencies=[Depends(verify_founder_action)])]
+- `suggest_new_accounts() -> dict` [router.post('/accounts/suggest')] — Propose accounts from evidence nobody has claimed yet
 - `update_account(rid: str, payload: dict) -> dict` [router.patch('/accounts/{rid}', dependencies=[Depends(verify_founder_action)])]
 - `get_account(rid: str) -> dict` [router.get('/accounts/{rid}')]
 - class `PipelineIn`(BaseModel)
@@ -1278,6 +1292,9 @@ Plus 224 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - `async create_validation_plan()` [router.post('/plan', response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])] — Plan the first market-validation experiment. Nothing is executed
 - `async create_workflows_validation_plan()` [automation_router.post('/plan', response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])] — Canonical automation name for plan creation. Same behavior as /plan above
 - `read_validation_plan()` [router.get('/plan', response_model=ValidationPlanRecord)] — The most recent plan, or 404 when none has been generated yet
+- `read_evidence() -> dict` [automation_router.get('/evidence')] — Everything the business has told or shown us, in one place
+- `suggest_next_runs() -> dict` [automation_router.post('/suggest')] — Rank the next governed runs from evidence. Advisory only
+- `suggest_campaign_move() -> dict` [automation_router.post('/suggest-campaign')] — Propose the marketing move from evidence. Advisory only
 - `read_workflows_validation_plan()` [automation_router.get('/plan', response_model=ValidationPlanRecord)] — Canonical automation name for reading the latest plan
 - `read_governance()` [router.get('/workflow', response_model=GovernanceRecord, deprecated=True)] — Legacy name. Prefer GET /company/automation/governance
 - `read_workflows_governance()` [automation_router.get('/governance', response_model=GovernanceRecord)] — The latest governance decision and the lifecycle it has reached
@@ -1561,6 +1578,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /doctor` | `app/marketing_api.py` |
 | `GET /doctor` | `app/sales_api.py` |
 | `GET /drafts/reconcile` | `app/sales_api.py` |
+| `GET /evidence` | `app/validation_api.py` |
 | `GET /governance` | `app/validation_api.py` |
 | `GET /health` | `app/api.py` |
 | `GET /home/` | `app/api.py` |
@@ -1655,6 +1673,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `PATCH /offers/{rid}` | `app/commercial_api.py` |
 | `PATCH /onboarding-sessions/{rid}` | `app/commercial_api.py` |
 | `PATCH /pipelines/{rid}` | `app/commercial_api.py` |
+| `POST /accounts/suggest` | `app/commercial_api.py` |
 | `POST /accounts/{rid}/qualify` | `app/commercial_api.py` |
 | `POST /accounts` | `app/commercial_api.py` |
 | `POST /activate` | `app/onboarding_api.py` |
@@ -1746,6 +1765,8 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `POST /step` | `app/setup_api.py` |
 | `POST /strategy/draft` | `app/onboarding_api.py` |
 | `POST /strategy` | `app/onboarding_api.py` |
+| `POST /suggest-campaign` | `app/validation_api.py` |
+| `POST /suggest` | `app/validation_api.py` |
 | `POST /workflow/approve` | `app/validation_api.py` |
 | `POST /workflow/run` | `app/validation_api.py` |
 | `POST /workflow` | `app/validation_api.py` |
