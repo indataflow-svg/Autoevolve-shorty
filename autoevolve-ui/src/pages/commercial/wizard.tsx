@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import type { Credentials } from '../../api/client'
 import { commercialApi, commercialWrite } from '../../api/commercial'
-import { companyContext, replaceCompanyContext } from '../../api/companyContext'
+import { companyContext, mergeContextSections, replaceCompanyContext } from '../../api/companyContext'
 import { Empty, Field, Stepper } from './shared'
 import { CsvWizard } from './csvWizard'
 
@@ -126,8 +126,11 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
     {error && <p className="form-error" role="alert">{error}</p>}
     {step === 0 && <CompanyStep company={company} form={form} set={set} details={details} setDetails={setDetails}
       busy={busy !== null} onSave={(patch, offer) => void write('Saving company profile', async () => {
-        const prev = (ctxView.data?.context || {}) as Record<string, Record<string, string>>
-        await replaceCompanyContext(credentials, { ...ctxView.data?.context, company: { ...(prev.company || {}), ...patch } } as never, token)
+        // Fresh fetch before the full-replacement PUT: the cached view may
+        // predate saves made on other pages.
+        const fresh = await companyContext(credentials)
+        await replaceCompanyContext(credentials, mergeContextSections(
+          fresh.context as unknown as Record<string, unknown>, { company: patch }), token)
         if (offer) await commercialWrite(credentials, token).createOffer(offer)
       }, ['company-context', 'c-offers'])} />}
     {step === 1 && <IcpStep templates={templates.data || []} busy={busy !== null}

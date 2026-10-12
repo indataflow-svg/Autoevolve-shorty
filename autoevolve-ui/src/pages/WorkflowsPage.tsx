@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, ArrowRight, Building2, Compass, FileText, Flag, Package, Rocket, ShieldCheck, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { companyContext, MARKETING_STAGES, replaceCompanyContext, type CompanyContextSections, type CompanyContextView } from '../api/companyContext'
+import { companyContext, MARKETING_STAGES, mergeContextSections, replaceCompanyContext, type CompanyContextView } from '../api/companyContext'
 import {
   approveGovernedWorkflow, automationWorkflows, createGovernedWorkflow, generateValidationPlan, runWorkflowSimulation,
   suggestCampaign, suggestWorkflows, validationGovernance, validationPlan, type AutomationWorkflowView, type CampaignSuggestion, type GovernanceRecord, type ValidationPlanRecord, type WorkflowSuggestions,
@@ -73,12 +73,16 @@ const REQUIRED_GROUP_COUNT = 6
 /** Five of six groups clear the 80% workflow-preparation gate. */
 const WORKFLOW_READY_GROUPS = 5
 
-function CompanyDataPanel({ view, busy, onSave }: {
+function CompanyDataPanel({ view, busy, savedTick, onSave }: {
   view: CompanyContextView
   busy: boolean
-  onSave: (sections: CompanyContextSections) => void
+  savedTick: number
+  onSave: (touched: Record<string, Record<string, string>>) => void
 }) {
   const [draft, setDraft] = useState<Record<string, string>>({})
+  // A confirmed save refreshes the view from the server; the draft has served
+  // its purpose and must not linger over the fresh values.
+  useEffect(() => { setDraft({}) }, [savedTick])
   const sections = view.context as unknown as Record<string, Record<string, string> | undefined>
   const missing = (view.context.missing || []).filter(key => key in ANSWERS)
   const routed = Boolean(view.next_stage)
@@ -95,15 +99,17 @@ function CompanyDataPanel({ view, busy, onSave }: {
     return key === 'marketing_stage' ? (stored(key) || MARKETING_STAGES[0].value) : stored(key)
   }
   const save = () => {
+    // Only the single edited field per section travels up. The parent merges
+    // over a freshly fetched context, so a stale render can never smuggle old
+    // sibling values over saves made elsewhere.
     const touched: Record<string, Record<string, string>> = {}
     for (const key of missing) {
       const field = ANSWERS[key]
       const value = current(key).trim()
       if (!value) continue
-      touched[field.section] = { ...(sections[field.section] || {}), [field.key]: value }
+      touched[field.section] = { ...touched[field.section], [field.key]: value }
     }
-    // Sections the founder did not touch are passed through unchanged.
-    onSave({ ...view.context, ...touched } as unknown as CompanyContextSections)
+    onSave(touched)
   }
 
   return <section className="onboarding-panel">
@@ -308,6 +314,8 @@ export function WorkflowsPage() {
   const [token, setToken] = useState('')
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
+  const [savedTick, setSavedTick] = useState(0)
+  const [savedNote, setSavedNote] = useState('')
   const [showPlan, setShowPlan] = useState(false)
   const record = query.data
   const decision = governance.data
@@ -316,12 +324,17 @@ export function WorkflowsPage() {
   const noDecisionYet = !decision && (governance.isError ? (governance.error as ApiError).status === 404 : governance.isSuccess)
   const failed = query.isError && !noPlanYet
   const stage = (value: string | null | undefined) => (value || '—').replaceAll('_', ' ')
-  async function saveContext(sections: CompanyContextSections) {
+  async function saveContext(touched: Record<string, Record<string, string>>) {
     if (!token.trim()) { setError('Enter the founder action token before saving company answers.'); return }
-    setError(''); setPending('Saving company answers')
+    setError(''); setSavedNote(''); setPending('Saving company answers')
     try {
-      const updated = await replaceCompanyContext(credentials, sections, token)
+      // Refetch first: the PUT is a full replacement, and merging over a
+      // stale render would silently discard saves made elsewhere.
+      const fresh = await companyContext(credentials)
+      const updated = await replaceCompanyContext(credentials, mergeContextSections(fresh.context as unknown as Record<string, unknown>, touched), token)
       queryClient.setQueryData(['company-context'], updated)
+      setSavedTick(tick => tick + 1)
+      setSavedNote(`Saved · ${updated.context.completeness_percent ?? 0}% complete`)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Those answers were not saved.')
     } finally { setPending('') }
@@ -360,7 +373,8 @@ export function WorkflowsPage() {
       : <>
         <label className="onboarding-token">Founder action token<input type="password" autoComplete="off" aria-label="Founder action token" value={token} onChange={event => setToken(event.target.value)} /><small>Required by the existing action gate; held only in this page's memory.</small></label>
         {error && <p className="form-error" role="alert">{error}</p>}
-        {routing.data && (Boolean(routing.data.next_stage) === false || (routing.data.context.missing?.length ?? 0) > 0) && <CompanyDataPanel view={routing.data} busy={pending !== ''} onSave={sections => void saveContext(sections)} />}
+        {savedNote && !error && <p className="operational-note" role="status">{savedNote}</p>}
+        {routing.data && (Boolean(routing.data.next_stage) === false || (routing.data.context.missing?.length ?? 0) > 0) && <CompanyDataPanel view={routing.data} busy={pending !== ''} savedTick={savedTick} onSave={touched => void saveContext(touched)} />}
         {pending === 'Saving company answers' && <p role="status" className="operational-note">Saving company answers…</p>}
         {pending.startsWith('Hermes') && <p role="status" className="operational-note">Hermes is preparing a validation plan through the model gateway…</p>}
         {record && <div className="validation-actions"><StateBadge tone="green">Validation Plan Ready</StateBadge><button className="button secondary" onClick={() => setShowPlan(current => !current)}>{showPlan ? 'Hide plan' : 'View Plan'}</button><button className="button primary" disabled={pending !== ''} onClick={() => void generate()}>Generate Validation Plan</button></div>}

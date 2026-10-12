@@ -329,6 +329,23 @@ class CompanyContextApiTests(unittest.TestCase):
         self.assertEqual(response.json()["context"]["company"]["website"], "https://studio.test")
         self.assertNotIn("secret", response.text)
 
+    def test_frontend_shaped_save_preserves_everything_it_did_not_touch(self):
+        # The UI spreads the fetched view (computed keys included) plus the
+        # edited sections. The replacement must keep every untouched value.
+        self.start_company()
+        self.confirm()
+        view = self.client.get("/company/context", auth=self.auth).json()["context"]
+        payload = dict(view)
+        payload["product"] = dict(view["product"], description="Card-written product line")
+        payload["market"] = dict(view["market"], problem="Card-written problem line")
+        response = self.client.put("/company/context", auth=self.auth, headers=self.headers, json=payload)
+        self.assertEqual(response.status_code, 200, response.text)
+        stored = self.client.get("/company/context", auth=self.auth).json()["context"]
+        self.assertEqual(stored["product"]["description"], "Card-written product line")
+        self.assertEqual(stored["market"]["problem"], "Card-written problem line")
+        self.assertEqual(stored["company"]["name"], "Example Studio")
+        self.assertEqual(stored["customer"]["ideal_customer"], view["customer"]["ideal_customer"])
+
 
 if __name__ == "__main__":
     unittest.main()
