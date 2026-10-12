@@ -44,6 +44,7 @@ WORKFLOW_ACTIONS = (
     "evaluate",
     "simulate_outreach",
     "draft_outreach",
+    "research_prospects",
 )
 
 # Actions that can only ever simulate. Governance may map a plan onto one of
@@ -55,9 +56,14 @@ SIMULATION_ACTIONS = ("simulate_outreach",)
 # reviews and sends by hand; the step itself cannot contact anyone.
 DRAFT_ACTIONS = ("draft_outreach",)
 
+# Actions that only read external systems and write local evidence. Provider
+# search costs credits but contacts nobody, so it is governed like a draft:
+# capped, attributed, and refused without a ceiling.
+READ_ACTIONS = ("research_prospects",)
+
 # Everything governance may authorize. Anything registered but absent from this
 # tuple is refused: the runner can execute it, a validation plan cannot.
-GOVERNED_ACTIONS: tuple[str, ...] = SIMULATION_ACTIONS + DRAFT_ACTIONS
+GOVERNED_ACTIONS: tuple[str, ...] = SIMULATION_ACTIONS + DRAFT_ACTIONS + READ_ACTIONS
 
 # Actions that reach a real external system. Deliberately empty until limits
 # are enforced when a workflow runs rather than only when a plan is validated;

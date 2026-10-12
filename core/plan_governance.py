@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field, model_validator
 from core.company_context import CompanyContext
 from core.state import connect, now_iso
 from core.validation_plan import GroundingReport, ValidationPlan, enforce_grounding
-from core.workflow_store import EXTERNAL_ACTIONS, GOVERNED_ACTIONS, WORKFLOW_ACTIONS
+from core.workflow_store import EXTERNAL_ACTIONS, GOVERNED_ACTIONS, READ_ACTIONS, WORKFLOW_ACTIONS
 
 # Channels the product can govern today. A plan outside this vocabulary is
 # blocked rather than coerced into the nearest channel.
@@ -58,6 +58,11 @@ METHOD_ACTIONS: dict[str, tuple[str, str]] = {
         "draft_outreach",
         "outreach drafts for a named audience, held for founder review",
     ),
+    # Reads providers and stores candidates locally. Contacts nobody.
+    "prospect_discovery": (
+        "research_prospects",
+        "market research into named companies, stored as candidates",
+    ),
 }
 
 _NORMALIZE = re.compile(r"[^a-z0-9]+")
@@ -76,7 +81,10 @@ def normalize_method(value: str | None) -> str:
     return {"targeted_outreach_email": "targeted_outreach",
             "cold_outreach": "targeted_outbound",
             "outbound": "targeted_outbound",
-            "direct_sales_email": "direct_sales"}.get(key, key)
+            "direct_sales_email": "direct_sales",
+            "prospecting": "prospect_discovery",
+            "market_research": "prospect_discovery",
+            "lead_research": "prospect_discovery"}.get(key, key)
 
 
 class GovernanceLimits(BaseModel):
@@ -267,10 +275,27 @@ def validate_plan(
 
     resolved: list[ResolvedAction] = []
     if not reasons:
-        step = ResolvedAction(
-            step_id="validate_outreach",
-            action=action_name,
-            config={
+        if action_name in READ_ACTIONS:
+            # Research terms are resolved from evidence here, not invented at
+            # run time: the step config records exactly what will be searched.
+            from core.evidence import resolve_research_terms
+
+            try:
+                terms = resolve_research_terms()
+            except ValueError as exc:
+                reasons.append(str(exc))
+                terms = {}
+            config = {
+                "industry": terms.get("industry", ""),
+                "location": terms.get("location"),
+                "industry_source": terms.get("industry_source", ""),
+                "location_source": terms.get("location_source", ""),
+                "max_contacts": int(contacts or 0),
+                "duration_days": duration,
+            }
+            step_id = "research_prospects"
+        else:
+            config = {
                 "channel": channel,
                 "message": grounded_plan.validation.message,
                 "offer": grounded_plan.validation.offer,
@@ -279,10 +304,16 @@ def validate_plan(
                 "validation_event": grounded_plan.validation.validation_event,
                 "max_contacts": int(contacts or 0),
                 "duration_days": duration,
-            },
-            rationale=METHOD_ACTIONS[method][1] if mapping else "",
-        )
-        resolved = [step]
+            }
+            step_id = "validate_outreach"
+        if not reasons:
+            step = ResolvedAction(
+                step_id=step_id,
+                action=action_name,
+                config=config,
+                rationale=METHOD_ACTIONS[method][1] if mapping else "",
+            )
+            resolved = [step]
 
     decision = GovernanceDecision(
         plan_id=plan_id,

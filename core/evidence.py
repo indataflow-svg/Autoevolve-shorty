@@ -206,6 +206,70 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
     return evidence
 
 
+def resolve_research_terms(org: int = 0) -> dict[str, Any]:
+    """Decide what a governed research run searches for, from evidence.
+
+    Order: validated ICP industry first; else the most common industry across
+    accounts and leads, recorded as an assumption in the rationale rather than
+    a fact. Location likewise from regions, else the context market, else none
+    (the provider ladder accepts a location-less query). Raises ValueError
+    with a founder-actionable reason when nothing is resolvable, so governance
+    blocks instead of guessing silently.
+    """
+    from core import commercial_store
+
+    evidence = collect_evidence(org)
+    industry: str | None = None
+    industry_source = ""
+    with commercial_store.connect() as db:
+        try:
+            icps = db.execute(
+                "SELECT id, name, criteria_json FROM icp_profiles WHERE org_id=?"
+                " AND status='validated' ORDER BY updated_at DESC LIMIT 5",
+                (org,)).fetchall()
+        except Exception:
+            icps = []
+    for row in icps:
+        for rule in _safe_json(row["criteria_json"], []):
+            if not isinstance(rule, dict):
+                continue
+            if str(rule.get("field") or "").lower() == "industry" and str(rule.get("value") or "").strip():
+                industry = str(rule["value"]).strip()
+                industry_source = f"validated_icp:{row['id']}"
+                break
+        if industry:
+            break
+    if industry is None:
+        top = (evidence["accounts"].get("top_industries") or [{}])[0]
+        if top.get("industry") and top["industry"] != "unknown":
+            industry = top["industry"]
+            industry_source = "top_evidence_industry"
+    if not industry:
+        raise ValueError(
+            "no industry to research: validate an ICP or save accounts first, "
+            "so the run searches for something real")
+    location: str | None = None
+    location_source = ""
+    regions = Counter()
+    with commercial_store.connect() as db:
+        try:
+            for row in db.execute(
+                    "SELECT region FROM commercial_accounts WHERE org_id=? AND region<>''",
+                    (org,)):
+                if row["region"].strip():
+                    regions[row["region"].strip()] += 1
+        except Exception:
+            pass
+    if regions:
+        location, _ = regions.most_common(1)[0]
+        location_source = "top_evidence_region"
+    elif (evidence.get("context") or {}).get("market"):
+        location = evidence["context"]["market"]
+        location_source = "context_market"
+    return {"industry": industry, "industry_source": industry_source,
+            "location": location, "location_source": location_source}
+
+
 def suggest_accounts(org: int = 0) -> dict[str, Any]:
     """Propose accounts from evidence nobody has claimed yet.
 

@@ -437,6 +437,117 @@ def draft_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[str,
     }
 
 
+def research_prospects(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """Research named companies through the provider ladder. Reads only.
+
+    Terms come from evidence (see ``core.evidence.resolve_research_terms``),
+    fixed in the step config at validate time so the audit shows exactly what
+    was searched. Provider functions store candidates as research leads, the
+    same rows interactive research creates; this step attributes at most
+    ``max_contacts`` new ones to the plan and counts the rest as known or
+    over-ceiling. No prospect is contacted: ``sent`` stays 0 and nothing
+    observed here is reported as a measured event.
+    """
+    from services.sales_service import research_market_leads
+
+    industry = str(config.get("industry") or "").strip()
+    if not industry:
+        raise ValueError("research_prospects requires the resolved industry")
+    location = str(config.get("location") or "").strip() or None
+    ceiling = int(config.get("max_contacts") or 0)
+    plan_id = str(context.get("plan_id") or "")
+    workflow_id = str(context.get("workflow_id") or "")
+
+    if ceiling <= 0:
+        return {
+            "status": "completed",
+            "output": {
+                "action": "research_prospects",
+                "industry": industry,
+                "location": location,
+                "providers_queried": {},
+                "candidates_found": 0,
+                "candidates_new": 0,
+                "attributed": 0,
+                "skipped_known": 0,
+                "over_ceiling": 0,
+                "sent": 0,
+                "replies": 0,
+                "validation_events": None,
+                "external_side_effects": False,
+            },
+            "metrics": {"candidates_new": 0, "provider_calls": 0},
+            "artifacts": [],
+            "next_step": None,
+        }
+
+    limit_per_provider = max(1, min(5, (ceiling + 2) // 3))
+    summary = research_market_leads(
+        industry=industry, location=location, limit_per_provider=limit_per_provider)
+    providers_queried = dict(summary.get("providers") or {})
+    results = summary.get("results") or []
+
+    with state.connect() as connection:
+        try:
+            known_domains = {
+                str(r["domain"]).strip().lower()
+                for r in connection.execute(
+                    "SELECT domain FROM commercial_accounts WHERE domain IS NOT NULL")
+                if str(r["domain"]).strip()
+            }
+        except Exception:
+            known_domains = set()
+
+    attributed = 0
+    skipped_known = 0
+    over_ceiling = 0
+    for item in results:
+        lead = item.get("lead") if isinstance(item, dict) else None
+        if not isinstance(lead, dict) or not lead.get("id"):
+            continue
+        domain = str(lead.get("company_domain") or "").strip().lower()
+        if not item.get("created", True) or domain in known_domains:
+            skipped_known += 1
+            continue
+        if attributed >= ceiling:
+            over_ceiling += 1
+            continue
+        sales_store.add_event(lead["id"], "outreach.plan_attributed", {
+            "plan_id": plan_id,
+            "workflow_id": workflow_id,
+            "source": "governed_research",
+            "industry": industry,
+            "location": location,
+        })
+        attributed += 1
+
+    return {
+        "status": "completed",
+        "output": {
+            "action": "research_prospects",
+            "industry": industry,
+            "location": location,
+            "industry_source": config.get("industry_source"),
+            "providers_queried": providers_queried,
+            "provider_warnings": summary.get("warnings") or [],
+            "candidates_found": len(results),
+            "candidates_new": attributed + over_ceiling,
+            "attributed": attributed,
+            "skipped_known": skipped_known,
+            "over_ceiling": over_ceiling,
+            "sent": 0,
+            "replies": 0,
+            # Nothing is sent and nothing was observed here: null, not 0.
+            "validation_events": None,
+            "external_side_effects": False,
+        },
+        "metrics": {"candidates_new": attributed,
+                    "provider_calls": sum(providers_queried.values())},
+        "artifacts": [],
+        "next_step": None,
+    }
+
+
 def observe_validation_events(
     *, plan_id: str | None = None, workflow_id: str | None = None
 ) -> ValidationEventObservation:
