@@ -165,6 +165,14 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
 
         # Governed history: what we tried and what it measured.
         history: list[dict] = []
+        plan_limits: dict[str, Any] = {}
+        if table("validation_plans"):
+            for row in db.execute("SELECT id, plan_json FROM validation_plans"):
+                try:
+                    limits = (json.loads(row["plan_json"] or "{}").get("limits") or {})
+                except ValueError:
+                    limits = {}
+                plan_limits[row["id"]] = limits
         if table("validation_workflows"):
             for row in db.execute(
                     "SELECT id, plan_id, status, workflow_id, approved_at,"
@@ -186,6 +194,8 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
                                 if steps else None),
                     "events_observed": bool(observation.get("observed")),
                     "events_count": observation.get("count", 0),
+                    "duration_days": (plan_limits.get(row["plan_id"]) or {}).get("duration_days"),
+                    "executed_at": row["executed_at"],
                 })
         evidence["history"] = history
 

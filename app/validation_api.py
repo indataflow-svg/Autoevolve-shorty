@@ -160,6 +160,20 @@ def read_evidence() -> dict:
     return collect_evidence()
 
 
+@automation_router.post("/suggest")
+def suggest_next_runs() -> dict:
+    """Rank the next governed runs from evidence. Advisory only.
+
+    Deterministic: the same evidence always yields the same ranking. Nothing
+    is generated, governed, approved, or run here — each recommendation names
+    the method to plan with, when it is due, how long to give it, and the
+    expected range with its basis.
+    """
+    from core.suggest import suggest_workflows
+
+    return suggest_workflows()
+
+
 @automation_router.get("/plan", response_model=ValidationPlanRecord)
 def read_workflows_validation_plan():
     """Canonical automation name for reading the latest plan."""
