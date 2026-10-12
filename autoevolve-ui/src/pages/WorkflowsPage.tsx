@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Compass, FileText, ShieldCheck } from 'lucide-react'
+import { AlertCircle, ArrowRight, Building2, Compass, FileText, Flag, Package, Rocket, ShieldCheck, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { companyContext, MARKETING_STAGES, replaceCompanyContext, type CompanyContextSections, type CompanyContextView } from '../api/companyContext'
 import {
@@ -47,21 +47,24 @@ function observedEventCount(execution: unknown, stepOutput: Record<string, unkno
  */
 const ANSWERS: Record<string, {
   label: string
+  question: string
+  example: string
   help: string
   section: string
   key: string
+  icon: typeof Building2
   options?: Array<{ value: string; label: string }>
 }> = {
-  company: { label: 'Company', help: 'What the company is, in a sentence.', section: 'company', key: 'description' },
-  product: { label: 'Product', help: 'What you sell.', section: 'product', key: 'description' },
-  customer: { label: 'Customer', help: 'Who buys this, and why them.', section: 'customer', key: 'ideal_customer' },
-  problem: { label: 'Problem', help: 'The problem they pay to remove.', section: 'market', key: 'problem' },
-  objective: { label: 'Objective', help: 'The outcome you are driving toward.', section: 'objective', key: 'primary_goal' },
+  company: { label: 'Company', question: 'What is your company?', example: 'e.g. Northwind Logistics, a dispatch desk for freight teams', help: 'What the company is, in a sentence.', section: 'company', key: 'description', icon: Building2 },
+  product: { label: 'Product', question: 'What do you sell?', example: 'e.g. managed dispatch setup plus a monthly handoff review', help: 'What you sell.', section: 'product', key: 'description', icon: Package },
+  customer: { label: 'Customer', question: 'Who buys this?', example: 'e.g. dispatch managers at 20–200 person logistics firms', help: 'Who buys this, and why them.', section: 'customer', key: 'ideal_customer', icon: Users },
+  problem: { label: 'Problem', question: 'What problem do they pay to remove?', example: 'e.g. missed loads found late in spreadsheet handoffs', help: 'The problem they pay to remove.', section: 'market', key: 'problem', icon: AlertCircle },
+  objective: { label: 'Objective', question: 'What outcome are you driving toward?', example: 'e.g. 5 booked discovery calls in 2 weeks', help: 'The outcome you are driving toward.', section: 'objective', key: 'primary_goal', icon: Flag },
   marketing_stage: {
-    label: 'Starting state',
-    help: 'Whether the company already has a marketing motion. A validation plan is only planned from "starting from zero".',
+    label: 'Starting state', question: 'Where are you starting from?', example: '', help: 'Whether the company already has a marketing motion. A validation plan is only planned from "starting from zero".',
     section: 'state',
     key: 'marketing_stage',
+    icon: Rocket,
     options: MARKETING_STAGES,
   },
 }
@@ -112,18 +115,21 @@ function CompanyDataPanel({ view, busy, onSave }: {
     {missing.length === 0
       ? <p className="operational-note">Every required group is answered.</p>
       : <>
-        <div className="context-answer-form">
+        <div className="answer-cards">
           {missing.map(key => {
             const field = ANSWERS[key]
-            return <label key={key}>
-              {field.label}
+            const Icon = field.icon
+            const filled = stored(key).trim().length > 0
+            return <div className="answer-card" key={key}>
+              <div className="answer-card-head"><Icon size={18} /><h3>{field.question}</h3>{filled && <StateBadge tone="green">answered</StateBadge>}</div>
+              <p className="answer-card-key">({field.section}.{field.key})</p>
               {field.options
-                ? <select aria-label={field.label} value={current(key)} disabled={busy} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}>
+                ? <select aria-label={field.question} value={current(key)} disabled={busy} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}>
                   {field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
-                : <input aria-label={field.label} value={current(key)} disabled={busy} placeholder={field.help} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} />}
+                : <textarea aria-label={field.question} value={current(key)} disabled={busy} placeholder={field.example} rows={3} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} />}
               <small>{field.help}</small>
-            </label>
+            </div>
           })}
         </div>
         <div className="validation-actions">
