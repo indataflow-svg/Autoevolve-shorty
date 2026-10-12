@@ -27,6 +27,7 @@ SearchTerm = Annotated[str, Field(min_length=2, max_length=80)]
 class ServiceInput(BaseModel):
     service: str = Field(min_length=5, max_length=1000)
     desired_contacts: int = Field(ge=1, le=25)
+    company_name: str | None = Field(default=None, max_length=120)
 
 
 class ServiceSearchPlan(BaseModel):
@@ -115,6 +116,30 @@ async def _plan_service(service: str, company_context: dict | None) -> ServiceSe
     return ServiceSearchPlan.model_validate(result.output)
 
 
+def _seed_context_from_run(run: ServiceRun, company_name: str | None = None) -> None:
+    """Seed the canonical context from a service run. Never breaks the search.
+
+    Seeding is best-effort and merge-only: a failure here must not fail the
+    contact search the founder asked for, and confirmed answers are never
+    overwritten.
+    """
+    try:
+        from core.company_context import seed_from_service
+
+        providers = sorted(run.provider_counts or {})
+        seed_from_service(
+            service=run.service,
+            company_name=company_name,
+            buyer_industry=run.plan.buyer_industry,
+            buyer_titles=list(run.plan.buyer_titles),
+            market=run.market,
+            contact_count=len(run.contact_ids),
+            provider_names=providers,
+        )
+    except Exception as exc:  # noqa: BLE001 - seeding must not break search
+        print(f"[service-discovery] context seeding skipped: {exc}")
+
+
 def _search(run: ServiceRun) -> None:
     try:
         result = search_service_contacts(
@@ -156,6 +181,7 @@ async def start_service_search(payload: ServiceInput):
     )
     save_service_discovery_run(run.model_dump(mode="json"))
     _search(run)
+    _seed_context_from_run(run, company_name=payload.company_name)
     save_service_discovery_run(run.model_dump(mode="json"))
     return _view()
 
@@ -173,5 +199,6 @@ def retarget_service_search(run_id: str, payload: ServiceTargetEdit):
     run.desired_contacts = payload.desired_contacts
     run = ServiceRun.model_validate(run.model_dump())
     _search(run)
+    _seed_context_from_run(run)
     save_service_discovery_run(run.model_dump(mode="json"))
     return _view()

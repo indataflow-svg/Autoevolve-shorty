@@ -524,6 +524,72 @@ def clear_company_context() -> None:
         db.execute("DELETE FROM company_context WHERE id = ?", (CONTEXT_ROW_ID,))
 
 
+def _is_empty(value: Any) -> bool:
+    return value is None or value == "" or value == []
+
+
+def merge_seed(base: CompanyContext, seed: CompanyContextSections) -> CompanyContextSections:
+    """Fill the base context's empty fields from the seed. Never overwrites.
+
+    Confirmed or previously seeded answers always win: a field that already has
+    a value keeps it, even if the seed disagrees. List fields are taken wholesale
+    only when the base list is empty, so a founder's partial list is never padded
+    with inferred entries.
+    """
+    merged = base.model_dump(mode="json")
+    seed_data = seed.model_dump(mode="json")
+    for section, fields in seed_data.items():
+        if not isinstance(fields, dict) or section not in merged or not isinstance(merged[section], dict):
+            continue
+        for field, value in fields.items():
+            if field not in merged[section]:
+                continue
+            if _is_empty(merged[section][field]) and not _is_empty(value):
+                merged[section][field] = value
+    merged.pop("status", None)
+    merged.pop("missing", None)
+    merged.pop("completeness_percent", None)
+    merged.pop("workflow_ready", None)
+    merged.pop("updated_at", None)
+    merged.pop("schema_version", None)
+    return CompanyContextSections.model_validate(merged)
+
+
+def seed_from_service(
+    *,
+    service: str,
+    company_name: str | None = None,
+    buyer_industry: str | None = None,
+    buyer_titles: list[str] | None = None,
+    market: str | None = None,
+    contact_count: int = 0,
+    provider_names: list[str] | None = None,
+) -> CompanyContext:
+    """Project a service quick-start into the canonical context, merging only.
+
+    Only what the quick-start actually knows is seeded: the service itself, the
+    AI contact plan's buyer industry and titles, the market, and a factual note
+    about discovered contacts. Everything else stays unknown for onboarding.
+    An existing record is filled in, never overwritten.
+    """
+    demand: list[str] = []
+    if contact_count > 0:
+        sources = ", ".join(provider_names or []) or "providers"
+        demand = [f"{contact_count} prospect contact{'s' if contact_count != 1 else ''} discovered via {sources}"]
+    seed = normalize_company_context({
+        "company": {"name": company_name},
+        "product": {"name": service, "description": service},
+        "customer": {"industry": buyer_industry, "buyer_roles": buyer_titles or []},
+        "market": {"market": market},
+        "evidence": {"existing_demand": demand},
+        "state": {"marketing_stage": "starting_from_zero"},
+    })
+    existing = get_company_context()
+    if existing is None:
+        return save_company_context(seed)
+    return save_company_context(merge_seed(existing, seed))
+
+
 def get_recorded_marketing_stage() -> str | None:
     """The stored stage exactly as written, even if it no longer normalizes.
 

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { retargetService, searchService, serviceDiscovery, type ServiceDiscoveryView, type ServiceTargetEdit } from '../api/serviceDiscovery'
+import { companyContext } from '../api/companyContext'
 import { useCredentials } from '../app/Auth'
 import { AppShell } from '../components/Shell'
 import { DataState, LoadingRows, StateBadge } from '../components/Primitives'
@@ -41,7 +42,9 @@ export function ServiceDiscoveryPage() {
   const credentials = useCredentials()
   const queryClient = useQueryClient()
   const query = useQuery({ queryKey: ['service-discovery'], queryFn: () => serviceDiscovery(credentials) })
+  const contextQuery = useQuery({ queryKey: ['company-context'], queryFn: () => companyContext(credentials), retry: false })
   const [service, setService] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [count, setCount] = useState(5)
   const [token, setToken] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -58,13 +61,16 @@ export function ServiceDiscoveryPage() {
       queryClient.setQueryData(['service-discovery'], view)
       if (label === 'new service') setSelectedId(view.runs[0]?.id || null)
       await queryClient.invalidateQueries({ queryKey: ['contacts'] })
+      // A search seeds the canonical company context (merge-only): refresh it
+      // so the notice below reflects what was actually stored.
+      await queryClient.invalidateQueries({ queryKey: ['company-context'] })
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Service search failed.') }
     finally { setPending('') }
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    void runSearch(() => searchService(credentials, service.trim(), count, token), 'new service')
+    void runSearch(() => searchService(credentials, service.trim(), count, token, companyName), 'new service')
   }
 
   return <AppShell active="Service discovery" query="" onQueryChange={() => undefined}><div className="page-layout"><main className="page-main"><div className="page-content onboarding-page">
@@ -72,6 +78,7 @@ export function ServiceDiscoveryPage() {
     <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>1. Enter a service</h2><p>A single submission plans and runs the first prospect search. You can edit the AI targeting and search again afterward.</p></div>
       <form className="onboarding-form" onSubmit={submit}>
         <label>Service to sell<textarea value={service} onChange={event => setService(event.target.value)} minLength={5} maxLength={1000} placeholder="e.g. Appointment scheduling for dental clinics" required /></label>
+        <label>Company name (optional)<input value={companyName} onChange={event => setCompanyName(event.target.value)} maxLength={120} placeholder="Leave blank if you prefer — Get Started can fill it later" /></label>
         <label>Number of contacts<input type="number" min={1} max={25} value={count} onChange={event => setCount(Number(event.target.value))} required /></label>
         <label>Founder action token<input type="password" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} required /></label>
         <p className="operational-note">Search uses Apollo previews first, then Prospeo when more contacts are needed. Local 24-hour request caps limit calls. Email and phone reveal are separate actions and do not run here.</p>
@@ -80,6 +87,14 @@ export function ServiceDiscoveryPage() {
     </section>
     {pending && <p className="operational-note" role="status">{pending === 'new service' ? 'AI is choosing keywords and buyer titles, then searching providers…' : 'Searching providers with your edits…'}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
+    {(() => {
+      const seeded = contextQuery.data?.context
+      if (!seeded || (!seeded.product?.name && (seeded.completeness_percent ?? 0) === 0)) return null
+      const percent = seeded.completeness_percent ?? 0
+      const ready = seeded.workflow_ready ?? false
+      const missing = (seeded.missing || []).join(', ').replaceAll('_', ' ')
+      return <p className="operational-note">This search seeded your company context (<strong>{percent}%</strong> complete{ready ? ', ready for workflow preparation' : ''}). <Link to="/workflows">Open Workflows</Link>{!ready && missing && <> · still missing in <Link to="/onboarding">Get Started</Link>: {missing}</>}.</p>
+    })()}
     {query.isPending ? <LoadingRows label="Loading saved service searches" /> : query.isError && !query.data ? <DataState title="Service searches could not be loaded" detail={query.error.message} retry={() => query.refetch()} /> : selected && <section className="onboarding-panel service-results"><div className="onboarding-panel-head"><h2>2. Review saved contacts</h2><p>These are contact previews, not verified service fit. Open a contact to review its saved record before outreach.</p></div>
       {runs.length > 1 && <label className="service-run-picker">Saved searches<select aria-label="Saved service searches" value={selected.id} onChange={event => setSelectedId(event.target.value)}>{runs.map(item => <option key={item.id} value={item.id}>{item.service.slice(0, 70)} · {item.contacts.length} contacts</option>)}</select></label>}
       <div className="onboarding-progress"><span>Service: <strong>{selected.service}</strong></span><StateBadge tone={selected.contacts.length ? 'green' : 'yellow'}>{selected.status.replaceAll('_', ' ')}</StateBadge><span>{selected.contacts.length} of {selected.desired_contacts} requested</span></div>

@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from app.sales_api import verify_founder_action
@@ -37,6 +37,7 @@ class SpecCreate(BaseModel):
     aspect_ratio: str = Field(default="9:16", max_length=8)
     fps: int = Field(default=24, ge=1, le=120)
     source_name: str = Field(default="script", max_length=160)
+    style: str = Field(default="noir", max_length=40)
 
 
 class PlanCreate(BaseModel):
@@ -137,6 +138,7 @@ def create_spec(payload: SpecCreate) -> dict[str, Any]:
             fps=payload.fps,
             source_path=None,
             context=context,
+            style=payload.style,
         )
         video_pipeline.validate_spec(spec_payload)
     except ValueError as exc:
@@ -200,6 +202,72 @@ def cancel_render_job(job_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Worker lease protocol (dashboard credentials, no founder token)
 # ---------------------------------------------------------------------------
+
+
+class PackUpload(BaseModel):
+    project_id: str = Field(min_length=1, max_length=120)
+    filename: str = Field(min_length=1, max_length=200)
+
+
+class MediaUpload(BaseModel):
+    project_id: str = Field(min_length=1, max_length=120)
+    filename: str = Field(min_length=1, max_length=200)
+    tag: str | None = Field(default=None, max_length=60)
+
+
+@action_router.post("/ingest/pack", dependencies=[Depends(verify_founder_action)])
+async def ingest_pack(payload: PackUpload, pack: UploadFile = File(...)) -> dict[str, Any]:
+    """Store and parse an uploaded scenario pack.
+
+    The pack is the source of truth for a composed video, so it is validated
+    here rather than at render time: a malformed pack fails the upload, not the
+    render.
+    """
+    from services.video.ingest import IngestError, store_pack
+
+    data = await pack.read()
+    try:
+        report = store_pack(payload.project_id, payload.filename, data)
+    except IngestError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"ok": True, "pack": report}
+
+
+@action_router.post("/ingest/media", dependencies=[Depends(verify_founder_action)])
+async def ingest_media(payload: MediaUpload, media: UploadFile = File(...)) -> dict[str, Any]:
+    """Store and validate an uploaded media asset.
+
+    The bytes are written unchanged and probed with ffprobe, so a truncated or
+    unreadable file is rejected here instead of surfacing as a broken video.
+    """
+    from services.video.ingest import IngestError, store_media
+
+    data = await media.read()
+    try:
+        report = store_media(payload.project_id, payload.filename, data, payload.tag)
+    except IngestError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"ok": True, "asset": report}
+
+
+@router.get("/ingest/{project_id}")
+def list_ingest(project_id: str) -> dict[str, Any]:
+    """What a project has uploaded, so the UI can show pack and assets."""
+    from services.video.ingest import IngestError, ingest_dir
+
+    try:
+        directory = ingest_dir(project_id)
+    except IngestError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    packs, media = [], []
+    for path in sorted(directory.iterdir()):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() in {".md", ".markdown", ".txt"}:
+            packs.append({"name": path.name, "size_bytes": path.stat().st_size})
+        else:
+            media.append({"name": path.name, "size_bytes": path.stat().st_size})
+    return {"project_id": project_id, "packs": packs, "media": media}
 
 
 @worker_router.get("/render-jobs/next")

@@ -117,3 +117,123 @@ class ServiceDiscoveryApiTests(unittest.TestCase):
         self.assertEqual(run["status"], "provider_error")
         self.assertEqual(run["contacts"], [])
         self.assertEqual(len(run["warnings"]), 2)
+
+
+class ServiceSeedingTests(unittest.TestCase):
+    """A service search seeds the canonical context without clobbering it."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.old_state = state.DB_PATH
+        self.old_sales = sales_store.DB_PATH
+        db = Path(self.temporary.name) / "company.db"
+        state.DB_PATH = sales_store.DB_PATH = db
+        state.init_db()
+        sales_store.init_sales_db()
+        self.env = patch.dict(os.environ, {
+            "DASHBOARD_USER": "founder", "DASHBOARD_PASSWORD": "dashboard-secret",
+            "SALES_ACTION_TOKEN": "action-secret", "SALES_SEND_RECONCILE_ON_STARTUP": "false",
+        })
+        self.env.start()
+        self.client = TestClient(app)
+        self.auth = ("founder", "dashboard-secret")
+        self.headers = {"X-Founder-Action-Token": "action-secret"}
+        self.planner = patch("app.service_discovery_api._plan_service", new_callable=AsyncMock)
+        self.plan = self.planner.start()
+        self.plan.return_value = ServiceSearchPlan(
+            buyer_industry="Dental clinics", search_keywords=["dental practice"],
+            buyer_titles=["Practice Manager"],
+            rationale="Dental clinics may need help with appointment scheduling.",
+        )
+
+    def tearDown(self):
+        self.planner.stop()
+        self.env.stop()
+        state.DB_PATH = self.old_state
+        sales_store.DB_PATH = self.old_sales
+        self.temporary.cleanup()
+
+    def search(self, **extra):
+        return self.client.post(
+            "/company/setup/service-discovery/search", auth=self.auth,
+            headers=self.headers,
+            json={"service": "Appointment scheduling for dental clinics", "desired_contacts": 2, **extra},
+        )
+
+    def test_search_seeds_a_minimal_context_and_leaves_the_rest_unknown(self):
+        from core.company_context import get_company_context
+
+        self.assertIsNone(get_company_context())
+        with patch("app.service_discovery_api.search_service_contacts", return_value={
+            "results": [], "providers": {"apollo": 0}, "completed_providers": ["apollo"], "warnings": [],
+        }):
+            response = self.search()
+        self.assertEqual(response.status_code, 200, response.text)
+        context = get_company_context()
+        assert context is not None
+        self.assertEqual(context.product.name, "Appointment scheduling for dental clinics")
+        self.assertEqual(context.customer.industry, "Dental clinics")
+        self.assertEqual(context.customer.buyer_roles, ["Practice Manager"])
+        self.assertEqual(context.state.marketing_stage, "starting_from_zero")
+        # Seeding invents nothing: the founder has not answered these yet.
+        self.assertIsNone(context.customer.ideal_customer)
+        self.assertIsNone(context.market.problem)
+        self.assertIsNone(context.objective.primary_goal)
+        self.assertEqual(context.status, "context_incomplete")
+
+    def test_optional_company_name_is_seeded_when_given(self):
+        from core.company_context import get_company_context
+
+        with patch("app.service_discovery_api.search_service_contacts", return_value={
+            "results": [], "providers": {}, "completed_providers": [], "warnings": [],
+        }):
+            self.assertEqual(self.search(company_name="Bright Dental Co").status_code, 200)
+        context = get_company_context()
+        assert context is not None
+        self.assertEqual(context.company.name, "Bright Dental Co")
+
+    def test_discovered_contacts_are_recorded_as_demand_evidence(self):
+        from core.company_context import get_company_context
+
+        lead, _ = sales_store.upsert_lead({
+            "full_name": "Alex Lee", "company": "Bright Dental",
+            "company_domain": "bright.test", "source": "apollo",
+        })
+        with patch("app.service_discovery_api.search_service_contacts", return_value={
+            "results": [lead], "providers": {"apollo": 1}, "completed_providers": ["apollo"], "warnings": [],
+        }):
+            self.assertEqual(self.search().status_code, 200)
+        context = get_company_context()
+        assert context is not None
+        self.assertEqual(context.evidence.existing_demand, ["1 prospect contact discovered via apollo"])
+
+    def test_seeding_never_overwrites_confirmed_answers(self):
+        from core.company_context import (
+            get_company_context, normalize_company_context, save_company_context,
+        )
+
+        save_company_context(normalize_company_context({
+            "company": {"name": "Confirmed Co"},
+            "product": {"name": "Confirmed product"},
+            "customer": {"ideal_customer": "Confirmed buyers", "industry": "Logistics"},
+        }))
+        with patch("app.service_discovery_api.search_service_contacts", return_value={
+            "results": [], "providers": {}, "completed_providers": [], "warnings": [],
+        }):
+            self.assertEqual(self.search(company_name="Other Co").status_code, 200)
+        context = get_company_context()
+        assert context is not None
+        self.assertEqual(context.company.name, "Confirmed Co")
+        self.assertEqual(context.product.name, "Confirmed product")
+        self.assertEqual(context.customer.industry, "Logistics")
+        # Empty fields are still filled from the search.
+        self.assertEqual(context.customer.buyer_roles, ["Practice Manager"])
+        self.assertEqual(context.state.marketing_stage, "starting_from_zero")
+
+    def test_seeding_failure_never_breaks_the_search(self):
+        with patch("app.service_discovery_api.search_service_contacts", return_value={
+            "results": [], "providers": {}, "completed_providers": [], "warnings": [],
+        }), patch("core.company_context.seed_from_service", side_effect=RuntimeError("db gone")):
+            response = self.search()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["runs"][0]["status"], "provider_error")

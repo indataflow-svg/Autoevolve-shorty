@@ -211,7 +211,7 @@ class MockExecutionTests(GovernanceBase):
         decision, _ = validate_plan(ValidationPlan.model_validate(NORTHLIGHT_PLAN), self.context, plan_id="")
         save_governance(record_from_decision(decision))
         created = self.client.post(
-            "/company/marketing/validation/workflow", auth=self.auth, headers=self.headers, json={},
+            "/company/automation/governance", auth=self.auth, headers=self.headers, json={},
         )
         self.assertEqual(created.status_code, 200, created.text)
         self.assertEqual(created.json()["status"], "valid")
@@ -243,7 +243,7 @@ class MockExecutionTests(GovernanceBase):
 
         # Governance requires approval: the runner is not reachable yet.
         blocked_run = self.client.post(
-            "/company/marketing/validation/workflow/run", auth=self.auth,
+            "/company/automation/governance/run", auth=self.auth,
             headers=self.headers, json={"targets": MOCK_TARGETS},
         )
         self.assertEqual(blocked_run.status_code, 409)
@@ -251,14 +251,14 @@ class MockExecutionTests(GovernanceBase):
         self.assertEqual(workflow_store.get_workflow(record["workflow_id"]).state.status, "draft")
 
         approved = self.client.post(
-            "/company/marketing/validation/workflow/approve", auth=self.auth, headers=self.headers, json={},
+            "/company/automation/governance/approve", auth=self.auth, headers=self.headers, json={},
         )
         self.assertEqual(approved.status_code, 200, approved.text)
         self.assertEqual(approved.json()["lifecycle"], "approved")
         self.assertEqual(workflow_store.get_workflow(record["workflow_id"]).state.status, "ready")
 
         executed = self.client.post(
-            "/company/marketing/validation/workflow/run", auth=self.auth,
+            "/company/automation/governance/run", auth=self.auth,
             headers=self.headers, json={"targets": MOCK_TARGETS},
         )
         self.assertEqual(executed.status_code, 200, executed.text)
@@ -279,19 +279,19 @@ class MockExecutionTests(GovernanceBase):
         )
 
         # The lifecycle is observable and survives a reload.
-        state_record = self.client.get("/company/marketing/validation/workflow", auth=self.auth).json()
+        state_record = self.client.get("/company/automation/governance", auth=self.auth).json()
         self.assertEqual(state_record["lifecycle"], "executed")
         self.assertEqual(latest_governance().workflow_id, record["workflow_id"])
 
     def test_simulation_has_no_external_side_effects(self):
         self._governed_workflow()
-        self.client.post("/company/marketing/validation/workflow/approve", auth=self.auth, headers=self.headers, json={})
+        self.client.post("/company/automation/governance/approve", auth=self.auth, headers=self.headers, json={})
         with patch("services.marketing_worker.run_g1") as g1, \
              patch("services.marketing_worker.run_media_pipeline") as g2, \
              patch("services.marketing_worker.run_g3") as g3, \
              patch("services.workflow_actions.apollo_client", create=True) as apollo:
             response = self.client.post(
-                "/company/marketing/validation/workflow/run", auth=self.auth,
+                "/company/automation/governance/run", auth=self.auth,
                 headers=self.headers, json={"targets": MOCK_TARGETS},
             )
         self.assertEqual(response.status_code, 200, response.text)
@@ -309,7 +309,7 @@ class MockExecutionTests(GovernanceBase):
         self.headers = {"X-Founder-Action-Token": "action-secret"}
         self.store_plan(plan_with(max_spend_usd=5000))
         created = self.client.post(
-            "/company/marketing/validation/workflow", auth=self.auth, headers=self.headers, json={},
+            "/company/automation/governance", auth=self.auth, headers=self.headers, json={},
         )
         self.assertEqual(created.status_code, 200, created.text)
         body = created.json()
@@ -320,7 +320,7 @@ class MockExecutionTests(GovernanceBase):
         self.assertEqual(workflow_store.list_workflows(), [])
 
         run = self.client.post(
-            "/company/marketing/validation/workflow/run", auth=self.auth, headers=self.headers, json={},
+            "/company/automation/governance/run", auth=self.auth, headers=self.headers, json={},
         )
         self.assertEqual(run.status_code, 409)
         self.assertIn("blocked by governance", run.json()["detail"])
@@ -331,16 +331,16 @@ class MockExecutionTests(GovernanceBase):
         self.auth = ("founder", "dashboard-secret")
         self.headers = {"X-Founder-Action-Token": "action-secret"}
         self.assertEqual(
-            self.client.get("/company/marketing/validation/workflow", auth=self.auth).status_code, 404
+            self.client.get("/company/automation/governance", auth=self.auth).status_code, 404
         )
         self.assertEqual(
-            self.client.post("/company/marketing/validation/workflow", auth=self.auth).status_code, 403
+            self.client.post("/company/automation/governance", auth=self.auth).status_code, 403
         )
         self.assertEqual(
-            self.client.post("/company/marketing/validation/workflow/run", auth=self.auth).status_code, 403
+            self.client.post("/company/automation/governance/run", auth=self.auth).status_code, 403
         )
         self.assertEqual(
-            self.client.get("/company/marketing/validation/workflow").status_code, 401
+            self.client.get("/company/automation/governance").status_code, 401
         )
 
     def test_runner_validates_the_created_workflow_and_the_action_is_deterministic(self):

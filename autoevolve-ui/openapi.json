@@ -15134,6 +15134,18 @@
             "maximum": 25.0,
             "minimum": 1.0,
             "title": "Desired Contacts"
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
           }
         },
         "type": "object",

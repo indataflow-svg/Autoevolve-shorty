@@ -32,6 +32,25 @@ FIXTURE_PLAN = NORTHLIGHT_PLAN
 
 
 import agents.hermes as hermes  # noqa: E402
+import app.onboarding_api as onboarding_api  # noqa: E402
+
+
+async def fixture_strategy_draft(program):
+    """Stand in for the AI strategy draft: no provider call in browser tests."""
+    context = program.company_context
+    industry = (context.industry if context else None) or "Logistics"
+    return onboarding_api.StrategyInput(
+        name="Northlight Ops first program", objective=program.company.objective,
+        success_metric="Qualified replies per month", offers=["Operations audit"],
+        icp=onboarding_api.Icp(industry=industry, description="Midmarket operations teams with manual handoffs", company_sizes=["20-200 employees"]),
+        buyer_titles=["Operations Director"], markets=[program.company.market],
+        positive_signals=["Growing operations team"], exclusions=["Outside the primary market"],
+        tone="Direct and factual", approved_claims=["Operations workflow support"],
+        prohibited_claims=["Guaranteed revenue"], channels=["email"],
+    )
+
+
+onboarding_api._generate_strategy_draft = fixture_strategy_draft
 
 
 def fixture_plan_market_validation(context):

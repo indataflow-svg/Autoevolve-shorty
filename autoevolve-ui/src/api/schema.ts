@@ -4584,6 +4584,8 @@ export interface components {
             service: string;
             /** Desired Contacts */
             desired_contacts: number;
+            /** Company Name */
+            company_name?: string | null;
         };
         /** ServiceRunView */
         ServiceRunView: {

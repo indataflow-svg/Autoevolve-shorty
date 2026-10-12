@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, CheckCircle2, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { companyDetail } from '../api/companies'
-import { companyContext, MARKETING_STAGES, type MarketingStage } from '../api/companyContext'
+import { companyContext, MARKETING_STAGES, type CompanyContext, type MarketingStage } from '../api/companyContext'
 import {
   activateProgram, confirmCompany, confirmStrategy, createFirstDraft, decideRefinement,
   onboardingView, recordCalibration, researchOwnCompany, resolveBuyer, searchFirstCompanies, suggestStrategy,
@@ -66,15 +66,63 @@ const emptyExtras: ConfirmExtras = {
 const listKeys = ['company_sizes', 'customer_geography', 'buyer_roles', 'alternatives', 'existing_customers', 'existing_demand', 'previous_marketing', 'testimonials', 'traction', 'other_evidence', 'channels', 'assets', 'team', 'geographic_constraints', 'brand_constraints', 'budget_constraints', 'regulatory_constraints', 'operational_constraints'] as const
 type ListKey = (typeof listKeys)[number]
 
-function savedExtras(program: Program): ConfirmExtras {
+function savedExtras(program: Program, seeded?: Partial<ConfirmExtras>): ConfirmExtras {
   const confirmed = program.company_context as Partial<ConfirmExtras> | null | undefined
-  if (!confirmed) return emptyExtras
-  return { ...emptyExtras, ...Object.fromEntries(
+  const flat = confirmed ? Object.fromEntries(
     Object.entries(confirmed).map(([key, value]) => [key, value ?? (listKeys.includes(key as ListKey) ? [] : '')]),
-  ) as Partial<ConfirmExtras> }
+  ) as Partial<ConfirmExtras> : {}
+  // Seeded quick-start answers pre-fill what the founder has not typed yet;
+  // anything already confirmed always wins. Explicit undefined values are
+  // dropped: spreading them would clobber real answers with missing keys.
+  const defined = (values: Partial<ConfirmExtras>) => Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined),
+  ) as Partial<ConfirmExtras>
+  return { ...emptyExtras, ...defined(seeded || {}), ...defined(flat) }
 }
 
-function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: Program; run: Run; token: string; onEditCompany: () => void }) {
+/** Canonical sections projected back onto the confirm form (reverse of the
+ * backend's onboarding projection). Only known values are returned, so empty
+ * seeded fields never clear what the form already has. */
+function seededExtras(context: CompanyContext | undefined): Partial<ConfirmExtras> {
+  if (!context) return {}
+  const pick = (value: unknown) => typeof value === 'string' && value.trim() ? value : undefined
+  const pickList = (value: unknown) => Array.isArray(value) && value.length ? value as string[] : undefined
+  const entries: Array<[string, string | string[]]> = [
+    ['geography', pick(context.company?.geography)],
+    ['product_name', pick(context.product?.name)],
+    ['product_description', pick(context.product?.description)],
+    ['product_category', pick(context.product?.category)],
+    ['ideal_customer', pick(context.customer?.ideal_customer)],
+    ['company_sizes', pickList(context.customer?.company_size)],
+    ['customer_geography', pickList(context.customer?.geography)],
+    ['buyer_roles', pickList(context.customer?.buyer_roles)],
+    ['segment', pick(context.market?.segment)],
+    ['problem', pick(context.market?.problem)],
+    ['urgency', pick(context.market?.urgency)],
+    ['alternatives', pickList(context.market?.alternatives)],
+    ['existing_customers', pickList(context.evidence?.existing_customers)],
+    ['existing_demand', pickList(context.evidence?.existing_demand)],
+    ['previous_marketing', pickList(context.evidence?.previous_marketing)],
+    ['testimonials', pickList(context.evidence?.testimonials)],
+    ['traction', pickList(context.evidence?.traction)],
+    ['other_evidence', pickList(context.evidence?.other)],
+    ['pricing', pick(context.offer?.pricing)],
+    ['business_model', pick(context.offer?.business_model)],
+    ['channels', pickList(context.resources?.channels)],
+    ['assets', pickList(context.resources?.assets)],
+    ['team', pickList(context.resources?.team)],
+    ['budget', pick(context.resources?.budget)],
+    ['geographic_constraints', pickList(context.constraints?.geographic)],
+    ['brand_constraints', pickList(context.constraints?.brand)],
+    ['budget_constraints', pickList(context.constraints?.budget)],
+    ['regulatory_constraints', pickList(context.constraints?.regulatory)],
+    ['operational_constraints', pickList(context.constraints?.operational)],
+    ['desired_outcome', pick(context.objective?.desired_outcome)],
+  ].filter((entry): entry is [string, string | string[]] => entry[1] !== undefined)
+  return Object.fromEntries(entries) as Partial<ConfirmExtras>
+}
+
+function CompanyConfirmForm({ program, seeded, seededIndustry, run, token, onEditCompany }: { program: Program; seeded: Partial<ConfirmExtras>; seededIndustry: string | undefined; run: Run; token: string; onEditCompany: () => void }) {
   const credentials = useCredentials()
   const research = program.company_research as Record<string, unknown> | null
   const sources = Array.isArray(research?.sources) ? research.sources.filter((item): item is { field: string; url: string } => !!item && typeof item === 'object' && typeof item.url === 'string' && typeof item.field === 'string') : []
@@ -82,11 +130,11 @@ function CompanyConfirmForm({ program, run, token, onEditCompany }: { program: P
   const [name, setName] = useState(program.company_context?.name || fact(research, 'name') || program.company.name || '')
   const website = program.company.website
   const [description, setDescription] = useState(program.company_context?.description || fact(research, 'description'))
-  const [industry, setIndustry] = useState(program.company_context?.industry || fact(research, 'industry'))
+  const [industry, setIndustry] = useState(program.company_context?.industry || seededIndustry || fact(research, 'industry'))
   const [positioning, setPositioning] = useState(program.company_context?.positioning || fact(signals, 'summary_line'))
   const [offerSummary, setOfferSummary] = useState(program.company_context?.offer_summary || (Array.isArray(research?.specialties) ? research.specialties.filter((item): item is string => typeof item === 'string').join(', ') : ''))
   // Optional answers. Anything left blank is stored as unknown, never guessed.
-  const [extras, setExtras] = useState<ConfirmExtras>(() => savedExtras(program))
+  const [extras, setExtras] = useState<ConfirmExtras>(() => savedExtras(program, seeded))
   const [stage, setStage] = useState<MarketingStage>(program.company_context?.marketing_stage || 'starting_from_zero')
   const setExtra = <K extends keyof ConfirmExtras>(key: K, value: ConfirmExtras[K]) => setExtras(current => ({ ...current, [key]: value }))
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -210,12 +258,14 @@ export function OnboardingPage() {
       if (label === 'save company') setEditingCompany(false)
       if (label === 'confirm company') {
         sessionStorage.removeItem(strategyEditKey(confirmed.program!.id))
+        // The company context is saved by the confirm itself: refresh it now
+        // so a later strategy-draft failure cannot hide the saved context.
+        await queryClient.invalidateQueries({ queryKey: ['company-context'] })
         setPending('generating AI strategy')
         const drafted = await suggestStrategy(credentials, token)
         queryClient.setQueryData(['onboarding'], drafted)
       }
       if (label === 'save strategy') sessionStorage.removeItem(strategyEditKey(confirmed.program!.id))
-      if (label === 'confirm company') await queryClient.invalidateQueries({ queryKey: ['company-context'] })
       await queryClient.invalidateQueries({ queryKey: ['onboarding'] })
       if (label === 'activate') {
         await queryClient.invalidateQueries({ queryKey: ['home'] })
@@ -235,7 +285,7 @@ export function OnboardingPage() {
       {pending && <p role="status" className="operational-note">{pending}… Waiting for backend confirmation.</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
       {(step === 'company' || editingCompany) && <CompanyStartForm program={program} run={run} token={token} />}
-      {!editingCompany && (step === 'research_company' || step === 'confirm_company') && program && <CompanyConfirmForm key={program.research_provider || 'manual'} program={program} run={run} token={token} onEditCompany={() => setEditingCompany(true)} />}
+      {!editingCompany && (step === 'research_company' || step === 'confirm_company') && program && <CompanyConfirmForm key={program.research_provider || 'manual'} program={program} seeded={seededExtras(companyContext_?.context)} seededIndustry={typeof companyContext_?.context?.customer?.industry === 'string' ? companyContext_?.context?.customer?.industry : undefined} run={run} token={token} onEditCompany={() => setEditingCompany(true)} />}
       {step === 'strategy' && program && (program.strategy_draft
         ? <StrategyForm program={program} run={run} token={token} />
         : <Section title="3. Define your first program" detail="Generate an AI draft from your confirmed company context, then review and edit every field before saving."><button className="button primary" disabled={!!pending} onClick={() => void run('generate AI strategy', () => suggestStrategy(credentials, token))}>Generate AI draft <ArrowRight size={16} /></button></Section>)}

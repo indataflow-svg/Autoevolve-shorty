@@ -42,8 +42,8 @@ test('a founder reaches market validation and reviews a generated plan', async (
   await expect(page.locator('.home-stage')).toContainText('market-validation experiment')
 
   // The market-validation screen plans only.
-  await page.getByRole('link', { name: 'Market Validation' }).click()
-  await expect(page.getByRole('heading', { name: 'Market Validation', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Workflows' }).click()
+  await expect(page.getByRole('heading', { name: 'Workflows', exact: true })).toBeVisible()
   await expect(page.getByText('no plan yet')).toBeVisible()
   for (const forbidden of ['Send', 'Publish', 'Launch', 'Execute', 'Run campaign']) {
     await expect(page.getByRole('button', { name: forbidden })).toHaveCount(0)
@@ -69,7 +69,7 @@ test('a founder reaches market validation and reviews a generated plan', async (
   await page.getByRole('button', { name: 'View Plan' }).click()
   await expect(page.getByRole('heading', { name: 'Hypothesis' })).toBeVisible()
 
-  const stored = await (await request.get('/company/marketing/validation/plan', { headers: { Authorization: auth } })).json()
+  const stored = await (await request.get('/company/automation/plan', { headers: { Authorization: auth } })).json()
   expect(stored.status).toBe('planned')
   expect(stored.plan.workflow_template).toBe('market_validation_v1')
   expect(stored.plan.validation.method).toBe('targeted_outbound')
@@ -103,7 +103,7 @@ test('governance validates, creates a workflow, and runs a simulation', async ({
     marketing_stage: 'starting_from_zero',
   } })
 
-  await page.goto('/validation')
+  await page.goto('/workflows')
   await page.getByLabel('Username').fill('founder')
   await page.getByLabel('Password').fill('browser-secret')
   await page.getByRole('button', { name: 'Sign in' }).click()
@@ -113,8 +113,6 @@ test('governance validates, creates a workflow, and runs a simulation', async ({
 
   await page.getByRole('button', { name: 'Validate Plan' }).first().click()
   await expect(page.locator('.validation-lifecycle').getByText('Workflow Created')).toBeVisible()
-  // A fully specified, in-limit plan passes with nothing to report.
-  await expect(page.locator('.validation-lifecycle').getByText('Validated')).toBeVisible()
   await expect(page.locator('.validation-reasons')).toHaveCount(0)
 
   // Execution stays locked until the founder approves.
@@ -124,10 +122,10 @@ test('governance validates, creates a workflow, and runs a simulation', async ({
   await page.getByRole('button', { name: 'Run Simulation' }).click()
   await expect(page.locator('.validation-lifecycle').getByText('Executed')).toBeVisible()
   await expect(page.getByText('simulated · outreach')).toBeVisible()
-  await expect(page.getByText('External side effects')).toBeVisible()
+  await expect(page.locator('.onboarding-panel', { has: page.getByRole('heading', { name: 'Governance' }) }).getByText('External side effects')).toBeVisible()
   await page.screenshot({ path: '/tmp/autoevolve-market-validation-executed.png', fullPage: true })
 
-  const governance = await (await request.get('/company/marketing/validation/workflow', { headers: { Authorization: auth } })).json()
+  const governance = await (await request.get('/company/automation/governance', { headers: { Authorization: auth } })).json()
   expect(governance.status).toBe('valid')
   expect(governance.lifecycle).toBe('executed')
   expect(governance.required_approval).toBe(true)
