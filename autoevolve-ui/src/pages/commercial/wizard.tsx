@@ -6,6 +6,7 @@ import type { Credentials } from '../../api/client'
 import { commercialApi, commercialWrite } from '../../api/commercial'
 import { companyContext, mergeContextSections, replaceCompanyContext } from '../../api/companyContext'
 import { Empty, Field, Stepper } from './shared'
+import { AnswerCards } from '../../components/CompanyDataCards'
 import { CsvWizard } from './csvWizard'
 
 const STORAGE_KEY = 'cx-setup-session'
@@ -19,10 +20,10 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
   const [busy, setBusy] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY))
   const [step, setStep] = useState(0)
-  const [details, setDetails] = useState(false)
   const [showCsv, setShowCsv] = useState(false)
   const [form, setForm] = useState<Record<string, string>>({})
   const set = (k: string, v: string) => setForm(s => ({ ...s, [k]: v }))
+  const [ctxTick, setCtxTick] = useState(0)
 
   const sessions = useQuery({ queryKey: ['c-sessions'], queryFn: api.sessions })
   const ctxView = useQuery({ queryKey: ['company-context'], queryFn: () => companyContext(credentials) })
@@ -124,15 +125,12 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
     {(active.progress || {}).track === 'research' && <p className="cx-note">Research track: strategy work continues in the guided research flow — values carry over, nothing resets.</p>}
     <Stepper steps={STEPS} current={step} onGo={go} />
     {error && <p className="form-error" role="alert">{error}</p>}
-    {step === 0 && <CompanyStep company={company} form={form} set={set} details={details} setDetails={setDetails}
-      busy={busy !== null} onSave={(patch, offer) => void write('Saving company profile', async () => {
-        // Fresh fetch before the full-replacement PUT: the cached view may
-        // predate saves made on other pages.
-        const fresh = await companyContext(credentials)
-        await replaceCompanyContext(credentials, mergeContextSections(
-          fresh.context as unknown as Record<string, unknown>, { company: patch }), token)
-        if (offer) await commercialWrite(credentials, token).createOffer(offer)
-      }, ['company-context', 'c-offers'])} />}
+    {step === 0 && <CompanyStep view={ctxView.data} busy={busy !== null} savedTick={ctxTick}
+      credentials={credentials} token={token} onSaved={() => {
+        setCtxTick(tick => tick + 1)
+        void queryClient.invalidateQueries({ queryKey: ['company-context'] })
+        void queryClient.invalidateQueries({ queryKey: ['c-offers'] })
+      }} />}
     {step === 1 && <IcpStep templates={templates.data || []} busy={busy !== null}
       count={(icps.data || []).length} isB={active.path === 'B'}
       onResearchTrack={() => {
@@ -202,46 +200,87 @@ function stepFromKey(key: string): number {
   return map[key] ?? 0
 }
 
-function CompanyStep({ company, form, set, details, setDetails, busy, onSave }: {
-  company?: { name?: string }
-  form: Record<string, string>; set: (k: string, v: string) => void
-  details: boolean; setDetails: (v: boolean) => void
-  busy: boolean; onSave: (patch: Record<string, string>, offer: Record<string, unknown> | null) => void
+function CompanyStep({ view, busy, savedTick, credentials, token, onSaved }: {
+  view: { context: unknown } | undefined
+  busy: boolean
+  savedTick: number
+  credentials: Credentials
+  token: string
+  onSaved: () => void
 }) {
-  const [saved, setSaved] = useState(false)
-  const f = (k: string) => form[`co_${k}`] || ''
-  const setF = (k: string, v: string) => { set(`co_${k}`, v); setSaved(false) }
-  return <div className="cx-form">
-    {company?.name && <p className="cx-note">Saved: {company.name}. Editing updates only the fields you change.</p>}
-    <div className="cx-grid">
-      <Field label="Company name" hint="e.g. Northwind Logistics"><input value={f('name')} onChange={e => setF('name', e.target.value)} placeholder="Northwind Logistics" /></Field>
-      <Field label="Website" hint="e.g. northwind.example"><input value={f('website')} onChange={e => setF('website', e.target.value)} placeholder="northwind.example" /></Field>
+  const [name, setName] = useState('')
+  const [website, setWebsite] = useState('')
+  const [offer, setOffer] = useState({ name: '', description: '', category: '', market: '', pricing: '' })
+  const [details, setDetails] = useState(false)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState<'context' | 'offer' | null>(null)
+  const [savedWhat, setSavedWhat] = useState('')
+
+  async function saveContext(touched: Record<string, Record<string, string>>) {
+    if (!token.trim()) { setError('Enter the founder action token at the top of the page first.'); return }
+    // Identity fields ride the same save so company data is written once.
+    const withIdentity = { ...touched }
+    const identity: Record<string, string> = {}
+    if (name.trim()) identity.name = name.trim()
+    if (website.trim()) identity.website = website.trim()
+    if (Object.keys(identity).length) withIdentity.company = { ...withIdentity.company, ...identity }
+    setError(''); setSaving('context')
+    try {
+      // Fresh fetch before the full-replacement PUT: the cached view may
+      // predate saves made on other pages.
+      const fresh = await companyContext(credentials)
+      await replaceCompanyContext(credentials, mergeContextSections(
+        fresh.context as unknown as Record<string, unknown>, withIdentity), token)
+      setName(''); setWebsite('')
+      setSavedWhat('Company data saved — only filled fields were written.')
+      onSaved()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Company data was not saved.') }
+    finally { setSaving(null) }
+  }
+
+  async function saveOffer() {
+    if (!offer.name.trim()) { setError('Give the offer a name.'); return }
+    if (!token.trim()) { setError('Enter the founder action token at the top of the page first.'); return }
+    setError(''); setSaving('offer')
+    try {
+      await commercialWrite(credentials, token).createOffer({
+        name: offer.name.trim(), description: offer.description.trim(),
+        category: offer.category.trim(), target_market: offer.market.trim(),
+        pricing_model: offer.pricing.trim(),
+      })
+      setOffer({ name: '', description: '', category: '', market: '', pricing: '' })
+      setSavedWhat('Offer saved.')
+      onSaved()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Offer was not saved.') }
+    finally { setSaving(null) }
+  }
+
+  const setO = (k: keyof typeof offer, v: string) => { setOffer(o => ({ ...o, [k]: v })); setSavedWhat('') }
+  return <div>
+    <div className="cx-form">
+      <div className="cx-grid">
+        <Field label="Company name" hint="e.g. Northwind Logistics"><input value={name} onChange={e => { setName(e.target.value); setSavedWhat('') }} placeholder="Northwind Logistics" /></Field>
+        <Field label="Website" hint="e.g. northwind.example"><input value={website} onChange={e => { setWebsite(e.target.value); setSavedWhat('') }} placeholder="northwind.example" /></Field>
+      </div>
     </div>
-    <Field label="Main product or service" hint="One line on what you sell."><input value={f('offer')} onChange={e => setF('offer', e.target.value)} placeholder="Managed dispatch desk" /></Field>
-    <Field label="Offer description" hint="Who it is for and the outcome."><input value={f('odesc')} onChange={e => setF('odesc', e.target.value)} placeholder="For logistics teams drowning in spreadsheets" /></Field>
-    <button className="cx-link" type="button" onClick={() => setDetails(!details)} aria-expanded={details}>{details ? 'Hide commercial details' : 'More commercial details'}</button>
-    {details && <div className="cx-grid">
-      <Field label="Industry"><input value={f('industry')} onChange={e => setF('industry', e.target.value)} placeholder="Logistics" /></Field>
-      <Field label="Operating market"><input value={f('market')} onChange={e => setF('market', e.target.value)} placeholder="North America" /></Field>
-      <Field label="Target customer"><input value={f('customer')} onChange={e => setF('customer', e.target.value)} placeholder="Dispatch managers at 20–200 person firms" /></Field>
-      <Field label="Pricing" hint="Model or typical value, when known."><input value={f('pricing')} onChange={e => setF('pricing', e.target.value)} placeholder="$2k/mo retainer" /></Field>
-    </div>}
-    <div className="modal-actions">
-      <button className="button primary" disabled={busy || (!f('name').trim() && !f('website').trim() && !f('offer').trim())}
-        onClick={() => {
-          const patch: Record<string, string> = {}
-          if (f('name').trim()) patch.name = f('name').trim()
-          if (f('website').trim()) patch.website = f('website').trim()
-          const offer = f('offer').trim() ? {
-            name: f('offer').trim(), description: f('odesc').trim(),
-            category: f('industry').trim(), target_market: f('market').trim(),
-            pricing_model: f('pricing').trim(),
-          } : null
-          setSaved(true)
-          onSave(patch, offer)
-        }}>Save draft</button>
-      {saved && <span className="cx-note">Saved — only filled fields were written.</span>}
+    {view
+      ? <AnswerCards view={view as never} busy={busy || saving !== null} savedTick={savedTick} saveLabel="Save company data" onSave={touched => void saveContext(touched)} />
+      : <p className="cx-note">Loading company data…</p>}
+    <div className="cx-form">
+      <Field label="Offer name" hint="A separate offer record; saved on its own."><input value={offer.name} onChange={e => setO('name', e.target.value)} placeholder="Managed dispatch desk" /></Field>
+      <Field label="Offer description" hint="Who it is for and the outcome."><input value={offer.description} onChange={e => setO('description', e.target.value)} placeholder="For logistics teams drowning in spreadsheets" /></Field>
+      <button className="cx-link" type="button" onClick={() => setDetails(d => !d)} aria-expanded={details}>{details ? 'Hide offer details' : 'More offer details'}</button>
+      {details && <div className="cx-grid">
+        <Field label="Category"><input value={offer.category} onChange={e => setO('category', e.target.value)} placeholder="Logistics" /></Field>
+        <Field label="Target market"><input value={offer.market} onChange={e => setO('market', e.target.value)} placeholder="North America" /></Field>
+        <Field label="Pricing" hint="Model or typical value, when known."><input value={offer.pricing} onChange={e => setO('pricing', e.target.value)} placeholder="$2k/mo retainer" /></Field>
+      </div>}
+      <div className="modal-actions">
+        <button className="button secondary" disabled={busy || saving !== null || !offer.name.trim()} onClick={() => void saveOffer()}>{saving === 'offer' ? 'Saving…' : 'Save offer'}</button>
+        {savedWhat && <span className="cx-note">{savedWhat}</span>}
+      </div>
     </div>
+    {error && <p className="form-error" role="alert">{error}</p>}
   </div>
 }
 

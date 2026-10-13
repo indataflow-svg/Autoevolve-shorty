@@ -76,6 +76,18 @@ workflow preparation* once the threshold is crossed, with the still-missing
 fields listed by name. Progress advances on every saved answer — nothing waits
 for a perfect record.
 
+**Company data has one home and one trigger.** The cards live only on
+`/commercial` (shared `AnswerCards`, also used by the setup wizard's company
+step); `/workflows` shows readiness status plus a link, never a second form.
+`setupTrigger(view)` in `api/companyContext.ts` classifies every flow against
+the same bands: `fresh` (all 6 groups missing) → dialog pops; `blocked`
+(below `SETUP_FLOOR_PERCENT = 40`) → actions disabled until data lands,
+dismissing the dialog does not unblock; `incomplete` (40–79%) → CTA link, no
+popup; `ready` (gated and routed) → summary only. Saves merge founder-touched
+fields over a freshly fetched context (`mergeContextSections`), so a stale
+render can never discard another page's answers through the full-replacement
+PUT.
+
 **Routes** — read: `GET /company/ui/onboarding`. Write (all founder-token):
 `POST /company/setup/onboarding/{company,research-company,company/confirm,strategy/draft,strategy,search,calibration,refinement,buyer,draft,activate}`
 

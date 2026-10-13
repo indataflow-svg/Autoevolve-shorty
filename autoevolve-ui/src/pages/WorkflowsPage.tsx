@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, ArrowRight, Building2, Compass, FileText, Flag, Package, Rocket, ShieldCheck, Users } from 'lucide-react'
+import { ArrowRight, Compass, FileText, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { companyContext, MARKETING_STAGES, mergeContextSections, replaceCompanyContext, type CompanyContextView } from '../api/companyContext'
+import { companyContext, setupTrigger } from '../api/companyContext'
 import {
   approveGovernedWorkflow, automationWorkflows, createGovernedWorkflow, generateValidationPlan, runWorkflowSimulation,
   suggestCampaign, suggestWorkflows, validationGovernance, validationPlan, type AutomationWorkflowView, type CampaignSuggestion, type GovernanceRecord, type ValidationPlanRecord, type WorkflowSuggestions,
@@ -39,112 +39,6 @@ function observedEventCount(execution: unknown, stepOutput: Record<string, unkno
   return typeof stepOutput.validation_events === 'number' ? stepOutput.validation_events : null
 }
 
-/**
- * One founder answer per required group, keyed by the label the API reports as
- * missing. The route and the workflow gate are both decided from these same
- * groups, so the panel that completes them is what turns "no stage" into a
- * routable company.
- */
-const ANSWERS: Record<string, {
-  label: string
-  question: string
-  example: string
-  help: string
-  section: string
-  key: string
-  icon: typeof Building2
-  options?: Array<{ value: string; label: string }>
-}> = {
-  company: { label: 'Company', question: 'What is your company?', example: 'e.g. Northwind Logistics, a dispatch desk for freight teams', help: 'What the company is, in a sentence.', section: 'company', key: 'description', icon: Building2 },
-  product: { label: 'Product', question: 'What do you sell?', example: 'e.g. managed dispatch setup plus a monthly handoff review', help: 'What you sell.', section: 'product', key: 'description', icon: Package },
-  customer: { label: 'Customer', question: 'Who buys this?', example: 'e.g. dispatch managers at 20–200 person logistics firms', help: 'Who buys this, and why them.', section: 'customer', key: 'ideal_customer', icon: Users },
-  problem: { label: 'Problem', question: 'What problem do they pay to remove?', example: 'e.g. missed loads found late in spreadsheet handoffs', help: 'The problem they pay to remove.', section: 'market', key: 'problem', icon: AlertCircle },
-  objective: { label: 'Objective', question: 'What outcome are you driving toward?', example: 'e.g. 5 booked discovery calls in 2 weeks', help: 'The outcome you are driving toward.', section: 'objective', key: 'primary_goal', icon: Flag },
-  marketing_stage: {
-    label: 'Starting state', question: 'Where are you starting from?', example: '', help: 'Whether the company already has a marketing motion. A validation plan is only planned from "starting from zero".',
-    section: 'state',
-    key: 'marketing_stage',
-    icon: Rocket,
-    options: MARKETING_STAGES,
-  },
-}
-
-const REQUIRED_GROUP_COUNT = 6
-/** Five of six groups clear the 80% workflow-preparation gate. */
-const WORKFLOW_READY_GROUPS = 5
-
-function CompanyDataPanel({ view, busy, savedTick, onSave }: {
-  view: CompanyContextView
-  busy: boolean
-  savedTick: number
-  onSave: (touched: Record<string, Record<string, string>>) => void
-}) {
-  const [draft, setDraft] = useState<Record<string, string>>({})
-  // A confirmed save refreshes the view from the server; the draft has served
-  // its purpose and must not linger over the fresh values.
-  useEffect(() => { setDraft({}) }, [savedTick])
-  const sections = view.context as unknown as Record<string, Record<string, string> | undefined>
-  const missing = (view.context.missing || []).filter(key => key in ANSWERS)
-  const routed = Boolean(view.next_stage)
-  const ready = Boolean(view.context.workflow_ready)
-  const answered = REQUIRED_GROUP_COUNT - missing.length
-
-  const stored = (key: string) => {
-    const field = ANSWERS[key]
-    return (sections[field.section] || {})[field.key] || ''
-  }
-  const current = (key: string) => {
-    if (key in draft) return draft[key]
-    // The stage is a fixed choice this phase, so it is never left blank.
-    return key === 'marketing_stage' ? (stored(key) || MARKETING_STAGES[0].value) : stored(key)
-  }
-  const save = () => {
-    // Only the single edited field per section travels up. The parent merges
-    // over a freshly fetched context, so a stale render can never smuggle old
-    // sibling values over saves made elsewhere.
-    const touched: Record<string, Record<string, string>> = {}
-    for (const key of missing) {
-      const field = ANSWERS[key]
-      const value = current(key).trim()
-      if (!value) continue
-      touched[field.section] = { ...touched[field.section], [field.key]: value }
-    }
-    onSave(touched)
-  }
-
-  return <section className="onboarding-panel">
-    <div className="onboarding-panel-head"><h2>Company data</h2><p>{!routed
-      ? 'No starting state is recorded, so AutoEvolve has no route for this company and cannot plan a validation plan. These answers set the route.'
-      : ready
-        ? 'Complete enough to prepare a workflow. Every answer here can still be corrected.'
-        : `Routed to ${view.route_label || view.next_stage}. Workflow preparation needs ${WORKFLOW_READY_GROUPS} of the ${REQUIRED_GROUP_COUNT} company data groups; ${missing.length} still missing.`}</p></div>
-    {missing.length === 0
-      ? <p className="operational-note">Every required group is answered.</p>
-      : <>
-        <div className="answer-cards">
-          {missing.map(key => {
-            const field = ANSWERS[key]
-            const Icon = field.icon
-            const filled = stored(key).trim().length > 0
-            return <div className="answer-card" key={key}>
-              <div className="answer-card-head"><Icon size={18} /><h3>{field.question}</h3>{filled && <StateBadge tone="green">answered</StateBadge>}</div>
-              <p className="answer-card-key">({field.section}.{field.key})</p>
-              {field.options
-                ? <select aria-label={field.question} value={current(key)} disabled={busy} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}>
-                  {field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-                : <textarea aria-label={field.question} value={current(key)} disabled={busy} placeholder={field.example} rows={3} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} />}
-              <small>{field.help}</small>
-            </div>
-          })}
-        </div>
-        <div className="validation-actions">
-          <button className="button primary" disabled={busy} onClick={save}>{routed && ready ? 'Save answers' : 'Save answers and resolve the route'}</button>
-          <span className="operational-note">{answered} of {REQUIRED_GROUP_COUNT} answered.</span>
-        </div>
-      </>}
-  </section>
-}
 
 function PlanView({ record }: { record: ValidationPlanRecord }) {
   const { plan, provenance, grounding, created_at: createdAt, status } = record
@@ -185,10 +79,11 @@ function PlanView({ record }: { record: ValidationPlanRecord }) {
   </div>
 }
 
-function GovernancePanel({ record, busy, error, onAction }: {
+function GovernancePanel({ record, busy, error, locked, onAction }: {
   record: GovernanceRecord
   busy: string
   error: string
+  locked?: boolean
   onAction: (action: 'validate' | 'approve' | 'run') => void
 }) {
   const steps = (record.execution?.steps || []) as Array<{ output?: Record<string, unknown> }>
@@ -204,10 +99,11 @@ function GovernancePanel({ record, busy, error, onAction }: {
       { key: 'executed', label: 'Executed', reached: Boolean(record.executed_at) },
     ].map(step => <li key={step.key} className={step.reached ? 'reached' : ''}><StateBadge tone={step.reached ? (step.key === 'plan' ? 'blue' : 'green') : 'neutral'}>{step.label}</StateBadge></li>)}</ol>
     <div className="validation-actions">
-      <button className="button secondary" disabled={busy !== ''} onClick={() => onAction('validate')}>Validate Plan</button>
-      <button className="button secondary" disabled={busy !== '' || !record.workflow_id || Boolean(record.approved_at)} onClick={() => onAction('approve')}>Approve</button>
-      <button className="button primary" disabled={busy !== '' || !record.approved_at} onClick={() => onAction('run')}>Run Simulation</button>
+      <button className="button secondary" disabled={busy !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => onAction('validate')}>Validate Plan</button>
+      <button className="button secondary" disabled={busy !== '' || locked || !record.workflow_id || Boolean(record.approved_at)} onClick={() => onAction('approve')}>Approve</button>
+      <button className="button primary" disabled={busy !== '' || locked || !record.approved_at} onClick={() => onAction('run')}>Run Simulation</button>
     </div>
+    {locked && <p className="operational-note">Actions unlock at 40% company data — <Link to="/commercial">complete it there</Link>.</p>}
     {busy && <p role="status" className="operational-note">{busy}…</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     {record.status === 'blocked' && <div className="validation-reasons"><h3><StateBadge tone="red">Blocked</StateBadge></h3><ul>{(record.reasons || []).map(reason => <li key={reason}>{reason}</li>)}</ul><p className="operational-note">No workflow was created and nothing can run until the plan changes.</p></div>}
@@ -314,8 +210,6 @@ export function WorkflowsPage() {
   const [token, setToken] = useState('')
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
-  const [savedTick, setSavedTick] = useState(0)
-  const [savedNote, setSavedNote] = useState('')
   const [showPlan, setShowPlan] = useState(false)
   const record = query.data
   const decision = governance.data
@@ -324,21 +218,11 @@ export function WorkflowsPage() {
   const noDecisionYet = !decision && (governance.isError ? (governance.error as ApiError).status === 404 : governance.isSuccess)
   const failed = query.isError && !noPlanYet
   const stage = (value: string | null | undefined) => (value || '—').replaceAll('_', ' ')
-  async function saveContext(touched: Record<string, Record<string, string>>) {
-    if (!token.trim()) { setError('Enter the founder action token before saving company answers.'); return }
-    setError(''); setSavedNote(''); setPending('Saving company answers')
-    try {
-      // Refetch first: the PUT is a full replacement, and merging over a
-      // stale render would silently discard saves made elsewhere.
-      const fresh = await companyContext(credentials)
-      const updated = await replaceCompanyContext(credentials, mergeContextSections(fresh.context as unknown as Record<string, unknown>, touched), token)
-      queryClient.setQueryData(['company-context'], updated)
-      setSavedTick(tick => tick + 1)
-      setSavedNote(`Saved · ${updated.context.completeness_percent ?? 0}% complete`)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Those answers were not saved.')
-    } finally { setPending('') }
-  }
+  // Company data lives on /commercial now; this page only reads readiness.
+  // Below the 40% floor the actions stay disabled: there is too little to
+  // plan, validate, or run against. The server gates remain the backstop.
+  const trigger = setupTrigger(routing.data ?? null)
+  const locked = trigger === 'fresh' || trigger === 'blocked'
   async function generate() {
     if (!token.trim()) { setError('Enter the founder action token before generating a plan.'); return }
     setError(''); setPending('Hermes is preparing a validation plan')
@@ -367,23 +251,29 @@ export function WorkflowsPage() {
   return <AppShell active="Workflows" query="" onQueryChange={() => undefined}><div className="page-layout"><main className="page-main"><div className="page-content validation-page">
     <div className="page-heading"><div><h1>Workflows</h1><p>Find the fastest credible way to test whether this business can generate real demand.</p></div><div className="heading-actions"><Link to="/home" className="button secondary">Home</Link></div></div>
     <div className="onboarding-progress"><span>Route: <strong>{stage(routing.data?.marketing_stage)} → {stage(routing.data?.next_stage)}</strong></span><StateBadge tone={record ? 'blue' : 'neutral'}>{record ? 'plan ready' : 'no plan yet'}</StateBadge><span>{record ? `Status: ${record.status}` : 'Planning only — nothing is executed'}</span></div>
-    {routing.data?.context && <p className="operational-note">Company data: <strong>{routing.data.context.completeness_percent ?? 0}%</strong> complete{(routing.data.context.workflow_ready ?? false) ? ' · ready for workflow preparation' : ` · needs 80% for workflow preparation${(routing.data.context.missing?.length ?? 0) > 0 ? ` (missing: ${(routing.data.context.missing || []).join(', ').replaceAll('_', ' ')})` : ''}`}. Get Started keeps your progress; the panel below answers the same questions in place.</p>}
+    {routing.data?.context && <p className="operational-note">Company data: <strong>{routing.data.context.completeness_percent ?? 0}%</strong> complete{(routing.data.context.workflow_ready ?? false) ? ' · ready for workflow preparation' : ` · needs 80% for workflow preparation${(routing.data.context.missing?.length ?? 0) > 0 ? ` (missing: ${(routing.data.context.missing || []).join(', ').replaceAll('_', ' ')})` : ''}`}. Company data is entered once on the <Link to="/commercial">Commercial page</Link>.</p>}
     {query.isPending ? <LoadingRows label="Loading validation plan" /> : failed
       ? <DataState title="Validation plan could not be loaded" detail={query.error.message} retry={() => query.refetch()} />
       : <>
         <label className="onboarding-token">Founder action token<input type="password" autoComplete="off" aria-label="Founder action token" value={token} onChange={event => setToken(event.target.value)} /><small>Required by the existing action gate; held only in this page's memory.</small></label>
         {error && <p className="form-error" role="alert">{error}</p>}
-        {savedNote && !error && <p className="operational-note" role="status">{savedNote}</p>}
-        {routing.data && (Boolean(routing.data.next_stage) === false || (routing.data.context.missing?.length ?? 0) > 0) && <CompanyDataPanel view={routing.data} busy={pending !== ''} savedTick={savedTick} onSave={touched => void saveContext(touched)} />}
-        {pending === 'Saving company answers' && <p role="status" className="operational-note">Saving company answers…</p>}
+        {routing.data && (trigger === 'fresh' || trigger === 'blocked') && (
+          <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Company data</h2><p>{trigger === 'fresh'
+            ? 'No company data is recorded yet. Set it up once to unlock planning, validation, and runs.'
+            : `Company data is at ${routing.data.context.completeness_percent ?? 0}% — workflow actions need 40% to unlock.`}</p></div>
+            <div className="validation-actions"><Link to="/commercial" className="button primary">Complete company data</Link>
+              <span className="operational-note">{routing.data.context.completeness_percent ?? 0}% complete · dismissing this panel does not unblock the actions below</span></div>
+          </section>)}
+        {routing.data && trigger === 'incomplete' && (
+          <p className="operational-note">Company data is at {routing.data.context.completeness_percent ?? 0}% — <Link to="/commercial">complete it</Link> to reach workflow readiness.</p>)}
         {pending.startsWith('Hermes') && <p role="status" className="operational-note">Hermes is preparing a validation plan through the model gateway…</p>}
-        {record && <div className="validation-actions"><StateBadge tone="green">Validation Plan Ready</StateBadge><button className="button secondary" onClick={() => setShowPlan(current => !current)}>{showPlan ? 'Hide plan' : 'View Plan'}</button><button className="button primary" disabled={pending !== ''} onClick={() => void generate()}>Generate Validation Plan</button></div>}
-        {!record && <div className="validation-actions"><button className="button primary" disabled={pending !== ''} onClick={() => void generate()}>Generate Validation Plan <ArrowRight size={16} /></button></div>}
+        {record && <div className="validation-actions"><StateBadge tone="green">Validation Plan Ready</StateBadge><button className="button secondary" onClick={() => setShowPlan(current => !current)}>{showPlan ? 'Hide plan' : 'View Plan'}</button><button className="button primary" disabled={pending !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => void generate()}>Generate Validation Plan</button></div>}
+        {!record && <div className="validation-actions"><button className="button primary" disabled={pending !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => void generate()}>Generate Validation Plan <ArrowRight size={16} /></button></div>}
         {record && !showPlan && <p className="operational-note"><Compass size={15} /> A plan is stored and reviewable. Nothing has been sent, published, or spent.</p>}
         {record && showPlan && <PlanView record={record} />}
-        {decision && <GovernancePanel record={decision} busy={pending.startsWith('Governance') || pending === 'Recording approval' || pending === 'Running the simulated workflow' ? pending : ''} error={error} onAction={action => void govern(action)} />}
+        {decision && <GovernancePanel record={decision} locked={locked} busy={pending.startsWith('Governance') || pending === 'Recording approval' || pending === 'Running the simulated workflow' ? pending : ''} error={error} onAction={action => void govern(action)} />}
         <SuggestPanel />
-        {noDecisionYet && record && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Governance</h2><p>Validating the plan checks its channel, limits, constraints, and approval requirement before any workflow exists.</p></div><div className="validation-actions"><button className="button secondary" disabled={pending !== ''} onClick={() => void govern('validate')}>Validate Plan</button></div></section>}
+        {noDecisionYet && record && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Governance</h2><p>Validating the plan checks its channel, limits, constraints, and approval requirement before any workflow exists.</p></div><div className="validation-actions"><button className="button secondary" disabled={pending !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => void govern('validate')}>Validate Plan</button></div>{locked && <p className="operational-note">Actions unlock at 40% company data — <Link to="/commercial">complete it there</Link>.</p>}</section>}
         {showcase.data && showcase.data.length > 0 && <WorkflowShowcase items={showcase.data} />}
         {noPlanYet && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>What happens here</h2><p>AutoEvolve reads the confirmed company context and asks Hermes for the smallest credible validation experiment.</p></div><p className="operational-note"><FileText size={15} /> The result is a reviewable plan: hypothesis, market, validation experiment, evidence, and limits. Sending, publishing, and spending are not part of this stage.</p></section>}
       </>}

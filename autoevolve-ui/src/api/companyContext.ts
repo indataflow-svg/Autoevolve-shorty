@@ -54,3 +54,32 @@ export function mergeContextSections(
   }
   return clean as unknown as CompanyContextSections
 }
+
+/**
+ * Below this completeness floor the consuming flows are blocked, not merely
+ * nudged: with under 40% (fewer than 3 of 6 groups) there is too little to
+ * plan, validate, or run against. The 80% workflow gate still governs plan
+ * generation; this floor governs whether the actions are even offered.
+ */
+export const SETUP_FLOOR_PERCENT = 40
+
+export type SetupTrigger = 'fresh' | 'blocked' | 'incomplete' | 'ready' | 'unknown'
+
+/**
+ * One trigger definition for every flow that needs usable company data.
+ * Fresh means literally untouched; blocked means under the floor; incomplete
+ * means progressing but below the workflow gate; ready means the gate passes.
+ */
+export function setupTrigger(view: {
+  context?: { missing?: string[]; completeness_percent?: number; workflow_ready?: boolean } | null,
+  next_stage?: string | null,
+} | null | undefined): SetupTrigger {
+  if (!view || !view.context) return 'unknown'
+  // A resolved route needs the stage answer; readiness alone is not enough.
+  if (view.context.workflow_ready && view.next_stage) return 'ready'
+  const missing = view.context.missing || []
+  const percent = view.context.completeness_percent ?? 0
+  if (missing.length > 0 && percent === 0) return 'fresh'
+  if (percent < SETUP_FLOOR_PERCENT) return 'blocked'
+  return 'incomplete'
+}

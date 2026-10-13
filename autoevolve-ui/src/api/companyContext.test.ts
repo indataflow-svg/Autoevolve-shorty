@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { companyContext, mergeContextSections, replaceCompanyContext, MARKETING_STAGES } from './companyContext'
+import { companyContext, mergeContextSections, replaceCompanyContext, MARKETING_STAGES, SETUP_FLOOR_PERCENT, setupTrigger } from './companyContext'
 import { ApiError } from './client'
 
 const credentials = { username: 'founder', password: 'secret' }
@@ -85,5 +85,41 @@ describe('mergeContextSections', () => {
   it('creates sections that did not exist yet', () => {
     const merged = mergeContextSections({}, { state: { marketing_stage: 'starting_from_zero' } })
     expect(merged).toEqual({ state: { marketing_stage: 'starting_from_zero' } })
+  })
+})
+
+describe('setupTrigger', () => {
+  const view = (context: unknown, next_stage: string | null = null) => ({ context, next_stage }) as never
+
+  it('holds the floor at 40', () => {
+    expect(SETUP_FLOOR_PERCENT).toBe(40)
+  })
+
+  it('reports fresh only when everything is missing', () => {
+    expect(setupTrigger(view({ missing: ['company', 'product', 'customer', 'problem', 'objective', 'marketing_stage'], completeness_percent: 0, workflow_ready: false }))).toBe('fresh')
+  })
+
+  it('blocks below the floor', () => {
+    expect(setupTrigger(view({ missing: ['a', 'b', 'c', 'd'], completeness_percent: 33, workflow_ready: false }))).toBe('blocked')
+    expect(setupTrigger(view({ missing: ['a', 'b', 'c', 'd'], completeness_percent: 39, workflow_ready: false }))).toBe('blocked')
+  })
+
+  it('nudges between the floor and the gate', () => {
+    expect(setupTrigger(view({ missing: ['a', 'b', 'c'], completeness_percent: 40, workflow_ready: false }, 'starting_from_zero'))).toBe('incomplete')
+    expect(setupTrigger(view({ missing: ['a'], completeness_percent: 83, workflow_ready: false }))).toBe('incomplete')
+  })
+
+  it('reports ready only when gated and routed', () => {
+    expect(setupTrigger(view({ missing: [], completeness_percent: 100, workflow_ready: true }, 'market_validation'))).toBe('ready')
+  })
+
+  it('never calls readiness without a route ready', () => {
+    // 5 of 6 answered but the stage missing: gate passes, route cannot resolve.
+    expect(setupTrigger(view({ missing: ['marketing_stage'], completeness_percent: 83, workflow_ready: true }, null))).toBe('incomplete')
+  })
+
+  it('reports unknown when there is nothing to read', () => {
+    expect(setupTrigger(null)).toBe('unknown')
+    expect(setupTrigger({} as never)).toBe('unknown')
   })
 })
