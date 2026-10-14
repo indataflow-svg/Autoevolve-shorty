@@ -21,7 +21,15 @@ export function IntegrationsSection({ credentials, token }: { credentials: Crede
     setError(''); setBusy(provider)
     try {
       const w = commercialWrite(credentials, token)
-      if (action === 'connect') await w.connect(provider, {})
+      if (action === 'connect') {
+        const started = await w.connect(provider, {}) as { authorization_url?: string }
+        // OAuth providers answer with the provider's own authorization page:
+        // leaving here is the official flow, not a workaround.
+        if (started && started.authorization_url) {
+          window.location.href = started.authorization_url
+          return
+        }
+      }
       else if (action === 'sync') await w.sync(provider)
       else await w.disconnect(provider)
       await queryClient.invalidateQueries({ queryKey: ['c-integrations'] })

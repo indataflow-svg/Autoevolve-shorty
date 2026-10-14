@@ -128,6 +128,16 @@ def init_commercial_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_act_org ON commercial_activities(org_id, account_id);
 
+            CREATE TABLE IF NOT EXISTS integration_secrets (
+                org_id INTEGER NOT NULL DEFAULT 0,
+                provider TEXT NOT NULL,
+                ciphertext TEXT NOT NULL,
+                scopes TEXT NOT NULL DEFAULT '',
+                expires_at INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (org_id, provider)
+            );
             CREATE TABLE IF NOT EXISTS integration_connections (
                 id TEXT PRIMARY KEY, org_id INTEGER NOT NULL DEFAULT 0,
                 provider TEXT NOT NULL, external_account_ref TEXT NOT NULL DEFAULT '',

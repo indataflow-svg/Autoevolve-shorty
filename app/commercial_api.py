@@ -7,13 +7,72 @@ import json
 import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
+from app.ratelimit import rate_limit_intake
 from app.sales_api import verify_founder_action
 from core import commercial_store as store
 
 router = APIRouter(prefix="/company/commercial", tags=["commercial"])
+
+# The provider calls this back in the founder's browser, so dashboard auth
+# cannot apply: the signed state parameter is the authentication. Rate
+# limited like the other public intake paths.
+oauth_callback_router = APIRouter(
+    prefix="/company/commercial/integrations", tags=["oauth"],
+    dependencies=[Depends(rate_limit_intake)],
+)
+
+
+@oauth_callback_router.get("/{provider}/callback", include_in_schema=False)
+def oauth_callback(provider: str, code: str = Query(""), state: str = Query("")):
+    """Finish an OAuth authorization started by POST .../connect.
+
+    Always ends in a redirect to the workspace, never in a token dump: the
+    outcome is readable from the catalog state itself, which is the single
+    place connection truth lives.
+    """
+    from services import oauth as oauth_service
+
+    if provider not in oauth_service.PROVIDERS:
+        raise HTTPException(404, "unknown provider")
+    try:
+        org = int((state.split(".")[1] if state.count(".") >= 4 else "0") or 0)
+    except ValueError:
+        org = 0
+    try:
+        if not code or not state:
+            raise oauth_service.OAuthError("provider returned no code")
+        oauth_service.verify_state(provider, state, org)
+        oauth_service.exchange_code(provider, code, org)
+    except oauth_service.OAuthError as exc:
+        with store.connect() as db:
+            db.execute(
+                "UPDATE integration_connections SET status='action_required',"
+                " sync_status='idle', last_error_sanitized=?, updated_at=?"
+                " WHERE org_id=? AND provider=?",
+                (f"authorization failed: {exc}"[:400], _now(), org, provider))
+        return RedirectResponse(f"/commercial?oauth={provider}:error", status_code=303)
+    with store.connect() as db:
+        existing = db.execute(
+            "SELECT id FROM integration_connections WHERE org_id=? AND provider=?",
+            (org, provider)).fetchone()
+        if existing:
+            db.execute(
+                "UPDATE integration_connections SET status='healthy', sync_status='idle',"
+                " last_error_sanitized='', credential_ref='oauth:vault', updated_at=?"
+                " WHERE id=?", (_now(), existing["id"]))
+        else:
+            rec = {"id": store.new_id("conn"), "org_id": org, "provider": provider,
+                   "external_account_ref": "", "scopes_json": "[]", "status": "healthy",
+                   "sync_status": "idle", "last_error_sanitized": "",
+                   "credential_ref": "oauth:vault", "created_at": _now(), "updated_at": _now()}
+            cols, vals = list(rec.keys()), list(rec.values())
+            db.execute(f"INSERT INTO integration_connections ({','.join(cols)}) VALUES"
+                       f" ({','.join('?' for _ in cols)})", vals)
+    return RedirectResponse(f"/commercial?oauth={provider}:connected", status_code=303)
 
 
 def _org() -> int:
@@ -805,18 +864,24 @@ CATALOG = [
      "auth": "api_key", "sync": "pull"},
     {"provider": "buffer", "label": "Buffer (social publish)", "keys": ["BUFFER_API_KEY"],
      "auth": "api_key", "sync": "push"},
-    {"provider": "whatsapp", "label": "WhatsApp Business", "keys": ["WHATSAPP_TOKEN"],
-     "auth": "oauth", "sync": "both", "coming_soon": True},
-    {"provider": "meta_ads", "label": "Meta Ads", "keys": ["META_ADS_TOKEN"],
-     "auth": "oauth", "sync": "pull", "coming_soon": True},
-    {"provider": "google_ads", "label": "Google Ads", "keys": ["GOOGLE_ADS_TOKEN"],
-     "auth": "oauth", "sync": "pull", "coming_soon": True},
-    {"provider": "google_analytics", "label": "Google Analytics", "keys": ["GA_TOKEN"],
-     "auth": "oauth", "sync": "pull", "coming_soon": True},
-    {"provider": "hubspot", "label": "HubSpot CRM", "keys": ["HUBSPOT_TOKEN"],
-     "auth": "oauth", "sync": "both", "coming_soon": True},
-    {"provider": "salesforce", "label": "Salesforce", "keys": ["SALESFORCE_TOKEN"],
-     "auth": "oauth", "sync": "both", "coming_soon": True},
+    {"provider": "whatsapp", "label": "WhatsApp Business",
+     "keys": ["WHATSAPP_CLIENT_ID", "WHATSAPP_CLIENT_SECRET"],
+     "auth": "oauth", "sync": "both", "oauth": True},
+    {"provider": "meta_ads", "label": "Meta Ads",
+     "keys": ["META_ADS_CLIENT_ID", "META_ADS_CLIENT_SECRET"],
+     "auth": "oauth", "sync": "pull", "oauth": True},
+    {"provider": "google_ads", "label": "Google Ads",
+     "keys": ["GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET"],
+     "auth": "oauth", "sync": "pull", "oauth": True},
+    {"provider": "google_analytics", "label": "Google Analytics",
+     "keys": ["GOOGLE_ANALYTICS_CLIENT_ID", "GOOGLE_ANALYTICS_CLIENT_SECRET"],
+     "auth": "oauth", "sync": "pull", "oauth": True},
+    {"provider": "hubspot", "label": "HubSpot CRM",
+     "keys": ["HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET"],
+     "auth": "oauth", "sync": "both", "oauth": True},
+    {"provider": "salesforce", "label": "Salesforce",
+     "keys": ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET"],
+     "auth": "oauth", "sync": "both", "oauth": True},
 ]
 
 
@@ -832,7 +897,23 @@ def integration_catalog() -> list[dict]:
             out.append({**item, "connection": {k: conn[k] for k in (
                 "status", "sync_status", "last_sync_at", "last_error_sanitized",
                 "external_account_ref", "credential_ref")}, "configured": configured})
-        elif item.get("coming_soon"):
+            continue
+        if item.get("oauth"):
+            # OAuth readiness is the external app approval, not a button.
+            # Configured credentials flip the provider to connectable with
+            # no code change; anything less stays honestly unavailable.
+            from services import oauth as oauth_service
+            if oauth_service.is_configured(item["provider"]):
+                out.append({**item, "connection": None, "state": "available",
+                            "configured": True})
+            else:
+                out.append({**item, "connection": None, "state": "coming_soon",
+                            "configured": False,
+                            "blocker": "provider app approval is not configured: set "
+                            f"{', '.join(oauth_service.missing_config(item['provider']))}. "
+                            + oauth_service.PROVIDERS[item["provider"]]["docs"]})
+            continue
+        if item.get("coming_soon"):
             out.append({**item, "connection": None, "state": "coming_soon",
                         "configured": configured,
                         "blocker": "provider app approval and OAuth credentials are not configured"})
@@ -859,6 +940,17 @@ def connect_provider(provider: str, payload: ConnectIn) -> dict:
         raise HTTPException(404, "unknown provider")
     if item.get("coming_soon"):
         raise HTTPException(422, f"{provider} is catalog-only: OAuth app approval is not configured")
+    if item.get("oauth"):
+        # OAuth never completes here: this returns the provider's official
+        # authorization URL and the callback finishes the connection.
+        from services import oauth as oauth_service
+        try:
+            return {"provider": provider,
+                    "authorization_url": oauth_service.build_authorize_url(provider, org)}
+        except oauth_service.OAuthNotConfigured as exc:
+            raise HTTPException(422, str(exc))
+        except oauth_service.OAuthError as exc:
+            raise HTTPException(502, f"authorization could not start: {exc}")
     if not all(os.getenv(k) for k in item["keys"]):
         raise HTTPException(422, f"{provider} credentials are not configured")
     # Truthful validation: only providers with a live check may become healthy.
@@ -903,6 +995,12 @@ def connect_provider(provider: str, payload: ConnectIn) -> dict:
 @router.post("/integrations/{provider}/disconnect", dependencies=[Depends(verify_founder_action)])
 def disconnect_provider(provider: str) -> dict:
     org = _org()
+    item = next((c for c in CATALOG if c["provider"] == provider), None)
+    if item and item.get("oauth"):
+        # Revocation is local-first: tokens are destroyed even if the
+        # provider's revoke call fails, so disconnect never strands secrets.
+        from services import oauth as oauth_service
+        oauth_service.delete_tokens(provider, org)
     with store.connect() as db:
         db.execute(
             "UPDATE integration_connections SET status='disconnected', sync_status='idle',"
@@ -933,6 +1031,15 @@ def sync_provider(provider: str) -> dict:
             from services.hunter import HunterClient
             HunterClient().account()
             synced = 1
+        elif (next((c for c in CATALOG if c["provider"] == provider), {}) or {}).get("oauth"):
+            # OAuth sync validates credentials (refreshing when expiring)
+            # rather than moving data: connection health is the sync product.
+            from services import oauth as oauth_service
+            outcome = oauth_service.validate_connection(provider, org)
+            if outcome.get("healthy"):
+                synced = 1
+            else:
+                error = outcome.get("reason") or "connection is not healthy"
         else:
             synced = 0
             error = "sync not implemented for this provider; recorded as pending"
@@ -943,7 +1050,13 @@ def sync_provider(provider: str) -> dict:
             "UPDATE integration_connections SET sync_status=?, last_sync_at=?,"
             " last_error_sanitized=?, updated_at=? WHERE id=?",
             ("succeeded" if not error and synced else "failed" if error else "pending",
-             _now(), error[:400], conn["id"]))
+             _now(), error[:400], _now(), conn["id"]))
+        if error and (next((c for c in CATALOG if c["provider"] == provider), {}) or {}).get("oauth"):
+            # An unhealthy OAuth connection must not keep presenting as
+            # healthy: validation failure demotes it until reconnected.
+            db.execute(
+                "UPDATE integration_connections SET status='action_required', updated_at=?"
+                " WHERE id=?", (_now(), conn["id"]))
     return {"provider": provider, "synced": synced, "error": error}
 
 

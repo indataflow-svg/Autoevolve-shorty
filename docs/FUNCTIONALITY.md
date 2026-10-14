@@ -302,13 +302,23 @@ section, 13px body, readable tables, board columns, modal dialogs, stepper. Full
   anything is unmet.
 - **Integrations:** catalog states (`healthy/action_required/disconnected` +
   `available/unavailable/coming_soon`) from stored rows, env presence, and
-  live checks. OAuth/CRM providers are catalog-only with explicit blockers.
-  Secrets never reach the client.
+  live checks. OAuth providers (HubSpot, Salesforce, Google Ads/Analytics,
+  Meta Ads, WhatsApp) run the full official lifecycle in `services/oauth.py`:
+  signed-state authorize URL, public callback exchanging single-use codes,
+  Fernet-encrypted vault (`integration_secrets`, key from `OAUTH_TOKEN_KEY`),
+  refresh-on-expiry, local-first revocation, and health demotion on failure.
+  A provider flips from coming-soon to connectable on its
+  `{PROVIDER}_CLIENT_ID`/`{PROVIDER}_CLIENT_SECRET` alone — no code change.
+  Secrets never reach the client; only `oauth:vault` references do.
+  Per-provider app setup (redirect URI
+  `<public-base>/company/commercial/integrations/{provider}/callback`) is
+  documented in each registry entry's `docs` field and surfaced as the
+  catalog blocker.
 
 **Tables:** `offer_profiles`, `icp_profiles`, `commercial_accounts`,
 `commercial_pipelines`, `commercial_opportunities`, `qualification_rules`,
-`commercial_activities`, `integration_connections`, `csv_imports`,
-`onboarding_sessions`.
+`commercial_activities`, `integration_connections`, `integration_secrets`,
+`csv_imports`, `onboarding_sessions`.
 
 **Alignment resolutions (D1–D7, `docs/commercial-alignment.excalidraw` was the hypothesis):**
 

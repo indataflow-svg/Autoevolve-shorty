@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "company-core"
-version = "0.1.0"
+version = "1.2.0"
 description = "Self-hosted AI company operations, sales, and marketing control plane"
 requires-python = ">=3.12"
 dependencies = [

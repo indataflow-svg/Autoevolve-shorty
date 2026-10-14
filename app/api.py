@@ -240,6 +240,7 @@ from app.workflows_api import router as workflows_router
 from app.sales_api import action_router as sales_action_router
 from app.sales_api import intake_router as sales_intake_router
 from app.sales_api import router as sales_router
+from app.commercial_api import oauth_callback_router as commercial_oauth_router
 from app.commercial_api import router as commercial_router
 from app.setup_api import router as setup_router
 from app.video_api import action_router as video_action_router
@@ -253,6 +254,8 @@ app.include_router(validation_router, dependencies=[Depends(authenticate)])
 app.include_router(validation_automation_router, dependencies=[Depends(authenticate)])
 app.include_router(sales_router, dependencies=[Depends(authenticate)])
 app.include_router(commercial_router, dependencies=[Depends(authenticate)])
+# OAuth callbacks carry their own signed-state authentication.
+app.include_router(commercial_oauth_router)
 app.include_router(contacts_router, dependencies=[Depends(authenticate)])
 app.include_router(companies_router, dependencies=[Depends(authenticate)])
 app.include_router(workspace_router, dependencies=[Depends(authenticate)])
