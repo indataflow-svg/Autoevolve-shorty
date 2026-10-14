@@ -5,7 +5,7 @@ import type { Credentials } from '../../api/client'
 import { commercialApi, commercialWrite, type CAccount, type Opportunity } from '../../api/commercial'
 import { contactsPage } from '../../api/contacts'
 import { RightDrawer, StateBadge } from '../../components/Primitives'
-import { Dialog, Empty, Field, SearchPicker, Section } from './shared'
+import { Dialog, Empty, Field, Section } from './shared'
 import { groupByStage, stageLabel } from './helpers'
 
 type StageDef = { key: string; label?: string; allowed_next?: string[]; required_fields?: string[] }
@@ -133,11 +133,24 @@ function CreateOppDialog({ credentials, token, pipeId, onClose, onSaved }: {
 }) {
   const api = commercialApi(credentials)
   const [account, setAccount] = useState<CAccount | null>(null)
-  const [contact, setContact] = useState<{ id: string; label: string } | null>(null)
+  const [contactId, setContactId] = useState('')
   const [value, setValue] = useState('')
   const [next, setNext] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const accountList = useQuery({ queryKey: ['c-accounts', 'all'], queryFn: () => api.accounts({ page_size: 100 }) })
+  const contactList = useQuery({
+    queryKey: ['c-contacts', 'all'], queryFn: async () => {
+      const all: Array<{ id: string; label: string }> = []
+      for (let page = 1; page <= 10; page++) {
+        const chunk = await contactsPage(credentials, { page, q: '', stage: '', sort: 'recent' })
+        const items = (chunk.items || []).map(c => ({ id: c.id, label: `${c.full_name || c.email} — ${c.company || ''}` }))
+        all.push(...items)
+        if (items.length < 10) break
+      }
+      return all
+    },
+  })
 
   async function save() {
     if (!account) { setError('Choose the account first.'); return }
@@ -146,7 +159,7 @@ function CreateOppDialog({ credentials, token, pipeId, onClose, onSaved }: {
     try {
       await commercialWrite(credentials, token).createOpportunity({
         account_id: account.id,
-        contact_ids: contact ? [contact.id] : [],
+        contact_ids: contactId ? [contactId] : [],
         pipeline_id: pipeId,
         value: value.trim() ? Number(value) : null,
         next_action: next.trim(),
@@ -157,17 +170,22 @@ function CreateOppDialog({ credentials, token, pipeId, onClose, onSaved }: {
   }
   return <Dialog title="New opportunity" intro="Pick real records — names in, IDs resolved behind the scenes." onClose={onClose}>
     <div className="cx-form">
-      <SearchPicker label="Account" placeholder="Type at least 2 letters…" selected={account}
-        renderOption={a => a.company_name}
-        onSearch={async text => (await api.accounts({ q: text, page_size: 8 })).items}
-        onPick={setAccount} />
-      <SearchPicker label="Contact (optional)" placeholder="Type at least 2 letters…"
-        selected={contact} renderOption={c => c.label}
-        onSearch={async text => {
-          const page = await contactsPage(credentials, { page: 1, q: text, stage: '', sort: 'recent' })
-          return (page.items || []).map(c => ({ id: c.id, label: `${c.full_name || c.email} — ${c.company || ''}` }))
-        }}
-        onPick={setContact} />
+      <label className="cx-field"><span>Account</span>
+        <select aria-label="Account" value={account?.id || ''} onChange={e => {
+          setAccount((accountList.data?.items || []).find(a => a.id === e.target.value) || null)
+        }}>
+          <option value="">Choose an account…</option>
+          {(accountList.data?.items || []).map(a => <option key={a.id} value={a.id}>{a.company_name}</option>)}
+        </select>
+        {accountList.isPending && <small>Loading accounts…</small>}
+      </label>
+      <label className="cx-field"><span>Contact (optional)</span>
+        <select aria-label="Contact" value={contactId} onChange={e => setContactId(e.target.value)}>
+          <option value="">No contact attached</option>
+          {(contactList.data || []).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+        </select>
+        {contactList.isPending && <small>Loading contacts…</small>}
+      </label>
       <div className="cx-grid">
         <Field label="Value (optional)"><input value={value} onChange={e => setValue(e.target.value)} inputMode="decimal" placeholder="e.g. 5000" /></Field>
         <Field label="Next action"><input value={next} onChange={e => setNext(e.target.value)} placeholder="e.g. Send proposal" /></Field>
