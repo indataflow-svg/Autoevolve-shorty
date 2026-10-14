@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Credentials } from '../../api/client'
 import { commercialApi, commercialWrite, type CAccount, type ICPDetail } from '../../api/commercial'
 import { StateBadge } from '../../components/Primitives'
-import { Dialog, Empty, Field, SearchPicker, Section } from './shared'
+import { Dialog, Empty, Field, Section } from './shared'
 
 const SECTIONS: Array<{ title: string; fields: string[] }> = [
   { title: 'Company profile', fields: ['industry', 'company_size', 'company_name', 'domain'] },
@@ -174,6 +174,7 @@ export function QualifyWorkspace({ credentials, token, presetAccount, onPresetCo
   const [result, setResult] = useState<QualifyShape | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const allAccounts = useQuery({ queryKey: ['c-accounts', 'all'], queryFn: () => api.accounts({ page_size: 100 }) })
   const shown = presetAccount || account
   useEffect(() => {
     if (presetAccount) { setAccount(presetAccount); setResult(null); onPresetConsumed() }
@@ -191,10 +192,16 @@ export function QualifyWorkspace({ credentials, token, presetAccount, onPresetCo
   }
 
   return <Section title="Qualification" intro="Fit, intent, and rules are evaluated separately by the backend. Missing evidence never counts as a match.">
-    <SearchPicker label="Account" placeholder="Type at least 2 letters of the company name…"
-      selected={shown} renderOption={a => `${a.company_name}`}
-      onSearch={async text => (await api.accounts({ q: text, page_size: 8 })).items}
-      onPick={a => { setAccount(a); setResult(null) }} />
+    <label className="cx-field"><span>Account</span>
+      <select aria-label="Account" value={shown?.id || ''} onChange={e => {
+        const picked = (allAccounts.data?.items || []).find(a => a.id === e.target.value) || null
+        setAccount(picked); setResult(null)
+      }}>
+        <option value="">Choose an account…</option>
+        {(allAccounts.data?.items || []).map(a => <option key={a.id} value={a.id}>{a.company_name}</option>)}
+      </select>
+      {allAccounts.isPending && <small>Loading accounts…</small>}
+    </label>
     <div className="validation-actions">
       <button className="button primary" disabled={busy || !shown} onClick={() => void qualify()}>{busy ? 'Evaluating…' : 'Evaluate account'}</button>
     </div>
