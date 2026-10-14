@@ -46,6 +46,7 @@ def suggest_workflows(org: int = 0, now: datetime | None = None) -> dict[str, An
     sent_total = sum((c.get("sent") or 0) for c in (engagement.get("channels") or {}).values())
     replies = engagement.get("replies") or 0
     meetings = engagement.get("meetings") or 0
+    approved_unsent = (evidence.get("drafts") or {}).get("approved_unsent", 0)
     executed = [h for h in history if h.get("executed")]
 
     # Schedule: a run inside its window is not due; anything else is.
@@ -89,6 +90,24 @@ def suggest_workflows(org: int = 0, now: datetime | None = None) -> dict[str, An
         has_world = True
 
     if has_world:
+        if approved_unsent > 0:
+            sendable = min(approved_unsent, caps.max_outreach_contacts)
+            recommendations.append({
+                "rank": 1,
+                "method": "approved_send",
+                "title": "Send what is already approved",
+                "rationale": (f"{approved_unsent} draft(s) carry individual founder "
+                              "approval and have never left. Sending is a dispatch of "
+                              "approved text, not a new decision."),
+                "evidence_refs": [f"drafts:approved_unsent:{approved_unsent}"],
+                **schedule(14),
+                "expected_range": {
+                    "low": sendable, "high": sendable,
+                    "unit": "sends",
+                    "basis": "one dispatch per approved draft up to the contact cap",
+                },
+                "channel": channel or "email",
+            })
         unclaimed = len(leads.get("unlinked_domains") or [])
         if unclaimed:
             recommendations.append({
@@ -184,6 +203,7 @@ def suggest_workflows(org: int = 0, now: datetime | None = None) -> dict[str, An
             "sent": sent_total,
             "replies": replies,
             "meetings": meetings,
+            "approved_unsent": approved_unsent,
             "past_runs": len(executed),
         },
         "caps": {"max_outreach_contacts": caps.max_outreach_contacts,

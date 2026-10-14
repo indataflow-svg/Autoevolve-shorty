@@ -30,7 +30,13 @@ from pydantic import BaseModel, Field, model_validator
 from core.company_context import CompanyContext
 from core.state import connect, now_iso
 from core.validation_plan import GroundingReport, ValidationPlan, enforce_grounding
-from core.workflow_store import EXTERNAL_ACTIONS, GOVERNED_ACTIONS, READ_ACTIONS, WORKFLOW_ACTIONS
+from core.workflow_store import (
+    EXTERNAL_ACTIONS,
+    GOVERNED_ACTIONS,
+    READ_ACTIONS,
+    SEND_ACTIONS,
+    WORKFLOW_ACTIONS,
+)
 
 # Channels the product can govern today. A plan outside this vocabulary is
 # blocked rather than coerced into the nearest channel.
@@ -63,6 +69,12 @@ METHOD_ACTIONS: dict[str, tuple[str, str]] = {
         "research_prospects",
         "market research into named companies, stored as candidates",
     ),
+    # Dispatches founder-approved drafts through the production send path.
+    # Anything not individually approved is skipped, never sent.
+    "approved_send": (
+        "send_outreach",
+        "send founder-approved drafts, one production dispatch each",
+    ),
 }
 
 _NORMALIZE = re.compile(r"[^a-z0-9]+")
@@ -84,7 +96,10 @@ def normalize_method(value: str | None) -> str:
             "direct_sales_email": "direct_sales",
             "prospecting": "prospect_discovery",
             "market_research": "prospect_discovery",
-            "lead_research": "prospect_discovery"}.get(key, key)
+            "lead_research": "prospect_discovery",
+            "send_approved": "approved_send",
+            "approved_outreach": "approved_send",
+            "approved_send": "approved_send"}.get(key, key)
 
 
 class GovernanceLimits(BaseModel):
@@ -294,6 +309,14 @@ def validate_plan(
                 "duration_days": duration,
             }
             step_id = "research_prospects"
+        elif action_name in SEND_ACTIONS:
+            # Targets (draft ids) arrive at run time; the ceiling is fixed
+            # here. Approval itself is per draft at dispatch, never per run.
+            config = {
+                "max_contacts": int(contacts or 0),
+                "duration_days": duration,
+            }
+            step_id = "send_approved_outreach"
         else:
             config = {
                 "channel": channel,

@@ -27,8 +27,10 @@ export const approveGovernedWorkflow = (credentials: Credentials, token: string)
   api<GovernanceRecord>('/company/automation/governance/approve', credentials, { method: 'POST', body: '{}' }, token)
 
 /**
- * Run the approved workflow through the existing runner. The only authorized
- * action is the side-effect-free simulation: nothing is sent or published.
+ * Run the approved workflow through the existing runner. Authorized actions
+ * simulate, draft, research, or send founder-approved drafts; every run
+ * re-checks the approved limits first. `targets` are lead ids for research
+ * and draft ids for sends — identifiers the founder chose, never people.
  */
 export const runWorkflowSimulation = (credentials: Credentials, token: string, targets: string[] = []) =>
   api<GovernanceRecord>('/company/automation/governance/run', credentials, {

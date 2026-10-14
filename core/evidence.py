@@ -136,6 +136,16 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
             {**i, "totals": _safe_json(i.get("totals_json"), {})} for i in imports
         ]
 
+        # Drafts awaiting dispatch: approved, unsent, and still sendable.
+        drafts = {"total": 0, "approved_unsent": 0, "by_status": {}}
+        if table("sales_drafts"):
+            rows = [dict(r) for r in db.execute("SELECT id, status FROM sales_drafts")]
+            drafts["total"] = len(rows)
+            drafts["by_status"] = dict(Counter(r.get("status") or "draft" for r in rows))
+            drafts["approved_unsent"] = sum(
+                1 for r in rows if (r.get("status") or "") == "approved")
+        evidence["drafts"] = drafts
+
         # Engagement: what the market said back, per channel where known.
         engagement = {"replies": 0, "meetings": 0, "inbound": 0, "channels": {}}
         if table("sales_events"):

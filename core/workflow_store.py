@@ -45,6 +45,7 @@ WORKFLOW_ACTIONS = (
     "simulate_outreach",
     "draft_outreach",
     "research_prospects",
+    "send_outreach",
 )
 
 # Actions that can only ever simulate. Governance may map a plan onto one of
@@ -61,9 +62,17 @@ DRAFT_ACTIONS = ("draft_outreach",)
 # capped, attributed, and refused without a ceiling.
 READ_ACTIONS = ("research_prospects",)
 
+# Actions that dispatch to the outside world. Reaching an external system is
+# authorized only with per-item founder approval plus the production
+# idempotency and reconciliation path: send_outreach sends solely drafts the
+# founder already approved one by one, through send_approved(). Nothing else
+# qualifies, and EXTERNAL_ACTIONS stays empty as the tripwire — anything
+# listed there is refused outright.
+SEND_ACTIONS = ("send_outreach",)
+
 # Everything governance may authorize. Anything registered but absent from this
 # tuple is refused: the runner can execute it, a validation plan cannot.
-GOVERNED_ACTIONS: tuple[str, ...] = SIMULATION_ACTIONS + DRAFT_ACTIONS + READ_ACTIONS
+GOVERNED_ACTIONS: tuple[str, ...] = SIMULATION_ACTIONS + DRAFT_ACTIONS + READ_ACTIONS + SEND_ACTIONS
 
 # Actions that reach a real external system. Deliberately empty until limits
 # are enforced when a workflow runs rather than only when a plan is validated;

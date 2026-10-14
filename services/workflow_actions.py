@@ -548,6 +548,76 @@ def research_prospects(context: dict[str, Any], config: dict[str, Any]) -> dict[
     }
 
 
+def send_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """Send founder-approved drafts through the existing send path. Nothing else.
+
+    Approval is per draft, never per run: a draft in any status other than
+    ``approved`` is skipped and reported, never sent. Dispatch goes through
+    ``send_approved()``, so the claim policy, idempotency window, and release
+    rules are the production ones, not a workflow reimplementation. A draft
+    whose outcome is ambiguous is recorded as failed-with-reason rather than
+    failing the whole step, so one bad address cannot sink the batch.
+    """
+    from services.sales_service import send_approved
+
+    plan_id = str(context.get("plan_id") or "")
+    workflow_id = str(context.get("workflow_id") or "")
+    targets = [str(item) for item in (config.get("targets") or []) if str(item).strip()]
+    ceiling = int(config.get("max_contacts") or 0)
+
+    sent: list[str] = []
+    failed: list[dict[str, str]] = []
+    skipped_unapproved: list[str] = []
+    skipped_unknown: list[str] = []
+    over_ceiling = 0
+    within = targets[:ceiling] if ceiling > 0 else []
+    if len(targets) > len(within):
+        over_ceiling = len(targets) - len(within)
+
+    for draft_id in within:
+        draft = sales_store.get_draft(draft_id)
+        if draft is None:
+            skipped_unknown.append(draft_id)
+            continue
+        if draft.get("status") != "approved":
+            skipped_unapproved.append(draft_id)
+            continue
+        try:
+            result = send_approved(draft_id)
+        except Exception as exc:  # noqa: BLE001 - recorded per draft, step continues
+            failed.append({"draft_id": draft_id, "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        sales_store.add_event(draft.get("lead_id"), "outreach.governed_sent", {
+            "plan_id": plan_id,
+            "workflow_id": workflow_id,
+            "draft_id": draft_id,
+            "provider_message_id": result.get("message_id"),
+        })
+        sent.append(draft_id)
+
+    return {
+        "status": "completed",
+        "output": {
+            "action": "send_outreach",
+            "targets": len(targets),
+            "within_limit": len(within),
+            "sent": len(sent),
+            "failed": failed,
+            "skipped_unapproved": skipped_unapproved,
+            "skipped_unknown": skipped_unknown,
+            "over_ceiling": over_ceiling,
+            "replies": 0,
+            # Replies arrive later via webhook and are observed then, not here.
+            "validation_events": None,
+            "external_side_effects": True,
+            "sent_draft_ids": sent,
+        },
+        "metrics": {"targets": len(targets), "sent": len(sent), "failed": len(failed)},
+        "artifacts": [],
+        "next_step": None,
+    }
+
+
 def observe_validation_events(
     *, plan_id: str | None = None, workflow_id: str | None = None
 ) -> ValidationEventObservation:

@@ -222,11 +222,16 @@ fewer prospects is indistinguishable from one that reached every contact. The
 page says "checked when the plan is validated and again when the run starts",
 and a refused run records no execution.
 
-**Deliberately not real yet.** Nothing leaves the process. The send path exists
-in `services/sales_service.py` — `send_approved()` behind the founder's
-approval — but no workflow action reaches it, so `EXTERNAL_ACTIONS` stays empty
-and `sent` stays `0`. The enforcement such an action would depend on is the
-run-time half above; the action itself is what is missing.
+**Deliberately real, narrowly.** `send_outreach` dispatches solely drafts the
+founder already approved one by one, through `send_approved()` with its claim
+policy, idempotency window, and reconciliation — never a workflow copy of the
+send path. Unapproved, unknown, and over-ceiling targets are counted aside,
+never sent; one ambiguous outcome is recorded per draft without failing the
+batch. Governed under the `approved_send` method with the same run-time cap
+re-checks as every other run, and suggested whenever approved drafts sit
+unsent. `EXTERNAL_ACTIONS` stays empty as the tripwire: reaching outside is
+authorized only with per-item founder approval plus production idempotency,
+and nothing else qualifies.
 
 The difference drafting makes to the score: a simulated run reports `—` because
 nothing was measured, while a drafting run reports a real `0 / target` — the

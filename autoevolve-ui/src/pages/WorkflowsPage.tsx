@@ -101,7 +101,7 @@ function GovernancePanel({ record, busy, error, locked, onAction }: {
     <div className="validation-actions">
       <button className="button secondary" disabled={busy !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => onAction('validate')}>Validate Plan</button>
       <button className="button secondary" disabled={busy !== '' || locked || !record.workflow_id || Boolean(record.approved_at)} onClick={() => onAction('approve')}>Approve</button>
-      <button className="button primary" disabled={busy !== '' || locked || !record.approved_at} onClick={() => onAction('run')}>Run Simulation</button>
+      <button className="button primary" disabled={busy !== '' || locked || !record.approved_at} onClick={() => onAction('run')}>Run</button>
     </div>
     {locked && <p className="operational-note">Actions unlock at 40% company data — <Link to="/commercial">complete it there</Link>.</p>}
     {busy && <p role="status" className="operational-note">{busy}…</p>}
@@ -113,7 +113,7 @@ function GovernancePanel({ record, busy, error, locked, onAction }: {
       <div><dt>Simulation</dt><dd>{String(simulated.status)} · {String(simulated.action)}</dd></div>
       <div><dt>Targets / sent</dt><dd>{String(simulated.targets)} / {String(simulated.sent)}</dd></div>
       <div><dt>Validation events</dt><dd>{events ?? '—'}</dd></div>
-      <div><dt>External side effects</dt><dd>{simulated.external_side_effects === false ? 'none' : 'unexpected'}</dd></div>
+      <div><dt>External side effects</dt><dd>{simulated.external_side_effects === false ? 'none' : simulated.action === 'send_outreach' ? `sent ${simulated.sent ?? 0} via governed run` : 'unexpected'}</dd></div>
     </dl>}
     {observation && !observation.observed && observation.reason
       && <p className="operational-note">Not scored: {observation.reason}.</p>}
@@ -147,7 +147,7 @@ function WorkflowCard({ item }: { item: AutomationWorkflowView }) {
       <div><dt>Sent</dt><dd>{String(first.sent ?? '—')}</dd></div>
       <div><dt>Validation events</dt><dd>{events ?? '—'}</dd></div>
       <div><dt>Score</dt><dd title={scoreReason}>{score}</dd></div>
-      <div><dt>External side effects</dt><dd>{first.external_side_effects === false ? 'none' : first.external_side_effects === true ? 'unexpected' : '—'}</dd></div>
+      <div><dt>External side effects</dt><dd>{first.external_side_effects === false ? 'none' : first.action === 'send_outreach' ? `sent ${first.sent ?? 0} via governed run` : first.external_side_effects === true ? 'unexpected' : '—'}</dd></div>
       <div><dt>Governance</dt><dd>{item.governance.status}{item.governance.approved_at ? ' · approved' : ' · awaiting approval'}</dd></div>
     </dl>
     {steps.length > 0 && <table className="workflow-steps"><thead><tr><th>Step</th><th>Action</th><th>Status</th></tr></thead><tbody>{steps.map((step, index) => <tr key={step.step_id || index}><td>{step.step_id || `step_${index + 1}`}</td><td>{step.action || '—'}</td><td>{step.status || '—'}</td></tr>)}</tbody></table>}
@@ -242,7 +242,7 @@ export function WorkflowsPage() {
   async function govern(action: 'validate' | 'approve' | 'run') {
     if (!token.trim()) { setError('Enter the founder action token before changing execution state.'); return }
     setError('')
-    setPending(action === 'validate' ? 'Governance is validating the plan' : action === 'approve' ? 'Recording approval' : 'Running the simulated workflow')
+    setPending(action === 'validate' ? 'Governance is validating the plan' : action === 'approve' ? 'Recording approval' : 'Running the approved workflow')
     try {
       const updated = action === 'validate' ? await createGovernedWorkflow(credentials, token)
         : action === 'approve' ? await approveGovernedWorkflow(credentials, token)
@@ -276,7 +276,7 @@ export function WorkflowsPage() {
         {!record && <div className="validation-actions"><button className="button primary" disabled={pending !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => void generate()}>Generate Validation Plan <ArrowRight size={16} /></button></div>}
         {record && !showPlan && <p className="operational-note"><Compass size={15} /> A plan is stored and reviewable. Nothing has been sent, published, or spent.</p>}
         {record && showPlan && <PlanView record={record} />}
-        {decision && <GovernancePanel record={decision} locked={locked} busy={pending.startsWith('Governance') || pending === 'Recording approval' || pending === 'Running the simulated workflow' ? pending : ''} error={error} onAction={action => void govern(action)} />}
+        {decision && <GovernancePanel record={decision} locked={locked} busy={pending.startsWith('Governance') || pending === 'Recording approval' || pending === 'Running the approved workflow' ? pending : ''} error={error} onAction={action => void govern(action)} />}
         <SuggestPanel onUseMethod={(method, channel) => void generate({ method_hint: method, channel_hint: channel || undefined })} />
         {noDecisionYet && record && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Governance</h2><p>Validating the plan checks its channel, limits, constraints, and approval requirement before any workflow exists.</p></div><div className="validation-actions"><button className="button secondary" disabled={pending !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => void govern('validate')}>Validate Plan</button></div>{locked && <p className="operational-note">Actions unlock at 40% company data — <Link to="/commercial">complete it there</Link>.</p>}</section>}
         {showcase.data && showcase.data.length > 0 && <WorkflowShowcase items={showcase.data} />}

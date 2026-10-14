@@ -70,7 +70,8 @@ class PlanHint(BaseModel):
 
 
 class SimulationRun(BaseModel):
-    """Simulation-only execution request. `targets` are identifiers, never people."""
+    """Execution request. `targets` are identifiers the founder chose at run
+    time: lead ids for research and drafting, draft ids for sends."""
 
     targets: list[str] = Field(default_factory=list, max_length=50)
 
