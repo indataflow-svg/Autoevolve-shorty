@@ -294,6 +294,27 @@ def update_account(rid: str, payload: dict) -> dict:
     return _update("commercial_accounts", rid, _org(), payload)
 
 
+@router.delete("/accounts/{rid}", dependencies=[Depends(verify_founder_action)])
+def delete_account(rid: str) -> dict:
+    org = _org()
+    if not store._row("commercial_accounts", rid, org):
+        raise HTTPException(404, "account not found")
+    with store.connect() as db:
+        refs = db.execute(
+            "SELECT COUNT(*), SUM(outcome='open') FROM commercial_opportunities WHERE account_id=?",
+            (rid,)).fetchone()
+        total, open_count = (refs[0] or 0), (refs[1] or 0)
+        if total:
+            raise HTTPException(
+                409, f"account has {total} opportunitie(s) on record"
+                + (f", {open_count} still open" if open_count else "")
+                + "; history is preserved, so accounts with deals cannot be removed")
+        db.execute("DELETE FROM commercial_accounts WHERE id=? AND org_id=?", (rid, org))
+    # History stays: activities keep their account_id as audit trail, leads
+    # keep their domains and relink if the account is ever recreated.
+    return {"id": rid, "deleted": True}
+
+
 @router.get("/accounts/{rid}")
 def get_account(rid: str) -> dict:
     rec = store._row("commercial_accounts", rid, _org())

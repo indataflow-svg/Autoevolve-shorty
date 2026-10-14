@@ -44,11 +44,13 @@ export async function saveCompanyContextAnswers(
     credentials, mergeContextSections(fresh.context as unknown as Record<string, unknown>, touched), token)
 }
 
-export function AnswerCards({ view, busy, savedTick, saveLabel, onSave }: {
+export function AnswerCards({ view, busy, savedTick, saveLabel, showAll, onSave }: {
   view: CompanyContextView
   busy: boolean
   savedTick: number
   saveLabel: string
+  /** Full access: every group editable with stored values, not just the missing ones. */
+  showAll?: boolean
   onSave: (touched: Record<string, Record<string, string>>) => void
 }) {
   const [draft, setDraft] = useState<Record<string, string>>({})
@@ -57,6 +59,7 @@ export function AnswerCards({ view, busy, savedTick, saveLabel, onSave }: {
   useEffect(() => { setDraft({}) }, [savedTick])
   const sections = view.context as unknown as Record<string, Record<string, string> | undefined>
   const missing = (view.context.missing || []).filter(key => key in ANSWERS)
+  const keys = showAll ? Object.keys(ANSWERS) : missing
   const stored = (key: string) => {
     const field = ANSWERS[key]
     return (sections[field.section] || {})[field.key] || ''
@@ -71,7 +74,7 @@ export function AnswerCards({ view, busy, savedTick, saveLabel, onSave }: {
     // over a freshly fetched context, so a stale render can never smuggle old
     // sibling values over saves made elsewhere.
     const touched: Record<string, Record<string, string>> = {}
-    for (const key of missing) {
+    for (const key of keys) {
       const field = ANSWERS[key]
       const value = current(key).trim()
       if (!value) continue
@@ -79,10 +82,10 @@ export function AnswerCards({ view, busy, savedTick, saveLabel, onSave }: {
     }
     onSave(touched)
   }
-  if (missing.length === 0) return <p className="operational-note">Every required group is answered.</p>
+  if (keys.length === 0) return <p className="operational-note">Every required group is answered.</p>
   return <>
     <div className="answer-cards">
-      {missing.map(key => {
+      {keys.map(key => {
         const field = ANSWERS[key]
         const Icon = field.icon
         const filled = stored(key).trim().length > 0
@@ -100,7 +103,7 @@ export function AnswerCards({ view, busy, savedTick, saveLabel, onSave }: {
     </div>
     <div className="validation-actions">
       <button className="button primary" disabled={busy} onClick={save}>{saveLabel}</button>
-      <span className="operational-note">{6 - missing.length} of 6 answered.</span>
+      <span className="operational-note">{keys.filter(k => current(k).trim()).length} of 6 answered.</span>
     </div>
   </>
 }
@@ -109,19 +112,21 @@ export function CompanyDataDialog({ view, busy, savedTick, band, onClose, onSave
   view: CompanyContextView
   busy: boolean
   savedTick: number
-  band: 'fresh' | 'blocked'
+  band: 'fresh' | 'blocked' | 'incomplete' | 'ready'
   onClose: () => void
   onSave: (touched: Record<string, Record<string, string>>) => void
 }) {
   return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <div className="modal cx-wide" role="dialog" aria-modal="true" aria-label="Company data">
       <button className="icon-button modal-close" aria-label="Close dialog" onClick={onClose}>✕</button>
-      <h2>{band === 'fresh' ? 'Set up your company data' : 'Company data needed'}</h2>
+      <h2>{band === 'fresh' ? 'Set up your company data' : 'Company data'}</h2>
       <p>{band === 'fresh'
         ? 'Six quick cards — plain questions, one example each. Nothing here is final; everything stays editable.'
-        : 'Workflow actions need at least 40% company data. Fill the cards below to unblock them.'}</p>
-      <AnswerCards view={view} busy={busy} savedTick={savedTick} saveLabel="Save answers" onSave={onSave} />
-      <div className="modal-actions"><button className="button secondary" onClick={onClose}>Continue without completing</button></div>
+        : band === 'blocked'
+          ? 'Workflow actions need at least 40% company data. Fill the cards below to unblock them.'
+          : 'Every group, editable. Saving merges only what you change over the latest stored values.'}</p>
+      <AnswerCards view={view} busy={busy} savedTick={savedTick} saveLabel="Save answers" showAll onSave={onSave} />
+      <div className="modal-actions"><button className="button secondary" onClick={onClose}>{band === 'ready' || band === 'incomplete' ? 'Close' : 'Continue without completing'}</button></div>
     </div>
   </div>
 }

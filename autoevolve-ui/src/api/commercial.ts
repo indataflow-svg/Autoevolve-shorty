@@ -48,6 +48,7 @@ export const commercialWrite = (credentials: Credentials, token: string) => ({
   updateICP: (id: string, v: Record<string, unknown>) => write(credentials, token, `/icps/${id}`, 'PATCH', v),
   evaluateICP: (id: string, v: Record<string, unknown>) => write(credentials, token, `/icps/${id}/evaluate`, 'POST', v),
   createAccount: (v: Record<string, unknown>) => write(credentials, token, '/accounts', 'POST', v),
+  deleteAccount: (id: string) => write(credentials, token, `/accounts/${encodeURIComponent(id)}`, 'DELETE'),
   createPipeline: (v: Record<string, unknown>) => write(credentials, token, '/pipelines', 'POST', v),
   updatePipeline: (id: string, v: Record<string, unknown>) => write(credentials, token, `/pipelines/${id}`, 'PATCH', v),
   archiveICP: (id: string) => write(credentials, token, `/icps/${id}/archive`, 'POST', {}),

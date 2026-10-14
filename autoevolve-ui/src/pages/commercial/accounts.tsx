@@ -73,6 +73,8 @@ export function AccountsSection({ credentials, token, onQualify }: {
     {openId && <RightDrawer title="Account" onClose={() => setOpenId(null)}>
       {detail.isPending ? <p className="cx-note">Loading…</p> : detail.data ? <AccountDetailView
         account={detail.data as AccountDetail}
+        credentials={credentials} token={token}
+        onDeleted={() => { setOpenId(null); void queryClient.invalidateQueries({ queryKey: ['c-accounts'] }) }}
         onQualify={() => { const a = detail.data as CAccount; setOpenId(null); onQualify(a) }} /> : <p className="cx-note">Not found.</p>}
     </RightDrawer>}
     {showAdd && <AddAccountDialog credentials={credentials} token={token} onClose={() => setShowAdd(false)}
@@ -83,7 +85,24 @@ export function AccountsSection({ credentials, token, onQualify }: {
   </Section>
 }
 
-function AccountDetailView({ account, onQualify }: { account: AccountDetail; onQualify: () => void }) {
+function AccountDetailView({ account, credentials, token, onDeleted, onQualify }: {
+  account: AccountDetail
+  credentials: Credentials
+  token: string
+  onDeleted: () => void
+  onQualify: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function remove() {
+    if (!token.trim()) { setError('Enter the founder action token at the top of the page first.'); return }
+    setError(''); setBusy(true)
+    try {
+      await commercialWrite(credentials, token).deleteAccount(account.id)
+      onDeleted()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Account could not be removed.'); setBusy(false) }
+  }
   return <div>
     <div className="drawer-identity"><div className="drawer-name">
       <h2>{account.company_name}</h2>
@@ -98,6 +117,14 @@ function AccountDetailView({ account, onQualify }: { account: AccountDetail; onQ
     </dl>
     {account.next_action && <p className="cx-note">Next: {account.next_action}</p>}
     <div className="validation-actions"><button className="button primary" onClick={onQualify}>Qualify this account</button></div>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <div className="validation-actions">
+      {!confirming
+        ? <button className="button secondary" onClick={() => setConfirming(true)}>Remove account</button>
+        : <><span className="cx-note">Remove “{account.company_name}”? History stays; accounts with deals on record cannot be removed.</span>
+          <button className="button secondary" disabled={busy} onClick={() => setConfirming(false)}>Keep</button>
+          <button className="button primary" disabled={busy} onClick={() => void remove()}>{busy ? 'Removing…' : 'Yes, remove'}</button></>}
+    </div>
     <h3>Activity</h3>
     {(account.linked_leads || []).length > 0 && <><h3>Linked outreach ({account.linked_leads!.length})</h3>
       <ul className="activity-list">{account.linked_leads!.map(l =>

@@ -77,8 +77,8 @@ export function CommercialPage() {
         {ctxView.data && <span className="operational-note">{ctxView.data.context.completeness_percent ?? 0}% complete{trigger === 'ready' ? ' · ready' : trigger === 'unknown' ? '' : ' · needs attention'}</span>}
       </div>
       {saveState.error && <p className="form-error" role="alert">{saveState.error}</p>}
-      {dialogOpen && ctxView.data && (trigger === 'fresh' || trigger === 'blocked') && <CompanyDataDialog
-        view={ctxView.data} busy={saveState.busy} savedTick={saveState.savedTick} band={trigger}
+      {dialogOpen && ctxView.data && <CompanyDataDialog
+        view={ctxView.data} busy={saveState.busy} savedTick={saveState.savedTick} band={trigger === 'unknown' ? 'incomplete' : trigger}
         onClose={closeDialog} onSave={touched => void saveCards(touched)} />}
       {tab === 'Setup' && <SetupWizard credentials={credentials} token={token} />}
       {tab === 'Accounts' && <AccountsSection credentials={credentials} token={token} onQualify={qualifyFromAccounts} />}

@@ -394,6 +394,56 @@ class Phase1HardeningTests(CommercialBase):
         self.assertTrue(lead["lead_score"] != q["fit"]["score"]
                         or q["fit"]["score"] != q["intent"]["score"])
 
+    def test_account_removal_needs_a_token(self):
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers, json={"company_name": "Gone Co"}).json()
+        self.assertEqual(
+            self.client.delete(f"/company/commercial/accounts/{acct['id']}",
+                               auth=self.auth).status_code, 403)
+
+    def test_account_removal_keeps_history_but_blocks_open_deals(self):
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Drop Co", "domain": "drop.test"}).json()
+        opp = self.client.post("/company/commercial/opportunities", auth=self.auth,
+                               headers=self.headers,
+                               json={"account_id": acct["id"]}).json()
+        blocked = self.client.delete(f"/company/commercial/accounts/{acct['id']}",
+                                     auth=self.auth, headers=self.headers)
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        self.assertIn("opportunit", blocked.json()["detail"])
+        # Even a closed deal keeps its history: the account stays.
+        self.client.post(f"/company/commercial/opportunities/{opp['id']}/move",
+                         auth=self.auth, headers=self.headers,
+                         json={"stage": "qualified"})
+        self.client.post(f"/company/commercial/opportunities/{opp['id']}/move",
+                         auth=self.auth, headers=self.headers,
+                         json={"stage": "disqualified", "lost_reason": "bad fit"})
+        still = self.client.delete(f"/company/commercial/accounts/{acct['id']}",
+                                   auth=self.auth, headers=self.headers)
+        self.assertEqual(still.status_code, 409, still.text)
+        detail = self.client.get(f"/company/commercial/opportunities/{opp['id']}",
+                                 auth=self.auth).json()
+        self.assertEqual(detail["outcome"], "disqualified")
+        self.assertEqual(detail["account"]["company_name"], "Drop Co")
+
+    def test_account_without_deals_removes_cleanly(self):
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Gone Co", "domain": "gone.test"}).json()
+        done = self.client.delete(f"/company/commercial/accounts/{acct['id']}",
+                                  auth=self.auth, headers=self.headers)
+        self.assertEqual(done.status_code, 200, done.text)
+        self.assertTrue(done.json()["deleted"])
+        self.assertEqual(
+            self.client.get(f"/company/commercial/accounts/{acct['id']}",
+                            auth=self.auth).status_code, 404)
+
+    def test_removing_an_unknown_account_is_404(self):
+        self.assertEqual(
+            self.client.delete("/company/commercial/accounts/acct_nope",
+                               auth=self.auth, headers=self.headers).status_code, 404)
+
 
 DEFAULT_STAGES = [
     {"key": "prospect", "label": "Prospect", "allowed_next": ["qualified", "disqualified"]},
