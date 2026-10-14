@@ -1,6 +1,6 @@
 # AutoEvolve locked API reference
 
-Generated from source by `scripts/gen_api_reference.py` at commit `51ea662` on 2026-10-12T14:19:25Z.
+Generated from source by `scripts/gen_api_reference.py` at commit `e2f8453` on 2026-10-14T16:51:15Z.
 
 Every public constant, function, class and method in the shipped packages, with its real signature. Read this as the contract: if a name here disagrees with the code, the code is authoritative and this file must be regenerated.
 
@@ -12,11 +12,11 @@ Every public constant, function, class and method in the shipped packages, with 
 | Support services | 26 | 97 | 23 | 37 | 62 |
 | Video pipeline package | 11 | 56 | 11 | 3 | 35 |
 | Agents | 9 | 65 | 12 | 0 | 43 |
-| HTTP surface | 19 | 211 | 135 | 0 | 58 |
+| HTTP surface | 19 | 212 | 136 | 0 | 58 |
 | Operations scripts | 13 | 50 | 1 | 25 | 61 |
-| **all** | **101** | **687** | **221** | **70** | **328** |
+| **all** | **101** | **688** | **222** | **70** | **328** |
 
-Plus 228 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the end.
+Plus 229 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the end.
 
 ## Core state and models
 
@@ -933,8 +933,8 @@ Plus 228 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - class `HermesOutputError`(HermesError) — The model returned something that is not a valid structured plan
 - class `HermesPlanResult`(BaseModel) — A plan plus the provenance needed to judge where it came from
 - `load_prompt_template() -> str` — Read the versioned prompt file. Prompts are data, not Python strings
-- `build_instructions(context: CompanyContext) -> str` — Render the base prompt with the canonical context substituted in
-- `async plan_market_validation(context: CompanyContext) -> HermesPlanResult` — Run one market-validation pass and return a validated, grounded plan
+- `build_instructions(context: CompanyContext, method_hint: str | None=None, channel_hint: str | None=None) -> str` — Render the base prompt with the canonical context substituted in
+- `async plan_market_validation(context: CompanyContext, method_hint: str | None=None, channel_hint: str | None=None) -> HermesPlanResult` — Run one market-validation pass and return a validated, grounded plan
 
 ### `agents/linkedin.py`
 
@@ -1011,6 +1011,7 @@ Plus 228 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 - `create_account(payload: AccountIn) -> dict` [router.post('/accounts', dependencies=[Depends(verify_founder_action)])]
 - `suggest_new_accounts() -> dict` [router.post('/accounts/suggest')] — Propose accounts from evidence nobody has claimed yet
 - `update_account(rid: str, payload: dict) -> dict` [router.patch('/accounts/{rid}', dependencies=[Depends(verify_founder_action)])]
+- `delete_account(rid: str) -> dict` [router.delete('/accounts/{rid}', dependencies=[Depends(verify_founder_action)])]
 - `get_account(rid: str) -> dict` [router.get('/accounts/{rid}')]
 - class `PipelineIn`(BaseModel)
 - const `DEFAULT_PIPELINE_STAGES`
@@ -1288,9 +1289,10 @@ Plus 228 HTTP routes, 38 database tables and 8 CLI subcommands, listed at the en
 
 - class `WorkflowFromPlan`(BaseModel) — Optional plan to govern. Defaults to the most recent generated plan
 - class `ApprovalPayload`(BaseModel)
+- class `PlanHint`(BaseModel) — Founder-requested direction for plan generation. A request Hermes may
 - class `SimulationRun`(BaseModel) — Simulation-only execution request. `targets` are identifiers, never people
 - `async create_validation_plan()` [router.post('/plan', response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])] — Plan the first market-validation experiment. Nothing is executed
-- `async create_workflows_validation_plan()` [automation_router.post('/plan', response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])] — Canonical automation name for plan creation. Same behavior as /plan above
+- `async create_workflows_validation_plan(hints: PlanHint | None=None)` [automation_router.post('/plan', response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])] — Canonical automation name for plan creation. Same behavior as /plan above
 - `read_validation_plan()` [router.get('/plan', response_model=ValidationPlanRecord)] — The most recent plan, or 404 when none has been generated yet
 - `read_evidence() -> dict` [automation_router.get('/evidence')] — Everything the business has told or shown us, in one place
 - `suggest_next_runs() -> dict` [automation_router.post('/suggest')] — Rank the next governed runs from evidence. Advisory only
@@ -1548,6 +1550,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 
 | route | module |
 |---|---|
+| `DELETE /accounts/{rid}` | `app/commercial_api.py` |
 | `GET /` | `app/api.py` |
 | `GET /accounts/{rid}` | `app/commercial_api.py` |
 | `GET /accounts` | `app/commercial_api.py` |

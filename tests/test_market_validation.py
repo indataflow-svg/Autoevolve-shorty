@@ -156,6 +156,23 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(supplied["state"]["marketing_stage"], "starting_from_zero")
         self.assertIsNone(supplied["product"]["category"])  # unanswered stays unknown
 
+    def test_no_hints_means_no_founder_request_section(self):
+        instructions = build_instructions(self.context)
+        self.assertNotIn("FOUNDER REQUEST", instructions)
+
+    def test_hints_append_a_request_the_model_may_decline(self):
+        instructions = build_instructions(
+            self.context, method_hint="email_outreach", channel_hint="email")
+        tail = instructions.split("FOUNDER REQUEST", 1)[1]
+        self.assertIn("email_outreach", tail)
+        self.assertIn("email", tail)
+        self.assertIn("Use it if the context supports it", tail)
+        self.assertIn("explain why", tail)
+
+    def test_the_versioned_prompt_file_itself_carries_no_hints(self):
+        template = hermes.load_prompt_template()
+        self.assertNotIn("FOUNDER REQUEST", template)
+
 
 class PlanSchemaTests(unittest.TestCase):
     """The structured contract and the fact/assumption separation rule."""
@@ -273,6 +290,19 @@ class HermesTests(unittest.TestCase):
         for output in ("not a plan", json.dumps({"workflow_template": WORKFLOW_TEMPLATE}), [1, 2, 3], None):
             with self.assertRaises(HermesOutputError):
                 hermes._coerce_plan(output)
+
+    def test_hermes_records_founder_hints_in_provenance(self):
+        with patch.object(hermes, "cloud_model", return_value=function_model(VALID_PLAN)):
+            result = asyncio.run(plan_market_validation(
+                self.context, method_hint="email_outreach", channel_hint="email"))
+        self.assertEqual(result.provenance.method_hint, "email_outreach")
+        self.assertEqual(result.provenance.channel_hint, "email")
+
+    def test_hermes_provenance_has_no_hints_by_default(self):
+        with patch.object(hermes, "cloud_model", return_value=function_model(VALID_PLAN)):
+            result = asyncio.run(plan_market_validation(self.context))
+        self.assertIsNone(result.provenance.method_hint)
+        self.assertIsNone(result.provenance.channel_hint)
 
     def test_a_missing_prompt_slot_is_a_hard_error(self):
         with patch.object(hermes, "load_prompt_template", return_value="no slot here"):
@@ -414,6 +444,29 @@ class ValidationApiTests(unittest.TestCase):
         unauthenticated = self.client.get("/company/automation/plan")
         self.assertEqual(unauthenticated.status_code, 401)
         self.assertIsNone(get_latest_validation_plan())
+
+    def test_hints_reach_hermes_and_land_in_provenance(self):
+        with patch.object(hermes, "plan_market_validation", return_value=self._result()) as generate:
+            response = self.post_plan(json={"method_hint": "email_outreach", "channel_hint": "email"})
+        self.assertEqual(response.status_code, 200, response.text)
+        generate.assert_awaited_once()
+        _, kwargs = generate.call_args
+        self.assertEqual(kwargs["method_hint"], "email_outreach")
+        self.assertEqual(kwargs["channel_hint"], "email")
+
+    def test_ungovernable_method_hints_are_refused_before_hermes(self):
+        with patch.object(hermes, "plan_market_validation") as generate:
+            response = self.post_plan(json={"method_hint": "paid_acquisition"})
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn("no governed workflow action", response.json()["detail"])
+        generate.assert_not_called()
+        self.assertIsNone(get_latest_validation_plan())
+
+    def test_unsupported_channel_hints_are_refused_before_hermes(self):
+        with patch.object(hermes, "plan_market_validation") as generate:
+            response = self.post_plan(json={"channel_hint": "carrier_pigeon"})
+        self.assertEqual(response.status_code, 422, response.text)
+        generate.assert_not_called()
 
     def test_missing_context_cannot_be_planned(self):
         from core.company_context import clear_company_context

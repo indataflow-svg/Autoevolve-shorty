@@ -60,6 +60,15 @@ class ApprovalPayload(BaseModel):
     approved: bool = True
 
 
+class PlanHint(BaseModel):
+    """Founder-requested direction for plan generation. A request Hermes may
+    decline with reasons, never an override: the generated plan still passes
+    grounding and governance unchanged."""
+
+    method_hint: str | None = None
+    channel_hint: str | None = None
+
+
 class SimulationRun(BaseModel):
     """Simulation-only execution request. `targets` are identifiers, never people."""
 
@@ -108,18 +117,34 @@ async def create_validation_plan():
 
 
 @automation_router.post("/plan", response_model=ValidationPlanRecord, dependencies=[Depends(verify_founder_action)])
-async def create_workflows_validation_plan():
-    """Canonical automation name for plan creation. Same behavior as /plan above."""
-    return await _create_plan()
+async def create_workflows_validation_plan(hints: PlanHint | None = None):
+    """Canonical automation name for plan creation. Same behavior as /plan above.
+
+    Accepts an optional founder hint (method/channel) recorded in provenance.
+    Hints are requests Hermes may decline with reasons; ungovernable methods
+    and unsupported channels are refused here with a 422 instead.
+    """
+    return await _create_plan(hints)
 
 
-async def _create_plan() -> ValidationPlanRecord:
+async def _create_plan(hints: PlanHint | None = None) -> ValidationPlanRecord:
+    from core.plan_governance import METHOD_ACTIONS, SUPPORTED_CHANNELS, normalize_channel, normalize_method
+
     context = _routable_context()
+    method_hint = (hints.method_hint or "").strip() if hints else ""
+    channel_hint = (hints.channel_hint or "").strip() if hints else ""
+    if method_hint and normalize_method(method_hint) not in METHOD_ACTIONS:
+        raise HTTPException(
+            422, f"method {method_hint!r} has no governed workflow action; "
+            f"governed methods: {', '.join(sorted(METHOD_ACTIONS))}")
+    if channel_hint and normalize_channel(channel_hint) not in SUPPORTED_CHANNELS:
+        raise HTTPException(422, f"channel {channel_hint!r} is not a supported validation channel")
     # Imported here so a missing optional dependency cannot break the API import.
     from agents.hermes import HermesError, HermesOutputError, plan_market_validation
 
     try:
-        result = await plan_market_validation(context)
+        result = await plan_market_validation(
+            context, method_hint=method_hint or None, channel_hint=channel_hint or None)
     except HermesOutputError as exc:
         raise HTTPException(
             502, f"Hermes did not return a valid validation plan: {exc}"

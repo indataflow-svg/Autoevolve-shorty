@@ -65,27 +65,53 @@ def load_prompt_template() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
 
 
-def build_instructions(context: CompanyContext) -> str:
+def build_instructions(
+    context: CompanyContext,
+    method_hint: str | None = None,
+    channel_hint: str | None = None,
+) -> str:
     """Render the base prompt with the canonical context substituted in.
 
     The context is passed as canonical JSON rather than prose so the model reads
-    the same representation every downstream component will.
+    the same representation every downstream component will. An explicit
+    founder hint is appended as a request the model may decline with reasons;
+    it never edits the versioned prompt file and never overrides the output.
     """
     template = load_prompt_template()
     if CONTEXT_TOKEN not in template:
         raise HermesError(f"prompt {PROMPT_PATH.name} is missing the {CONTEXT_TOKEN} token")
     payload = json.dumps(context.model_dump(mode="json"), ensure_ascii=False, indent=2)
-    return template.replace(CONTEXT_TOKEN, payload)
+    instructions = template.replace(CONTEXT_TOKEN, payload)
+    requests = []
+    if (method_hint or "").strip():
+        requests.append(
+            f"The founder requests the {method_hint.strip()} validation method. "
+            "Use it if the context supports it; otherwise choose the method the "
+            "context does support and explain why in reasoning."
+        )
+    if (channel_hint or "").strip():
+        requests.append(
+            f"The founder requests the {channel_hint.strip()} channel. "
+            "Use it if the context supports it; otherwise choose the channel the "
+            "context does support and explain why in reasoning."
+        )
+    if requests:
+        instructions += "\n\nFOUNDER REQUEST\n\n" + "\n".join(requests) + "\n"
+    return instructions
 
 
-async def plan_market_validation(context: CompanyContext) -> HermesPlanResult:
+async def plan_market_validation(
+    context: CompanyContext,
+    method_hint: str | None = None,
+    channel_hint: str | None = None,
+) -> HermesPlanResult:
     """Run one market-validation pass and return a validated, grounded plan."""
     require_model_configured()
     from pydantic_ai import Agent
 
     model = cloud_model(MODEL_ROUTE)
     # Built per call so a key or route change takes effect without a reload.
-    hermes = Agent(model, instructions=build_instructions(context), output_type=ValidationPlan)
+    hermes = Agent(model, instructions=build_instructions(context, method_hint, channel_hint), output_type=ValidationPlan)
     try:
         result = await asyncio.wait_for(hermes.run(REQUEST), timeout=PLAN_TIMEOUT_SECONDS)
     except asyncio.TimeoutError as exc:
@@ -101,7 +127,7 @@ async def plan_market_validation(context: CompanyContext) -> HermesPlanResult:
     plan, grounding = enforce_grounding(plan, context)
     return HermesPlanResult(
         plan=plan,
-        provenance=_provenance(context, model),
+        provenance=_provenance(context, model, method_hint, channel_hint),
         grounding=grounding,
     )
 
@@ -120,7 +146,12 @@ def _coerce_plan(output: Any) -> ValidationPlan:
     )
 
 
-def _provenance(context: CompanyContext, model: Any) -> PlanProvenance:
+def _provenance(
+    context: CompanyContext,
+    model: Any,
+    method_hint: str | None = None,
+    channel_hint: str | None = None,
+) -> PlanProvenance:
     """Record the prompt version and the model actually used, when available."""
     return PlanProvenance(
         prompt_version=PROMPT_VERSION,
@@ -131,4 +162,6 @@ def _provenance(context: CompanyContext, model: Any) -> PlanProvenance:
         # The gateway name, never the configured base URL: provenance is shown in
         # the UI and must not publish an internal endpoint.
         model_provider=PROVIDER_NAME,
+        method_hint=(method_hint or None),
+        channel_hint=(channel_hint or None),
     )

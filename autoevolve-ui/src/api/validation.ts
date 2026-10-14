@@ -42,9 +42,14 @@ export const validationPlan = (credentials: Credentials) =>
 /**
  * Ask Hermes for a plan through the market_validation_v1 prompt.
  * This only plans: it never sends, publishes, launches, or spends.
+ * Optional founder hints are requests Hermes may decline with reasons;
+ * ungovernable methods and unsupported channels are refused with a 422.
  */
-export const generateValidationPlan = (credentials: Credentials, token: string) =>
-  api<ValidationPlanRecord>('/company/automation/plan', credentials, { method: 'POST' }, token)
+export const generateValidationPlan = (
+  credentials: Credentials, token: string, hints?: { method_hint?: string; channel_hint?: string },
+) =>
+  api<ValidationPlanRecord>('/company/automation/plan', credentials,
+    { method: 'POST', body: JSON.stringify(hints ?? {}) }, token)
 
 /** All governed workflows with their engine state, newest first. */
 export const automationWorkflows = (credentials: Credentials) =>

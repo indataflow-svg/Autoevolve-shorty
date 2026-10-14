@@ -21,15 +21,23 @@ describe('validation plan transport', () => {
     expect(record.status).toBe('planned')
   })
 
-  it('generates a plan with the founder action token and no request body', async () => {
+  it('generates a plan with the founder action token and an empty hint body', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'planned' }) })
     vi.stubGlobal('fetch', fetchMock)
     await generateValidationPlan(credentials, 'action-secret')
     const [path, options] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(path).toBe('/company/automation/plan')
     expect(options.method).toBe('POST')
-    expect(options.body).toBeUndefined()
+    expect(JSON.parse(String(options.body))).toEqual({})
     expect(new Headers(options.headers).get('X-Founder-Action-Token')).toBe('action-secret')
+  })
+
+  it('forwards founder method and channel hints in the request body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'planned' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    await generateValidationPlan(credentials, 'action-secret', { method_hint: 'email_outreach', channel_hint: 'email' })
+    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(options.body))).toEqual({ method_hint: 'email_outreach', channel_hint: 'email' })
   })
 
   it('reports a refused generation instead of showing an empty plan', async () => {

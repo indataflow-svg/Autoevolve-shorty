@@ -130,6 +130,10 @@ class PlanProvenance(BaseModel):
     model_route: str
     model_name: str
     model_provider: str
+    # Founder-requested direction, if any. A hint is a request Hermes may
+    # decline with reasons, never an override applied after the fact.
+    method_hint: str | None = None
+    channel_hint: str | None = None
 
 
 class ValidationPlanRecord(BaseModel):

@@ -154,7 +154,9 @@ function WorkflowCard({ item }: { item: AutomationWorkflowView }) {
   </div>
 }
 
-function SuggestPanel() {
+function SuggestPanel({ onUseMethod }: {
+  onUseMethod: (method: string, channel: string | null) => void
+}) {
   const credentials = useCredentials()
   const [suggestions, setSuggestions] = useState<WorkflowSuggestions | null>(null)
   const [campaign, setCampaign] = useState<CampaignSuggestion | null>(null)
@@ -184,6 +186,9 @@ function SuggestPanel() {
           <p>Run <strong>{rec.method.replaceAll('_', ' ')}</strong> · {rec.duration_days} days · expect {rec.expected_range.low}–{rec.expected_range.high} {rec.expected_range.unit}</p>
           <p>{rec.rationale}</p>
           <small>Basis: {rec.expected_range.basis}. Evidence: {rec.evidence_refs.join(' · ') || 'none yet'}.</small>
+          <div className="cx-card-actions">
+            <button className="button secondary" onClick={() => onUseMethod(rec.method, rec.channel)}>Use this method</button>
+          </div>
         </li>)}</ul>)}
     {campaign && <div className="cx-result">
       <h3>Campaign: {campaign.campaign.path}</h3>
@@ -223,11 +228,11 @@ export function WorkflowsPage() {
   // plan, validate, or run against. The server gates remain the backstop.
   const trigger = setupTrigger(routing.data ?? null)
   const locked = trigger === 'fresh' || trigger === 'blocked'
-  async function generate() {
+  async function generate(hints?: { method_hint?: string; channel_hint?: string }) {
     if (!token.trim()) { setError('Enter the founder action token before generating a plan.'); return }
     setError(''); setPending('Hermes is preparing a validation plan')
     try {
-      const created = await generateValidationPlan(credentials, token)
+      const created = await generateValidationPlan(credentials, token, hints)
       queryClient.setQueryData(['validation-plan'], created)
       setShowPlan(true)
     } catch (reason) {
@@ -272,7 +277,7 @@ export function WorkflowsPage() {
         {record && !showPlan && <p className="operational-note"><Compass size={15} /> A plan is stored and reviewable. Nothing has been sent, published, or spent.</p>}
         {record && showPlan && <PlanView record={record} />}
         {decision && <GovernancePanel record={decision} locked={locked} busy={pending.startsWith('Governance') || pending === 'Recording approval' || pending === 'Running the simulated workflow' ? pending : ''} error={error} onAction={action => void govern(action)} />}
-        <SuggestPanel />
+        <SuggestPanel onUseMethod={(method, channel) => void generate({ method_hint: method, channel_hint: channel || undefined })} />
         {noDecisionYet && record && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Governance</h2><p>Validating the plan checks its channel, limits, constraints, and approval requirement before any workflow exists.</p></div><div className="validation-actions"><button className="button secondary" disabled={pending !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => void govern('validate')}>Validate Plan</button></div>{locked && <p className="operational-note">Actions unlock at 40% company data — <Link to="/commercial">complete it there</Link>.</p>}</section>}
         {showcase.data && showcase.data.length > 0 && <WorkflowShowcase items={showcase.data} />}
         {noPlanYet && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>What happens here</h2><p>AutoEvolve reads the confirmed company context and asks Hermes for the smallest credible validation experiment.</p></div><p className="operational-note"><FileText size={15} /> The result is a reviewable plan: hypothesis, market, validation experiment, evidence, and limits. Sending, publishing, and spending are not part of this stage.</p></section>}

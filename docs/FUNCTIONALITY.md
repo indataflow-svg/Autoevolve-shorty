@@ -248,8 +248,13 @@ an explicit no-baseline statement. `POST /automation/suggest-campaign` proposes
 video lines with per-line source fields (missing slots name the exact field to
 fill), a G1/G2/G3 path, and a provider with an honest rate or `unknown`.
 Nothing here generates, governs, approves, or runs; the `/workflows` "What
-next" panel renders both. Known gap: a suggestion cannot yet pin a generated
-plan's method — Hermes still chooses, governance still checks.
+next" panel renders both. A suggestion carries a "Use this method" action
+that generates a plan with the suggestion as a founder hint (`method_hint` /
+`channel_hint` on `POST /automation/plan`): a request Hermes may decline
+with reasons, recorded in provenance. Ungovernable methods and unsupported
+channels are refused with a 422 before Hermes is ever called. Known gap this
+closes: suggestions previously could not pin a generated plan's method —
+Hermes chose, governance checked, and the two never met.
 
 A workflow becomes approvable and runnable the moment the company context
 crosses 80% completeness — preparation does not wait for full data. The
