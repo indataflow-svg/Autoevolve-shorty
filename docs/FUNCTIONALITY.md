@@ -326,6 +326,14 @@ section, 13px body, readable tables, board columns, modal dialogs, stepper. Full
 `commercial_activities`, `integration_connections`, `integration_secrets`,
 `csv_imports`, `onboarding_sessions`.
 
+**ICP guidance before validation.** `GET /icps/suggest-criteria` mines the
+founder's own accounts (customers, else engaged, else everything) for the most
+common industry/size/region with support counts, and reports per-field fill
+rates so rules that would score `unknown` everywhere stay visible. Thin
+evidence warns instead of pretending. The create dialog applies suggestions
+per field with `evidence-counted` provenance; templates, manual entry, and
+the detail editor are unchanged, and validation stays a human click.
+
 **Alignment resolutions (D1–D7, `docs/commercial-alignment.excalidraw` was the hypothesis):**
 
 | conflict | owner | resolution |

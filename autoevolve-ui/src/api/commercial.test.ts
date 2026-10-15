@@ -22,4 +22,13 @@ describe('commercial transport', () => {
     const [path] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(path).toBe('/company/commercial/integrations')
   })
+
+  it('reads mined criteria without a founder token', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ suggestions: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    await commercialApi(credentials).suggestCriteria()
+    const [path, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(path).toBe('/company/commercial/icps/suggest-criteria')
+    expect(options.method).toBeUndefined()
+  })
 })

@@ -128,17 +128,29 @@ function CreateIcpDialog({ credentials, token, onClose, onSaved }: {
   const [template, setTemplate] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [mined, setMined] = useState<{ basis: { set: string; count: number }; suggestions: Array<{ field: string; operator: string; value: unknown; weight: number; support: number; total: number; source: string }>; fill_rates: Array<{ field: string; known: number; total: number }>; warnings: string[] } | null>(null)
+  const [added, setAdded] = useState<Array<{ field: string; operator: string; value: unknown; weight: number }>>([])
+  async function suggest() {
+    setError('')
+    try { setMined(await commercialApi(credentials).suggestCriteria()) }
+    catch (e) { setError(e instanceof Error ? e.message : 'Suggestions could not be loaded.') }
+  }
   async function save() {
     if (!name.trim()) { setError('Give the ICP a name.'); return }
     if (!token.trim()) { setError('Enter the founder action token at the top of the page first.'); return }
     setError(''); setBusy(true)
     try {
       const tpl = (templates.data || []).find(t => t.key === template)
-      const criteria = tpl ? (tpl.criteria as Criterion[]).map(c =>
+      const base = tpl ? (tpl.criteria as Criterion[]).map(c =>
         c.field === 'industry' && industry.trim() ? { ...c, value: industry.trim() } : c)
         : [{ field: 'industry', operator: 'contains', value: industry.trim() || name.trim(), weight: 2 }]
+      const byField = new Map(base.map(c => [c.field, c] as const))
+      for (const c of added) byField.set(c.field, c)
+      const criteria = [...byField.values()]
+      const provenance: Record<string, string> = {}
+      for (const c of added) provenance[c.field] = 'evidence-counted'
       await commercialWrite(credentials, token).createICP({
-        name: name.trim(), criteria, exclusions: tpl ? tpl.exclusions : [],
+        name: name.trim(), criteria, exclusions: tpl ? tpl.exclusions : [], provenance,
       })
       onSaved()
     } catch (e) { setError(e instanceof Error ? e.message : 'ICP could not be saved.') }
@@ -152,6 +164,23 @@ function CreateIcpDialog({ credentials, token, onClose, onSaved }: {
         <option value="">Blank hypothesis</option>
         {(templates.data || []).map(t => <option key={t.key} value={t.key}>{t.name}</option>)}
       </select></Field>
+      <div className="validation-actions">
+        <button className="button secondary" disabled={busy} onClick={() => void suggest()}>Suggest from evidence</button>
+      </div>
+      {mined && <div>
+        <p className="cx-note">Mined from {mined.basis.count} {mined.basis.set} account(s). {mined.warnings.join(' ')}</p>
+        {mined.suggestions.length === 0
+          ? <p className="cx-note">Nothing common enough to suggest — type the industry or pick a template.</p>
+          : <ul className="cx-list">{mined.suggestions.map((s, i) =>
+            <li key={`${s.field}-${i}`}><strong>{s.field}</strong> = “{String(s.value)}” <small>({s.support}/{s.total} {mined.basis.set})</small>
+              <button className="cx-link" disabled={busy} onClick={() => setAdded(a => [...a.filter(x => x.field !== s.field), { field: s.field, operator: s.operator, value: s.value, weight: s.weight }])}>use</button>
+            </li>)}</ul>}
+        {mined.fill_rates.filter(f => f.known === 0).length > 0 && <p className="cx-note">No data for: {mined.fill_rates.filter(f => f.known === 0).map(f => f.field).join(', ')} — rules on these would never match.</p>}
+        {added.length > 0 && <ul className="cx-list">{added.map((c, i) =>
+          <li key={`${c.field}-${i}`}><strong>{c.field}</strong> = “{String(c.value)}” <small>(from evidence)</small>
+            <button className="cx-link" disabled={busy} onClick={() => setAdded(a => a.filter((_, j) => j !== i))}>remove</button>
+          </li>)}</ul>}
+      </div>}
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="modal-actions"><button className="button secondary" onClick={onClose}>Cancel</button>
         <button className="button primary" disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save provisional ICP'}</button></div>

@@ -25,6 +25,7 @@ export const commercialApi = (credentials: Credentials) => ({
   icps: () => api<ICP[]>(`${base}/icps`, credentials),
   icp: (id: string) => api<ICPDetail>(`${base}/icps/${encodeURIComponent(id)}`, credentials),
   icpTemplates: () => api<Array<{ key: string; name: string; criteria: unknown[]; exclusions: unknown[]; note: string }>>(`${base}/icp-templates`, credentials),
+  suggestCriteria: () => api<{ basis: { set: string; count: number }; suggestions: Array<{ field: string; operator: string; value: unknown; weight: number; support: number; total: number; source: string }>; fill_rates: Array<{ field: string; known: number; total: number }>; warnings: string[] }>(`${base}/icps/suggest-criteria`, credentials),
   accounts: (params: { q?: string; lifecycle_status?: string; sort?: string; page?: number; page_size?: number } = {}) => {
     const qs = new URLSearchParams()
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v))

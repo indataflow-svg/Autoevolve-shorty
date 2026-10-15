@@ -1,6 +1,6 @@
 # AutoEvolve locked API reference
 
-Generated from source by `scripts/gen_api_reference.py` at commit `afcb84a` on 2026-10-14T17:16:51Z.
+Generated from source by `scripts/gen_api_reference.py` at commit `ff68fb7` on 2026-10-15T16:39:46Z.
 
 Every public constant, function, class and method in the shipped packages, with its real signature. Read this as the contract: if a name here disagrees with the code, the code is authoritative and this file must be regenerated.
 
@@ -9,14 +9,14 @@ Every public constant, function, class and method in the shipped packages, with 
 | subsystem | modules | functions | classes | methods | constants |
 |---|---|---|---|---|---|
 | Core state and models | 23 | 208 | 39 | 5 | 70 |
-| Support services | 27 | 108 | 25 | 37 | 64 |
+| Support services | 28 | 113 | 26 | 37 | 66 |
 | Video pipeline package | 11 | 56 | 11 | 3 | 35 |
 | Agents | 9 | 65 | 12 | 0 | 43 |
-| HTTP surface | 19 | 213 | 136 | 0 | 59 |
+| HTTP surface | 19 | 214 | 136 | 0 | 60 |
 | Operations scripts | 13 | 50 | 1 | 25 | 61 |
-| **all** | **102** | **700** | **224** | **70** | **332** |
+| **all** | **103** | **706** | **225** | **70** | **335** |
 
-Plus 230 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the end.
+Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the end.
 
 ## Core state and models
 
@@ -558,6 +558,14 @@ Plus 230 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
   - `extract_contact_fields(self, payload: dict[str, Any]) -> dict[str, Any]`
   - `enrich_person(self, person_id: str) -> dict`
 
+### `services/provider_registry.py`
+
+- class `ProviderSpec` — Everything the product knows about one tool
+- `register(spec: ProviderSpec) -> ProviderSpec` — Declare a provider. Registering twice replaces the entry (tests)
+- `get(name: str) -> ProviderSpec | None`
+- `providers_for(datapoint: str, order: list[str] | None=None) -> list[ProviderSpec]` — Specs supplying a data point, in explicit order or cost order
+- `run_waterfall(steps: list[tuple[str, Callable[[], list[dict[str, Any]]], tuple[type[BaseException], ...]]], target: int | None, key_fn: Callable[[dict[str, Any]], str | None], warn_fn: Callable[[str, Exception], str]) -> dict[str, Any]` — Query suppliers in order until `target` unique results are held
+
 ### `services/quality_gates.py`
 
 - const `GATES`
@@ -631,7 +639,9 @@ Plus 230 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `research_lusha_leads(*, job_title: str | None=None, service_keywords: list[str] | None=None, location: str | None=None, company_size: str | None=None, limit: int=5) -> list[dict]`
 - `research_lusha_market_leads(*, industry: str, location: str | None=None, limit: int=5) -> list[dict]`
 - `research_apollo_market_leads(*, industry: str, location: str | None=None, limit: int=5) -> list[dict]`
+- const `COMPANY_SEARCH_ORDER`
 - `research_market_leads(*, industry: str, location: str | None=None, limit_per_provider: int=5) -> dict[str, Any]`
+- `waterfall_company_search(*, industry: str, location: str | None=None, target: int=10, limit_per_provider: int=5, order: list[str] | None=None) -> dict[str, Any]` — Company search that stops when it has enough
 - `import_domain(domain: str, limit: int=5, provider: str='hunter') -> list[dict]`
 - `pull_inbound_leads() -> dict`
 - `resolve_company_profile(lead_id: str, provider: str='auto', force: bool=False) -> dict[str, Any]`
@@ -1022,6 +1032,8 @@ Plus 230 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `icp_templates() -> list[dict]` [router.get('/icp-templates')]
 - `archive_icp(rid: str) -> dict` [router.post('/icps/{rid}/archive', dependencies=[Depends(verify_founder_action)])]
 - `list_icps() -> list[dict]` [router.get('/icps')]
+- const `SUGGEST_FIELDS`
+- `suggest_criteria() -> dict` [router.get('/icps/suggest-criteria')] — Propose ICP criteria mined from the founder's own records
 - `get_icp(rid: str) -> dict` [router.get('/icps/{rid}')]
 - `create_icp(payload: ICPIn) -> dict` [router.post('/icps', dependencies=[Depends(verify_founder_action)])]
 - `update_icp(rid: str, payload: dict) -> dict` [router.patch('/icps/{rid}', dependencies=[Depends(verify_founder_action)])]
@@ -1057,7 +1069,7 @@ Plus 230 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `async preview_import(entity_type: str='account', file: UploadFile=File(...)) -> dict` [router.post('/imports/preview', dependencies=[Depends(verify_founder_action)])]
 - class `ImportCommit`(BaseModel)
 - `commit_import(rid: str, payload: ImportCommit) -> dict` [router.post('/imports/{rid}/commit', dependencies=[Depends(verify_founder_action)])]
-- const `CATALOG`
+- const `CATALOG_ORDER`
 - `integration_catalog() -> list[dict]` [router.get('/integrations')]
 - class `ConnectIn`(BaseModel)
 - `connect_provider(provider: str, payload: ConnectIn) -> dict` [router.post('/integrations/{provider}/connect', dependencies=[Depends(verify_founder_action)])]
@@ -1610,6 +1622,7 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /hunter/account` | `app/sales_api.py` |
 | `GET /hunyuan/profile` | `app/video_api.py` |
 | `GET /icp-templates` | `app/commercial_api.py` |
+| `GET /icps/suggest-criteria` | `app/commercial_api.py` |
 | `GET /icps/{rid}` | `app/commercial_api.py` |
 | `GET /icps` | `app/commercial_api.py` |
 | `GET /imports` | `app/commercial_api.py` |

@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import os
+from collections import Counter
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -189,6 +190,67 @@ def archive_icp(rid: str) -> dict:
 @router.get("/icps")
 def list_icps() -> list[dict]:
     return store._list("icp_profiles", _org())
+
+
+SUGGEST_FIELDS = ("industry", "company_size", "region")
+
+
+@router.get("/icps/suggest-criteria")
+def suggest_criteria() -> dict:
+    """Propose ICP criteria mined from the founder's own records.
+
+    Read-only and deterministic: the best accounts (customers, else engaged,
+    else everything) contribute their most common industry/size/region with
+    support counts, and every candidate field reports its fill rate across
+    all accounts — so a rule that would score `unknown` everywhere is visible
+    before it is saved. Thin evidence warns instead of pretending.
+    """
+    org = _org()
+    with store.connect() as db:
+        try:
+            rows = [dict(r) for r in db.execute(
+                "SELECT company_name, domain, industry, company_size, region,"
+                " lifecycle_status FROM commercial_accounts WHERE org_id=?", (org,))]
+        except Exception:
+            rows = []
+    total = len(rows)
+    if not total:
+        return {"basis": {"set": "none", "count": 0}, "suggestions": [],
+                "fill_rates": [], "warnings": ["no accounts yet: add or import accounts first"]}
+    customers = [r for r in rows if (r.get("lifecycle_status") or "") == "customer"]
+    engaged = [r for r in rows if (r.get("lifecycle_status") or "") == "engaged"]
+    if customers:
+        best, basis_set = customers, "customers"
+    elif engaged:
+        best, basis_set = engaged, "engaged"
+    else:
+        best, basis_set = rows, "all"
+    basis = {"set": basis_set, "count": len(best)}
+    suggestions = []
+    for field in SUGGEST_FIELDS:
+        values = [(r.get(field) or "").strip() for r in best]
+        values = [v for v in values if v]
+        if not values:
+            continue
+        top = Counter(values).most_common(1)[0]
+        suggestions.append({
+            "field": field,
+            "operator": "equals",
+            "value": top[0],
+            "weight": 2 if field == "industry" else 1,
+            "support": top[1],
+            "total": len(best),
+            "source": "evidence",
+        })
+    fill_rates = []
+    for field in (*SUGGEST_FIELDS, "domain"):
+        known = sum(1 for r in rows if (r.get(field) or "").strip())
+        fill_rates.append({"field": field, "known": known, "total": total})
+    warnings = []
+    if len(best) < 3:
+        warnings.append(f"thin evidence: only {len(best)} account(s) in the {basis['set']} set")
+    return {"basis": basis, "suggestions": suggestions,
+            "fill_rates": fill_rates, "warnings": warnings}
 
 
 @router.get("/icps/{rid}")
