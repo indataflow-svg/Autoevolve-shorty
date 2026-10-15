@@ -306,8 +306,9 @@ section, 13px body, readable tables, board columns, modal dialogs, stepper. Full
   `qualification` activity with its scores, so history — not just the latest
   answer — feeds review and evolution.
 - **Integrations:** catalog states (`healthy/action_required/disconnected` +
-  `available/unavailable/coming_soon`) from stored rows, env presence, and
-  live checks. OAuth providers (HubSpot, Salesforce, Google Ads/Analytics,
+  `available/unavailable/coming_soon`) generated from the provider registry
+  (`services/provider_registry.py`) plus the OAuth registry — never a
+  hardcoded list, so display cannot drift from what connect/sync do. OAuth providers (HubSpot, Salesforce, Google Ads/Analytics,
   Meta Ads, WhatsApp) run the full official lifecycle in `services/oauth.py`:
   signed-state authorize URL, public callback exchanging single-use codes,
   Fernet-encrypted vault (`integration_secrets`, key from `OAUTH_TOKEN_KEY`),
@@ -379,6 +380,14 @@ Five provider clients, each with a typed error: `HunterClient`/`HunterError`,
 **Caching is explicit.** Resolution results are cached per domain/lead; `force=true`
 spends another provider credit. `_ordered_company_profile_providers("auto")`
 falls back through available providers in order.
+
+**One registry, two search modes.** `services/provider_registry.py` declares
+every supplier once (data points, keys, error types, validators); fan-out
+research and the `waterfall_company_search` (stop when `target` unique
+candidates are held, skipped providers logged, never called) both run off
+it. Governed research uses the waterfall with `target=max_contacts`, so a
+small ceiling means small provider spend. Adding a tool is one `register()`
+call — no branching code anywhere else.
 
 **Honest limits:** every provider needs a paid key. No key → that route fails
 with the provider's error preserved, never a silent empty result. Credit spend

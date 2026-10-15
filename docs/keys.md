@@ -128,9 +128,12 @@ with 5 results per provider.
 
 ## Media + publishing (Tier 4)
 
-Stock keys live in root `.env` (G2 inherits them). Buffer/R2 live in the
+Stock keys live in root `.env` (G2 inherits them). Buffer lives in the
 ignored file `engines/g3/config/g3.env` (created by `make setup` from
-`g3.env.example`).
+`g3.env.example`). The R2_* variables in the same file are pipeline
+infrastructure for the asset pipeline, not a connectable integration:
+engines/g3 reads them directly and they no longer appear in the setup
+key groups.
 
 ```dotenv
 # root .env

@@ -46,18 +46,26 @@ def provenance() -> PlanProvenance:
     )
 
 
-MOCK_RESULTS = {
-    "results": [
-        {"lead": {"id": "lead_new1", "company": "New One",
-                  "company_domain": "new1.test"}, "created": True},
-        {"lead": {"id": "lead_new2", "company": "New Two",
-                  "company_domain": "new2.test"}, "created": True},
-        {"lead": {"id": "lead_old", "company": "Old Co",
-                  "company_domain": "old.test"}, "created": False},
-    ],
-    "providers": {"prospeo": 2, "apollo": 1},
-    "warnings": [],
-}
+MOCK_PROSPEO = [
+    {"lead": {"id": "lead_new1", "company": "New One",
+              "company_domain": "new1.test"}, "created": True},
+    {"lead": {"id": "lead_old", "company": "Old Co",
+              "company_domain": "old.test"}, "created": False},
+]
+MOCK_APOLLO = [
+    {"lead": {"id": "lead_new2", "company": "New Two",
+              "company_domain": "new2.test"}, "created": True},
+]
+
+
+def _provider_mocks(prospeo=None, apollo=None, lusha=None):
+    """Patcher trio for provider-level research tests (kept for the e2e test)."""
+    return (patch("services.sales_service.research_prospeo_market_leads",
+                 return_value=MOCK_PROSPEO if prospeo is None else prospeo),
+            patch("services.sales_service.research_apollo_market_leads",
+                  return_value=MOCK_APOLLO if apollo is None else apollo),
+            patch("services.sales_service.research_lusha_market_leads",
+                  return_value=[] if lusha is None else lusha))
 
 
 class ResearchBase(unittest.TestCase):
@@ -137,21 +145,35 @@ class TermResolutionTests(ResearchBase):
 
 class ResearchActionTests(ResearchBase):
     def test_new_candidates_attributed_up_to_ceiling(self):
-        with patch("services.sales_service.research_market_leads", return_value=MOCK_RESULTS):
+        with patch("services.sales_service.research_prospeo_market_leads",
+                   return_value=MOCK_PROSPEO), \
+             patch("services.sales_service.research_apollo_market_leads",
+                   return_value=MOCK_APOLLO) as apollo_mock, \
+             patch("services.sales_service.research_lusha_market_leads",
+                   return_value=[]) as lusha_mock:
             result = research_prospects({"plan_id": "plan_1", "workflow_id": "wf_1"},
                                         self.config(max_contacts=1))
         output = result["output"]
         self.assertEqual(output["attributed"], 1)
         self.assertEqual(output["skipped_known"], 1)
-        self.assertEqual(output["over_ceiling"], 1)
-        self.assertEqual(output["providers_queried"], {"prospeo": 2, "apollo": 1})
+        self.assertEqual(output["over_ceiling"], 0)
+        self.assertEqual(output["providers_queried"], {"prospeo": 2})
+        # The target was met after the first supplier: later credits unspent.
+        apollo_mock.assert_not_called()
+        lusha_mock.assert_not_called()
+        self.assertIn({"provider": "apollo", "status": "skipped", "count": 0},
+                      output["waterfall"])
         self.assertEqual(output["sent"], 0)
         self.assertIsNone(output["validation_events"])
         self.assertIs(output["external_side_effects"], False)
         self.assertEqual(result["metrics"]["candidates_new"], 1)
 
     def test_without_ceiling_it_researches_nothing(self):
-        with patch("services.sales_service.research_market_leads",
+        with patch("services.sales_service.research_prospeo_market_leads",
+                   side_effect=AssertionError("must not search")), \
+             patch("services.sales_service.research_apollo_market_leads",
+                   side_effect=AssertionError("must not search")), \
+             patch("services.sales_service.research_lusha_market_leads",
                    side_effect=AssertionError("must not search")):
             result = research_prospects({}, self.config(max_contacts=0))
         self.assertEqual(result["output"]["attributed"], 0)
@@ -203,7 +225,8 @@ class ResearchGovernanceTests(ResearchBase):
         self.assertEqual(created.json()["resolved_actions"][0]["action"], "research_prospects")
         self.client.post("/company/automation/governance/approve", auth=self.auth,
                          headers=self.headers, json={})
-        with patch("services.sales_service.research_market_leads", return_value=MOCK_RESULTS):
+        prospeo_mock, apollo_mock, lusha_mock = _provider_mocks()
+        with prospeo_mock, apollo_mock, lusha_mock:
             executed = self.client.post("/company/automation/governance/run", auth=self.auth,
                                         headers=self.headers, json={})
         self.assertEqual(executed.status_code, 200, executed.text)

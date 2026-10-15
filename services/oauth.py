@@ -37,6 +37,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "token_url": "https://api.hubapi.com/oauth/v1/token",
         "scopes": ["crm.objects.contacts.read", "crm.objects.contacts.write",
                    "crm.objects.companies.read"],
+        "sync": "both",
         "docs": "Create a private-app... use a public app: Developers > Manage apps > Create app; "
                 "set the redirect URL to <public-base>/company/commercial/integrations/hubspot/callback",
     },
@@ -45,6 +46,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "auth_url": "https://login.salesforce.com/services/oauth2/authorize",
         "token_url": "https://login.salesforce.com/services/oauth2/token",
         "scopes": ["api", "refresh_token", "offline_access"],
+        "sync": "both",
         "docs": "Create a Connected App (Setup > App Manager > New Connected App) with "
                 "oauth scope api + refresh_token; set the callback URL to "
                 "<public-base>/company/commercial/integrations/salesforce/callback",
@@ -54,6 +56,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
         "token_url": "https://oauth2.googleapis.com/token",
         "scopes": ["https://www.googleapis.com/auth/adwords"],
+        "sync": "pull",
         "docs": "Google Cloud console > Credentials > OAuth client ID (Web); add "
                 "<public-base>/company/commercial/integrations/google_ads/callback "
                 "as an authorized redirect URI",
@@ -63,6 +66,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
         "token_url": "https://oauth2.googleapis.com/token",
         "scopes": ["https://www.googleapis.com/auth/analytics.readonly"],
+        "sync": "pull",
         "docs": "Same OAuth client as Google Ads; add the analytics callback URL likewise",
     },
     "meta_ads": {
@@ -70,6 +74,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "auth_url": "https://www.facebook.com/v18.0/dialog/oauth",
         "token_url": "https://graph.facebook.com/v18.0/oauth/access_token",
         "scopes": ["ads_read", "ads_management"],
+        "sync": "pull",
         "docs": "Meta Developers > Create app (Business) > add Marketing API; valid OAuth "
                 "redirect URI: <public-base>/company/commercial/integrations/meta_ads/callback",
     },
@@ -78,6 +83,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "auth_url": "https://www.facebook.com/v18.0/dialog/oauth",
         "token_url": "https://graph.facebook.com/v18.0/oauth/access_token",
         "scopes": ["whatsapp_business_messaging", "whatsapp_business_management"],
+        "sync": "both",
         "docs": "Same Meta app with the WhatsApp product added and a phone number "
                 "connected; same callback pattern under /whatsapp/callback",
     },

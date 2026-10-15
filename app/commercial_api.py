@@ -940,36 +940,33 @@ def commit_import(rid: str, payload: ImportCommit) -> dict:
 
 
 # ---------- integrations ----------
-CATALOG = [
-    {"provider": "resend", "label": "Resend (email send)", "keys": ["SALES_RESEND_API_KEY"],
-     "auth": "api_key", "sync": "webhook"},
-    {"provider": "hunter", "label": "Hunter (verify)", "keys": ["HUNTER_API_KEY"],
-     "auth": "api_key", "sync": "pull"},
-    {"provider": "apollo", "label": "Apollo (prospecting)", "keys": ["APOLLO_API_KEY"],
-     "auth": "api_key", "sync": "pull"},
-    {"provider": "prospeo", "label": "Prospeo (prospecting)", "keys": ["PROSPEO_API_KEY"],
-     "auth": "api_key", "sync": "pull"},
-    {"provider": "buffer", "label": "Buffer (social publish)", "keys": ["BUFFER_API_KEY"],
-     "auth": "api_key", "sync": "push"},
-    {"provider": "whatsapp", "label": "WhatsApp Business",
-     "keys": ["WHATSAPP_CLIENT_ID", "WHATSAPP_CLIENT_SECRET"],
-     "auth": "oauth", "sync": "both", "oauth": True},
-    {"provider": "meta_ads", "label": "Meta Ads",
-     "keys": ["META_ADS_CLIENT_ID", "META_ADS_CLIENT_SECRET"],
-     "auth": "oauth", "sync": "pull", "oauth": True},
-    {"provider": "google_ads", "label": "Google Ads",
-     "keys": ["GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET"],
-     "auth": "oauth", "sync": "pull", "oauth": True},
-    {"provider": "google_analytics", "label": "Google Analytics",
-     "keys": ["GOOGLE_ANALYTICS_CLIENT_ID", "GOOGLE_ANALYTICS_CLIENT_SECRET"],
-     "auth": "oauth", "sync": "pull", "oauth": True},
-    {"provider": "hubspot", "label": "HubSpot CRM",
-     "keys": ["HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET"],
-     "auth": "oauth", "sync": "both", "oauth": True},
-    {"provider": "salesforce", "label": "Salesforce",
-     "keys": ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET"],
-     "auth": "oauth", "sync": "both", "oauth": True},
-]
+CATALOG_ORDER = ["resend", "hunter", "apollo", "prospeo", "buffer"]
+
+
+def _catalog() -> list[dict]:
+    """The connectable provider list, generated from the registries.
+
+    Fixed order, fixed membership: unknown names (including test doubles)
+    never appear. Display metadata only — behavior dispatches through the
+    specs themselves, so this list cannot drift from what connect/sync do.
+    """
+    from services import oauth as oauth_service
+    from services import provider_registry as registry
+
+    items = []
+    for name in CATALOG_ORDER:
+        spec = registry.get(name)
+        if spec is None or not spec.catalog:
+            continue
+        items.append({"provider": spec.name, "label": spec.label,
+                      "keys": list(spec.keys), "auth": spec.auth, "sync": spec.sync})
+    for provider, meta in oauth_service.PROVIDERS.items():
+        items.append({"provider": provider, "label": meta["label"],
+                      "keys": [f"{provider.upper()}_CLIENT_ID",
+                               f"{provider.upper()}_CLIENT_SECRET"],
+                      "auth": "oauth", "sync": meta.get("sync", "pull"),
+                      "oauth": True})
+    return items
 
 
 @router.get("/integrations")
@@ -977,7 +974,7 @@ def integration_catalog() -> list[dict]:
     org = _org()
     stored = {r["provider"]: r for r in store._list("integration_connections", org, 100)}
     out = []
-    for item in CATALOG:
+    for item in _catalog():
         conn = stored.get(item["provider"])
         configured = all(os.getenv(k) for k in item["keys"])
         if conn:
@@ -1022,7 +1019,7 @@ class ConnectIn(BaseModel):
 @router.post("/integrations/{provider}/connect", dependencies=[Depends(verify_founder_action)])
 def connect_provider(provider: str, payload: ConnectIn) -> dict:
     org = _org()
-    item = next((c for c in CATALOG if c["provider"] == provider), None)
+    item = next((c for c in _catalog() if c["provider"] == provider), None)
     if not item:
         raise HTTPException(404, "unknown provider")
     if item.get("coming_soon"):
@@ -1040,21 +1037,14 @@ def connect_provider(provider: str, payload: ConnectIn) -> dict:
             raise HTTPException(502, f"authorization could not start: {exc}")
     if not all(os.getenv(k) for k in item["keys"]):
         raise HTTPException(422, f"{provider} credentials are not configured")
-    # Truthful validation: only providers with a live check may become healthy.
-    healthy, note = False, ""
-    if provider == "hunter":
-        try:
-            from services.hunter import HunterClient
-            HunterClient().account()
-            healthy = True
-        except Exception as exc:
-            note = f"hunter validation failed: {type(exc).__name__}"
-    elif provider == "resend":
-        healthy = True
-        note = "key presence only; first send reconciles"
+    # Validation dispatches through the provider spec: hunter runs its live
+    # check, everything else declares key presence honestly.
+    from services import provider_registry as registry
+    spec = registry.get(provider)
+    if spec is not None and spec.validate is not None:
+        healthy, note = spec.validate()
     else:
-        note = "key presence only; sync validates on first run"
-        healthy = True
+        healthy, note = True, "key presence only; sync validates on first run"
     with store.connect() as db:
         existing = db.execute(
             "SELECT id FROM integration_connections WHERE org_id=? AND provider=?",
@@ -1082,7 +1072,7 @@ def connect_provider(provider: str, payload: ConnectIn) -> dict:
 @router.post("/integrations/{provider}/disconnect", dependencies=[Depends(verify_founder_action)])
 def disconnect_provider(provider: str) -> dict:
     org = _org()
-    item = next((c for c in CATALOG if c["provider"] == provider), None)
+    item = next((c for c in _catalog() if c["provider"] == provider), None)
     if item and item.get("oauth"):
         # Revocation is local-first: tokens are destroyed even if the
         # provider's revoke call fails, so disconnect never strands secrets.
@@ -1114,11 +1104,12 @@ def sync_provider(provider: str) -> dict:
     # Read-only sync where supported; never writes to the provider here.
     synced, error = 0, ""
     try:
-        if provider == "hunter":
-            from services.hunter import HunterClient
-            HunterClient().account()
+        from services import provider_registry as registry
+        spec = registry.get(provider)
+        if spec is not None and spec.sync_check is not None:
+            spec.sync_check()
             synced = 1
-        elif (next((c for c in CATALOG if c["provider"] == provider), {}) or {}).get("oauth"):
+        elif (next((c for c in _catalog() if c["provider"] == provider), {}) or {}).get("oauth"):
             # OAuth sync validates credentials (refreshing when expiring)
             # rather than moving data: connection health is the sync product.
             from services import oauth as oauth_service
@@ -1138,7 +1129,7 @@ def sync_provider(provider: str) -> dict:
             " last_error_sanitized=?, updated_at=? WHERE id=?",
             ("succeeded" if not error and synced else "failed" if error else "pending",
              _now(), error[:400], _now(), conn["id"]))
-        if error and (next((c for c in CATALOG if c["provider"] == provider), {}) or {}).get("oauth"):
+        if error and (next((c for c in _catalog() if c["provider"] == provider), {}) or {}).get("oauth"):
             # An unhealthy OAuth connection must not keep presenting as
             # healthy: validation failure demotes it until reconnected.
             db.execute(

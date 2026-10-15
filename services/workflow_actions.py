@@ -442,13 +442,15 @@ def research_prospects(context: dict[str, Any], config: dict[str, Any]) -> dict[
 
     Terms come from evidence (see ``core.evidence.resolve_research_terms``),
     fixed in the step config at validate time so the audit shows exactly what
-    was searched. Provider functions store candidates as research leads, the
-    same rows interactive research creates; this step attributes at most
-    ``max_contacts`` new ones to the plan and counts the rest as known or
-    over-ceiling. No prospect is contacted: ``sent`` stays 0 and nothing
-    observed here is reported as a measured event.
+    was searched. Suppliers are tried in registry order until ``max_contacts``
+    unique candidates are held; providers past the target are logged as
+    skipped instead of spending credits. Provider functions store candidates
+    as research leads, the same rows interactive research creates; this step
+    attributes at most ``max_contacts`` new ones to the plan and counts the
+    rest as known or over-ceiling. No prospect is contacted: ``sent`` stays 0
+    and nothing observed here is reported as a measured event.
     """
-    from services.sales_service import research_market_leads
+    from services.sales_service import waterfall_company_search
 
     industry = str(config.get("industry") or "").strip()
     if not industry:
@@ -482,8 +484,9 @@ def research_prospects(context: dict[str, Any], config: dict[str, Any]) -> dict[
         }
 
     limit_per_provider = max(1, min(5, (ceiling + 2) // 3))
-    summary = research_market_leads(
-        industry=industry, location=location, limit_per_provider=limit_per_provider)
+    summary = waterfall_company_search(
+        industry=industry, location=location, target=ceiling,
+        limit_per_provider=limit_per_provider)
     providers_queried = dict(summary.get("providers") or {})
     results = summary.get("results") or []
 
@@ -530,6 +533,7 @@ def research_prospects(context: dict[str, Any], config: dict[str, Any]) -> dict[
             "industry_source": config.get("industry_source"),
             "providers_queried": providers_queried,
             "provider_warnings": summary.get("warnings") or [],
+            "waterfall": summary.get("waterfall") or [],
             "candidates_found": len(results),
             "candidates_new": attributed + over_ceiling,
             "attributed": attributed,

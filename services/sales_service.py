@@ -661,55 +661,169 @@ def _provider_failure_note(provider: str, exc: Exception) -> str:
     return f"{provider}: {detail}"
 
 
+COMPANY_SEARCH_ORDER = ["prospeo", "apollo", "lusha"]
+
+
+def _register_company_search_providers() -> None:
+    """Declare each supplier once. Thunks close over module globals so tests
+    patching ``sales_service.research_*`` keep working: resolution happens at
+    call time, never at registration time."""
+    from services.provider_registry import ProviderSpec, register
+
+    register(ProviderSpec(
+        name="prospeo", label="Prospeo (company search)",
+        datapoints=frozenset({"company_search"}),
+        keys=("PROSPEO_API_KEY",), auth="api_key", sync="pull",
+        search_companies=lambda industry, location, limit: research_prospeo_market_leads(
+            industry=industry, location=location, limit=limit),
+        error_types=(ProspeoError, ValueError),
+    ))
+    register(ProviderSpec(
+        name="apollo", label="Apollo (company search)",
+        datapoints=frozenset({"company_search"}),
+        keys=("APOLLO_API_KEY",), auth="api_key", sync="pull",
+        search_companies=lambda industry, location, limit: research_apollo_market_leads(
+            industry=industry, location=location, limit=limit),
+        error_types=(ApolloError, ValueError),
+    ))
+    register(ProviderSpec(
+        name="lusha", label="Lusha (company search)",
+        datapoints=frozenset({"company_search"}),
+        keys=("LUSHA_API_KEY",), auth="api_key", sync="pull",
+        catalog=False,
+        search_companies=lambda industry, location, limit: research_lusha_market_leads(
+            industry=industry, location=location, limit=limit),
+        error_types=(LushaError, ValueError),
+    ))
+    register(ProviderSpec(
+        name="hunter", label="Hunter (verify)",
+        datapoints=frozenset({"verify"}),
+        keys=("HUNTER_API_KEY",), auth="api_key", sync="pull",
+        error_types=(HunterError, ValueError),
+        validate=_validate_hunter,
+        sync_check=_check_hunter,
+    ))
+    register(ProviderSpec(
+        name="resend", label="Resend (email send)",
+        datapoints=frozenset({"send"}),
+        keys=("SALES_RESEND_API_KEY",), auth="api_key", sync="webhook",
+        validate=lambda: (True, "key presence only; first send reconciles")
+        if os.getenv("SALES_RESEND_API_KEY", "").strip() else (False, "missing SALES_RESEND_API_KEY"),
+    ))
+    register(ProviderSpec(
+        name="buffer", label="Buffer (social publish)",
+        datapoints=frozenset({"publish"}),
+        keys=("BUFFER_API_KEY",), auth="api_key", sync="push",
+        validate=lambda: (True, "key presence only; sync validates on first run")
+        if os.getenv("BUFFER_API_KEY", "").strip() else (False, "missing BUFFER_API_KEY"),
+    ))
+
+
+def _validate_hunter() -> tuple[bool, str]:
+    try:
+        HunterClient().account()
+        return True, ""
+    except Exception as exc:
+        return False, f"hunter validation failed: {type(exc).__name__}"
+
+
+def _check_hunter() -> None:
+    HunterClient().account()
+
+
+def _company_search_steps(
+    industry: str, location: str | None, limit: int, order: list[str] | None = None,
+) -> list[tuple[str, Any, tuple[type[BaseException], ...]]]:
+    from services import provider_registry as registry
+
+    specs = registry.providers_for("company_search", order=order or COMPANY_SEARCH_ORDER)
+    steps = []
+    for spec in specs:
+        assert spec.search_companies is not None
+        search = spec.search_companies
+        steps.append((spec.name,
+                      lambda search=search: search(industry, location, limit),
+                      spec.error_types))
+    return steps
+
+
+def _research_result_key(item: dict[str, Any]) -> str | None:
+    lead = item.get("lead") if isinstance(item, dict) else None
+    if not isinstance(lead, dict):
+        return None
+    metadata = lead.get("metadata") if isinstance(lead.get("metadata"), dict) else {}
+    return _company_candidate_key(
+        lead.get("company_domain"),
+        lead.get("company"),
+        provider=str(lead.get("source") or ""),
+        provider_company_id=metadata.get("provider_company_id"),
+    ) or f"lead:{lead.get('id')}"
+
+
 def research_market_leads(*, industry: str, location: str | None = None, limit_per_provider: int = 5) -> dict[str, Any]:
     normalized_industry = industry.strip()
     normalized_location = location.strip() if location else None
     if len(normalized_industry) < 2:
         raise ValueError("industry must be at least 2 characters")
 
-    provider_calls: list[tuple[str, Any]] = [
-        ("prospeo", lambda: research_prospeo_market_leads(industry=normalized_industry, location=normalized_location, limit=limit_per_provider)),
-        ("apollo", lambda: research_apollo_market_leads(industry=normalized_industry, location=normalized_location, limit=limit_per_provider)),
-        ("lusha", lambda: research_lusha_market_leads(industry=normalized_industry, location=normalized_location, limit=limit_per_provider)),
-    ]
-    results: list[dict] = []
-    warnings: list[str] = []
-    providers: dict[str, int] = {}
+    from services import provider_registry as registry
 
-    for provider, fetch in provider_calls:
-        try:
-            provider_results = fetch()
-            providers[provider] = len(provider_results)
-            results.extend(provider_results)
-        except (ProspeoError, ApolloError, LushaError, ValueError) as exc:
-            providers[provider] = 0
-            warnings.append(_provider_failure_note(provider, exc))
-
-    deduped: list[dict] = []
-    seen: set[str] = set()
-    for item in results:
-        lead = item.get("lead") if isinstance(item, dict) else None
-        if not isinstance(lead, dict):
-            continue
-        metadata = lead.get("metadata") if isinstance(lead.get("metadata"), dict) else {}
-        key = _company_candidate_key(
-            lead.get("company_domain"),
-            lead.get("company"),
-            provider=str(lead.get("source") or ""),
-            provider_company_id=metadata.get("provider_company_id"),
-        ) or f"lead:{lead.get('id')}"
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(item)
-
+    # Same fan-out contract as always (every supplier tried, merged, deduped);
+    # now driven by the registry instead of a hardcoded call list.
+    run = registry.run_waterfall(
+        _company_search_steps(normalized_industry, normalized_location, limit_per_provider),
+        target=None,
+        key_fn=_research_result_key,
+        warn_fn=_provider_failure_note,
+    )
     return {
-        "results": deduped,
-        "providers": providers,
-        "warnings": warnings,
+        "results": run["results"],
+        "providers": run["providers"],
+        "warnings": run["warnings"],
         "mode": "company_first",
         "contact_enrichment": "on_demand",
         "requested": {"industry": normalized_industry, "location": normalized_location, "limit_per_provider": limit_per_provider},
+    }
+
+
+def waterfall_company_search(
+    *, industry: str, location: str | None = None, target: int = 10,
+    limit_per_provider: int = 5, order: list[str] | None = None,
+) -> dict[str, Any]:
+    """Company search that stops when it has enough.
+
+    Same suppliers, same stored rows, same return shape as
+    :func:`research_market_leads`, but providers past the target are never
+    called: once ``target`` unique candidates are held, the remaining
+    suppliers are logged as skipped instead of spending credits. Use it
+    wherever a bounded number of candidates is enough; keep the fan-out for
+    explicit search-everywhere requests.
+    """
+    normalized_industry = industry.strip()
+    normalized_location = location.strip() if location else None
+    if len(normalized_industry) < 2:
+        raise ValueError("industry must be at least 2 characters")
+    if target < 1:
+        raise ValueError("target must be at least 1")
+
+    from services import provider_registry as registry
+
+    run = registry.run_waterfall(
+        _company_search_steps(normalized_industry, normalized_location, limit_per_provider, order),
+        target=target,
+        key_fn=_research_result_key,
+        warn_fn=_provider_failure_note,
+    )
+    return {
+        "results": run["results"],
+        "providers": run["providers"],
+        "warnings": run["warnings"],
+        "waterfall": run["waterfall"],
+        "mode": "company_first",
+        "contact_enrichment": "on_demand",
+        "requested": {"industry": normalized_industry, "location": normalized_location,
+                       "limit_per_provider": limit_per_provider, "target": target,
+                       "order": [step["provider"] for step in run["waterfall"]]},
     }
 
 
@@ -2106,3 +2220,6 @@ def ingest_inbound_email(payload: dict) -> dict:
     after_count = len(after.get("interactions", [])) if after else before_count
     duplicate = after_count == before_count
     return {"ok": True, "lead_id": lead["id"], "action": "replied", "duplicate": duplicate}
+
+
+_register_company_search_providers()

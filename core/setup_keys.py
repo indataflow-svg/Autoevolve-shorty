@@ -1,8 +1,10 @@
 """Setup key management: grouped provider keys with test-before-save.
 
 Writes go to the repo .env (root keys) or engines/g3/config/g3.env
-(Buffer/R2 keys), always with a timestamped .bak first and rollback
+(Buffer keys), always with a timestamped .bak first and rollback
 on validation failure. Reads are masked: values never leave the server.
+R2 storage keys live in g3.env too but are pipeline infrastructure, not a
+connectable group (see PROVIDER_GROUPS below).
 """
 
 from __future__ import annotations
@@ -88,17 +90,16 @@ PROVIDER_GROUPS: dict[str, dict] = {
     },
     "social": {
         "file": "g3env",
-        "label": "Buffer + R2 publishing",
+        "label": "Buffer publishing",
+        # Buffer is the tool founders connect. The R2_* variables used to live
+        # here, but object storage is pipeline infrastructure, not a tool
+        # choice: engines/g3 reads it directly, almost nobody brings their
+        # own, and its presence made Buffer look unconfigured.
         "keys": [
             "BUFFER_API_KEY",
             "BUFFER_ORGANIZATION_ID",
             "BUFFER_INSTAGRAM_CHANNEL_ID",
             "BUFFER_X_CHANNEL_ID",
-            "R2_ACCOUNT_ID",
-            "R2_ACCESS_KEY_ID",
-            "R2_SECRET_ACCESS_KEY",
-            "R2_BUCKET",
-            "R2_PUBLIC_BASE_URL",
         ],
     },
     "forms": {
