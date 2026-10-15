@@ -174,6 +174,7 @@ function AddAccountDialog({ credentials, token, onClose, onSaved }: {
 type Suggestion = {
   company_name: string; domain: string
   icp_matches: Array<{ icp_id: string; icp_name: string; on: string }>
+  enrichment: { industry: string | null; size: string | null; country: string | null; description: string | null; source: string; cached: boolean } | null
   evidence: { lead_count: number; stages: string[]; sources: string[]; research_candidate: boolean }
   reason: string
 }
@@ -225,6 +226,9 @@ function SuggestDialog({ credentials, token, onClose, onCreated }: {
             {(s.icp_matches || []).length > 0
               ? <StateBadge tone="green">Matches ICP: {(s.icp_matches || []).map(m => m.icp_name).join(', ')}</StateBadge>
               : <small>Outside your ICPs</small>}</div>
+          {s.enrichment
+            ? <small>{[s.enrichment.industry, s.enrichment.size, s.enrichment.country].filter(Boolean).join(' · ')}{s.enrichment.description ? ` — ${s.enrichment.description}` : ''} <em>via {s.enrichment.source}{s.enrichment.cached ? ' (cached)' : ''}</em></small>
+            : <small>Not enriched yet</small>}
           <p>{s.reason}</p>
           <div className="cx-card-actions">
             <button className="button primary" disabled={busy !== null} onClick={() => void create(s)}>

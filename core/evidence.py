@@ -353,7 +353,61 @@ def _match_icps(entry: dict[str, Any], icps: list[dict[str, Any]]) -> list[dict[
     return hits
 
 
-def suggest_accounts(org: int = 0) -> dict[str, Any]:
+def _enrichment_excerpt(domain: str, budget: dict[str, int]) -> dict[str, Any] | None:
+    """One short enrichment excerpt per suggested company, cache-first.
+
+    Cached profiles cost nothing and are always used. Fresh lookups spend
+    provider credits, so they stop when the per-call budget runs out — ranked
+    order means the best candidates get enriched first. Any failure yields
+    None, never a broken suggestion list.
+    """
+    from core.sales_store import (
+        get_company_profile,
+        normalize_company_domain,
+        upsert_company_profile,
+    )
+
+    normalized = normalize_company_domain(domain)
+    if not normalized:
+        return None
+    cached = get_company_profile(normalized)
+    if cached and cached.get("status") == "resolved":
+        return _excerpt(cached.get("summary") or {}, cached.get("provider"), True)
+    if budget["left"] <= 0:
+        return None
+    try:
+        from services.company_enrich import CompanyEnrichClient
+        client = CompanyEnrichClient()
+        payload = client.enrich_company(normalized)
+    except Exception:
+        return None
+    budget["left"] -= 1
+    try:
+        summary = client.extract_company_profile(payload)
+        upsert_company_profile(normalized, provider="companyenrich", status="resolved",
+                               company_name=summary.get("name"), summary=summary, raw=payload)
+    except Exception:
+        return None
+    return _excerpt(summary, "companyenrich", False)
+
+
+def _excerpt(summary: dict[str, Any], source: Any, cached: bool) -> dict[str, Any]:
+    summary = summary if isinstance(summary, dict) else {}
+    location = summary.get("location") if isinstance(summary.get("location"), dict) else {}
+    description = str(summary.get("description") or "").strip()
+    if len(description) > 140:
+        description = description[:137].rstrip() + "..."
+    size = (summary.get("employee_range") or summary.get("size")
+            or summary.get("employee_count"))
+    return {"industry": summary.get("industry") or None,
+            "size": str(size).strip() if size else None,
+            "country": location.get("country") or None,
+            "description": description or None,
+            "source": str(source or "companyenrich"),
+            "cached": cached}
+
+
+def suggest_accounts(org: int = 0, enrich_budget: int = 5) -> dict[str, Any]:
     """Propose accounts from evidence nobody has claimed yet.
 
     Sources, in order: lead domains with no account (strongest first by lead
@@ -372,6 +426,7 @@ def suggest_accounts(org: int = 0) -> dict[str, Any]:
         matches = _match_icps(entry, icps)
         ranked.append((0 if matches else 1, -entry["lead_count"], entry, matches))
     ranked.sort(key=lambda r: (r[0], r[1]))
+    budget = {"left": max(0, enrich_budget)}
     suggestions: list[dict[str, Any]] = []
     for _, _, entry, matches in ranked:
         reason = _reason_for(entry)
@@ -384,6 +439,7 @@ def suggest_accounts(org: int = 0) -> dict[str, Any]:
             "domain": entry["domain"],
             "industry": None,
             "icp_matches": matches,
+            "enrichment": _enrichment_excerpt(entry["domain"], budget),
             "evidence": {
                 "lead_count": entry["lead_count"],
                 "lead_ids": entry["lead_ids"],

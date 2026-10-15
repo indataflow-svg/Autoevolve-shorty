@@ -172,6 +172,54 @@ class SuggestTests(EvidenceBase):
         out = suggest_accounts(0)
         self.assertEqual(out["suggestions"][0]["company_name"], "Rift Freight")
 
+    def test_cached_enrichment_costs_no_provider_call(self):
+        from core.sales_store import upsert_company_profile
+        upsert_company_profile("rift.test", provider="companyenrich", status="resolved",
+                               company_name="Rift Freight",
+                               summary={"industry": "Logistics", "employee_range": "11-50",
+                                        "location": {"country": "Kenya"},
+                                        "description": "Regional freight forwarder."})
+        self._lead("a@rift.test", "rift.test", "Rift Freight", ["logistics"])
+        with patch("services.company_enrich.CompanyEnrichClient",
+                   side_effect=AssertionError("must use cache")):
+            out = suggest_accounts(0)
+        excerpt = out["suggestions"][0]["enrichment"]
+        self.assertEqual(excerpt["industry"], "Logistics")
+        self.assertEqual(excerpt["size"], "11-50")
+        self.assertEqual(excerpt["country"], "Kenya")
+        self.assertTrue(excerpt["cached"])
+
+    def test_fresh_enrichment_is_bounded_and_stored(self):
+        calls = []
+
+        class FakeClient:
+            def enrich_company(self, domain, **kwargs):
+                calls.append(domain)
+                return {"ok": True}
+
+            def extract_company_profile(self, payload):
+                return {"industry": "Logistics",
+                        "description": "x" * 200}
+
+        for i in range(6):
+            self._lead(f"a{i}@d{i}.test", f"d{i}.test", f"Company {i}", ["logistics"])
+        with patch("services.company_enrich.CompanyEnrichClient", FakeClient):
+            out = suggest_accounts(0, enrich_budget=5)
+        self.assertEqual(sorted(calls), sorted(f"d{i}.test" for i in range(5)))
+        enriched = [s for s in out["suggestions"] if s["enrichment"]]
+        self.assertEqual(len(enriched), 5)
+        self.assertEqual(len(enriched[0]["enrichment"]["description"]), 140)
+        rest = [s for s in out["suggestions"] if not s["enrichment"]]
+        self.assertEqual(len(rest), 1)
+
+    def test_enrichment_failure_keeps_suggestions(self):
+        self._lead("a@rift.test", "rift.test", "Rift Freight", ["logistics"])
+        with patch("services.company_enrich.CompanyEnrichClient",
+                   side_effect=ValueError("no key")):
+            out = suggest_accounts(0)
+        self.assertEqual(out["total"], 1)
+        self.assertIsNone(out["suggestions"][0]["enrichment"])
+
 
 if __name__ == "__main__":
     unittest.main()
