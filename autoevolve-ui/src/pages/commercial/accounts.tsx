@@ -173,6 +173,7 @@ function AddAccountDialog({ credentials, token, onClose, onSaved }: {
 
 type Suggestion = {
   company_name: string; domain: string
+  icp_matches: Array<{ icp_id: string; icp_name: string; on: string }>
   evidence: { lead_count: number; stages: string[]; sources: string[]; research_candidate: boolean }
   reason: string
 }
@@ -220,7 +221,10 @@ function SuggestDialog({ credentials, token, onClose, onCreated }: {
       : <>
         <p className="cx-note">Based on {from.unclaimed_lead_domains ?? 0} unclaimed domain(s){from.research_candidates ? `, including ${from.research_candidates} research candidate(s)` : ''}.</p>
         <ul className="cx-cards">{suggestions.map(s => <li key={s.domain} className="cx-card">
-          <div><strong>{s.company_name}</strong> <small>{s.domain} · {s.evidence.lead_count} lead(s) · {s.evidence.stages.join(', ') || 'new'}</small></div>
+          <div><strong>{s.company_name}</strong> <small>{s.domain} · {s.evidence.lead_count} lead(s) · {s.evidence.stages.join(', ') || 'new'}</small>
+            {(s.icp_matches || []).length > 0
+              ? <StateBadge tone="green">Matches ICP: {(s.icp_matches || []).map(m => m.icp_name).join(', ')}</StateBadge>
+              : <small>Outside your ICPs</small>}</div>
           <p>{s.reason}</p>
           <div className="cx-card-actions">
             <button className="button primary" disabled={busy !== null} onClick={() => void create(s)}>

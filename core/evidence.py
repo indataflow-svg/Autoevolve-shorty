@@ -10,6 +10,7 @@ Read-only by construction: this module has no INSERT/UPDATE path.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from typing import Any
 
@@ -104,11 +105,20 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
             ordered = sorted(by_domain.items(), key=lambda kv: -len(kv[1]))[:50]
             for dom, members in ordered:
                 names = sorted({(m.get("company") or "").strip() for m in members if (m.get("company") or "").strip()})
+                name_counts: Counter = Counter(
+                    (m.get("company") or "").strip() for m in members
+                    if (m.get("company") or "").strip())
+                keywords = sorted({
+                    str(kw).strip().lower()
+                    for m in members
+                    for kw in _research_keywords(m) if str(kw).strip()})
                 leads["unlinked_domains"].append({
                     "domain": dom,
                     "lead_count": len(members),
                     "lead_ids": [m["id"] for m in members],
                     "company_names": names[:3],
+                    "top_name": name_counts.most_common(1)[0][0] if name_counts else None,
+                    "keywords": keywords,
                     "stages": sorted({m.get("stage") or "new" for m in members}),
                     "sources": sorted({(m.get("source") or "unknown") for m in members}),
                     "has_candidate": any(
@@ -290,6 +300,59 @@ def resolve_research_terms(org: int = 0) -> dict[str, Any]:
             "location": location, "location_source": location_source}
 
 
+def _research_keywords(lead: dict) -> list[str]:
+    """The query vocabulary that surfaced this lead, if recorded."""
+    try:
+        meta = _safe_json(lead.get("metadata_json"), {})
+        filters = meta.get("research_filters") if isinstance(meta, dict) else None
+        include = (filters or {}).get("company_keywords", {}).get("include", [])
+    except Exception:
+        return []
+    return [str(k) for k in include] if isinstance(include, list) else [str(include)]
+
+
+def _active_icp_industries(org: int) -> list[dict[str, Any]]:
+    """Industry values of every non-archived ICP. Archived profiles are
+    history, not guidance, and never steer suggestions."""
+    from core import commercial_store
+
+    with commercial_store.connect() as db:
+        try:
+            rows = db.execute(
+                "SELECT id, name, criteria_json FROM icp_profiles"
+                " WHERE org_id=? AND status != 'archived'", (org,)).fetchall()
+        except Exception:
+            return []
+    out = []
+    for row in rows:
+        values = [str(rule.get("value")).strip() for rule in _safe_json(row["criteria_json"], [])
+                  if isinstance(rule, dict) and str(rule.get("field") or "").lower() == "industry"
+                  and str(rule.get("value") or "").strip()]
+        if values:
+            out.append({"icp_id": row["id"], "icp_name": row["name"], "values": values})
+    return out
+
+
+def _match_icps(entry: dict[str, Any], icps: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Link a candidate to the ICPs whose industry vocabulary it already speaks.
+
+    Compares both directions (criterion in keyword, keyword in criterion) so a
+    broad ICP value and a narrow research keyword still find each other. Pure
+    string overlap on recorded vocabulary — never inference.
+    """
+    hay = [k for k in (entry.get("keywords") or []) if k]
+    hay += [t for name in (entry.get("company_names") or [])
+            for t in re.split(r"[^a-z0-9]+", name.lower()) if len(t) >= 3]
+    hits = []
+    for icp in icps:
+        for value in icp["values"]:
+            v = value.lower()
+            if v and any(v in h or h in v for h in hay if h):
+                hits.append({"icp_id": icp["icp_id"], "icp_name": icp["icp_name"], "on": value})
+                break
+    return hits
+
+
 def suggest_accounts(org: int = 0) -> dict[str, Any]:
     """Propose accounts from evidence nobody has claimed yet.
 
@@ -301,15 +364,26 @@ def suggest_accounts(org: int = 0) -> dict[str, Any]:
     evidence = collect_evidence(org)
     known = {(a.get("domain") or "").strip().lower() for a in
              _accounts_full(org) if (a.get("domain") or "").strip()}
-    suggestions: list[dict[str, Any]] = []
+    icps = _active_icp_industries(org)
+    ranked = []
     for entry in evidence["leads"]["unlinked_domains"]:
         if entry["domain"] in known:
             continue
-        names = entry["company_names"]
+        matches = _match_icps(entry, icps)
+        ranked.append((0 if matches else 1, -entry["lead_count"], entry, matches))
+    ranked.sort(key=lambda r: (r[0], r[1]))
+    suggestions: list[dict[str, Any]] = []
+    for _, _, entry, matches in ranked:
+        reason = _reason_for(entry)
+        if matches:
+            reason += f" Matches ICP {', '.join(sorted({m['icp_name'] for m in matches}))}."
+        else:
+            reason += " Outside your ICPs."
         suggestions.append({
-            "company_name": names[0] if names else entry["domain"],
+            "company_name": entry.get("top_name") or (entry.get("company_names") or [entry["domain"]])[0],
             "domain": entry["domain"],
             "industry": None,
+            "icp_matches": matches,
             "evidence": {
                 "lead_count": entry["lead_count"],
                 "lead_ids": entry["lead_ids"],
@@ -317,7 +391,7 @@ def suggest_accounts(org: int = 0) -> dict[str, Any]:
                 "sources": entry["sources"],
                 "research_candidate": entry["has_candidate"],
             },
-            "reason": _reason_for(entry),
+            "reason": reason,
         })
     return {
         "suggestions": suggestions,

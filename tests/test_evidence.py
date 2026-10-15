@@ -121,6 +121,57 @@ class SuggestTests(EvidenceBase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("suggestions", r.json())
 
+    def _icp(self, name="Logistics ICP", value="logistics", status="provisional"):
+        response = self.client.post("/company/commercial/icps", auth=self.auth,
+                                    headers=self.headers, json={
+                                        "name": name, "status": status,
+                                        "criteria": [{"field": "industry", "operator": "contains",
+                                                      "value": value}]})
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def _lead(self, email, domain, company, keywords=None):
+        meta = {"research_filters": {"company_keywords": {"include": keywords or []}}}
+        sales_store.upsert_lead({"email": email, "company": company,
+                                 "company_domain": domain, "source": "hunter",
+                                 "metadata": meta})
+
+    def test_matched_suggestions_rank_first(self):
+        self._icp()
+        self._lead("a@rift.test", "rift.test", "Rift Freight", ["logistics"])
+        for i in range(5):
+            self._lead(f"g{i}@gym.test", "gym.test", "City Gym")
+        out = suggest_accounts(0)
+        self.assertEqual([s["domain"] for s in out["suggestions"]],
+                         ["rift.test", "gym.test"])
+        matched = out["suggestions"][0]
+        self.assertEqual(len(matched["icp_matches"]), 1)
+        self.assertIn("Matches ICP", matched["reason"])
+        self.assertEqual(out["suggestions"][1]["icp_matches"], [])
+        self.assertIn("Outside your ICPs", out["suggestions"][1]["reason"])
+
+    def test_archived_icps_never_steer_suggestions(self):
+        icp = self._icp()
+        self.client.patch(f"/company/commercial/icps/{icp['id']}", auth=self.auth,
+                          headers=self.headers, json={"status": "archived"})
+        self._lead("a@rift.test", "rift.test", "Rift Freight", ["logistics"])
+        out = suggest_accounts(0)
+        self.assertEqual(out["suggestions"][0]["icp_matches"], [])
+        self.assertIn("Outside your ICPs", out["suggestions"][0]["reason"])
+
+    def test_matching_works_in_both_directions(self):
+        self._icp(name="Short ICP", value="log")
+        self._lead("a@rift.test", "rift.test", "Rift Freight", ["logistics"])
+        out = suggest_accounts(0)
+        self.assertEqual(len(out["suggestions"][0]["icp_matches"]), 1)
+
+    def test_display_name_is_most_common_not_alphabetical(self):
+        self._lead("a@rift.test", "rift.test", "Rift Freight", ["logistics"])
+        self._lead("b@rift.test", "rift.test", "Rift Freight", ["logistics"])
+        self._lead("c@rift.test", "rift.test", "Aardvark Logistics", ["logistics"])
+        out = suggest_accounts(0)
+        self.assertEqual(out["suggestions"][0]["company_name"], "Rift Freight")
+
 
 if __name__ == "__main__":
     unittest.main()
