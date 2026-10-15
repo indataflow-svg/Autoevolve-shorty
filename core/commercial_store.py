@@ -124,7 +124,7 @@ def init_commercial_db() -> None:
                 owner TEXT NOT NULL DEFAULT '', account_id TEXT, contact_id TEXT,
                 lead_id TEXT, opportunity_id TEXT, campaign_id TEXT,
                 source TEXT NOT NULL DEFAULT 'manual', audit_json TEXT NOT NULL DEFAULT '{}',
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_act_org ON commercial_activities(org_id, account_id);
 
@@ -170,6 +170,15 @@ def init_commercial_db() -> None:
             );
             """
         )
+        _migrate_activities_updated_at(db)
+
+
+def _migrate_activities_updated_at(db) -> None:
+    """Existing installs predate the activities updated_at column that _save
+    and _list assume. Backfill it idempotently instead of rebuilding history."""
+    cols = {row["name"] for row in db.execute("PRAGMA table_info(commercial_activities)")}
+    if "updated_at" not in cols:
+        db.execute("ALTER TABLE commercial_activities ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
 
 
 def _row(table: str, rid: str, org: int) -> dict | None:

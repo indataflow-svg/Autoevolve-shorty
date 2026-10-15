@@ -161,6 +161,7 @@ function CreateIcpDialog({ credentials, token, onClose, onSaved }: {
 
 type QualifyShape = {
   qualified: boolean; needs_human: boolean; hard_fail: boolean; unmet: string[]
+  skipped: Array<{ rule: string; reason: string }>
   fit: { score?: number | null; grade: string; explanations?: Array<{ field: string; result: string; reason?: string; actual?: unknown }>; missing?: string[] }
   intent: { score: number; level: string; note: string; signals?: Array<{ signal: string }> }
 }
@@ -219,6 +220,8 @@ export function QualifyWorkspace({ credentials, token, presetAccount, onPresetCo
           <li key={i}>{e.field}: {e.reason || 'no data — not counted either way'}</li>)}</ul></>}
       {result.unmet.length > 0 && <><h4>Unmet conditions</h4>
         <ul className="cx-list">{result.unmet.map(u => <li key={u}>{u}</li>)}</ul></>}
+      {(result.skipped || []).length > 0 && <><h4>Rules not judged here</h4>
+        <ul className="cx-list">{(result.skipped || []).map(s => <li key={s.rule}>{s.rule}: {s.reason}</li>)}</ul></>}
       {result.needs_human && <p className="cx-note">Human review required before advancing this account.</p>}
     </div>}
   </Section>

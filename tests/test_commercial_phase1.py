@@ -444,6 +444,125 @@ class Phase1HardeningTests(CommercialBase):
             self.client.delete("/company/commercial/accounts/acct_nope",
                                auth=self.auth, headers=self.headers).status_code, 404)
 
+    def test_rules_only_judge_their_own_scope(self):
+        icp_a = self.client.post("/company/commercial/icps", auth=self.auth, headers=self.headers, json={
+            "name": "Strict A", "criteria": [{"field": "industry", "operator": "equals", "value": "x"}]}).json()
+        icp_b = self.client.post("/company/commercial/icps", auth=self.auth, headers=self.headers, json={
+            "name": "Loose B", "criteria": [{"field": "industry", "operator": "equals", "value": "y"}]}).json()
+        self.client.post("/company/commercial/rules", auth=self.auth, headers=self.headers, json={
+            "name": "A-only bar", "criterion": "fit>=90", "rule_type": "fit",
+            "threshold": 90, "icp_id": icp_a["id"]})
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Other ICP Co", "industry": "y",
+                                      "icp_id": icp_b["id"]}).json()
+        q = self.client.post(f"/company/commercial/accounts/{acct['id']}/qualify",
+                             auth=self.auth, headers=self.headers).json()
+        scoped = [s for s in q["skipped"] if s["rule"] == "A-only bar"]
+        self.assertEqual(len(scoped), 1)
+        self.assertIn("another ICP", scoped[0]["reason"])
+        self.assertNotIn("A-only bar", q["unmet"])
+
+    def test_pipeline_scoped_rules_wait_for_a_pipeline(self):
+        self.client.post("/company/commercial/rules", auth=self.auth, headers=self.headers, json={
+            "name": "Stage gate", "criterion": "proposal reached", "rule_type": "fit",
+            "pipeline_id": "pipe_x"})
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Pipe Co"}).json()
+        q = self.client.post(f"/company/commercial/accounts/{acct['id']}/qualify",
+                             auth=self.auth, headers=self.headers).json()
+        self.assertTrue(any(s["rule"] == "Stage gate" and "pipeline" in s["reason"]
+                            for s in q["skipped"]))
+
+    def test_qualification_rules_demand_named_evidence(self):
+        self.client.post("/company/commercial/rules", auth=self.auth, headers=self.headers, json={
+            "name": "Budget confirmed", "criterion": "buyer stated a budget",
+            "rule_type": "qualification", "hard_disqualify": True,
+            "evidence_required": ["budget", "timeline"]})
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Thin Co"}).json()
+        q = self.client.post(f"/company/commercial/accounts/{acct['id']}/qualify",
+                             auth=self.auth, headers=self.headers).json()
+        self.assertTrue(q["hard_fail"])
+        self.assertFalse(q["qualified"])
+        self.assertTrue(any("Budget confirmed" in u and "budget" in u for u in q["unmet"]))
+        self.assertTrue(q["needs_human"])
+
+    def test_default_floor_is_a_rule_not_code(self):
+        icp = self.client.post("/company/commercial/icps", auth=self.auth, headers=self.headers, json={
+            "name": "Strict", "criteria": [{"field": "industry", "operator": "equals", "value": "x"}]}).json()
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Low Co", "industry": "y",
+                                      "icp_id": icp["id"]}).json()
+        q = self.client.post(f"/company/commercial/accounts/{acct['id']}/qualify",
+                             auth=self.auth, headers=self.headers).json()
+        # Fresh org seeds the old hardcoded floor as an editable rule.
+        self.assertIn("Minimum fit score 40", q["unmet"])
+        self.assertFalse(q["qualified"])
+        rules = self.client.get("/company/commercial/rules", auth=self.auth).json()
+        seed = next(r for r in rules if r["name"] == "Minimum fit score 40")
+        self.assertEqual(seed["threshold"], 40.0)
+        # And the founder can move the bar: lower it, re-qualify, watch it pass.
+        self.assertEqual(seed["version"], 1)
+
+    def test_unknown_fit_fails_closed_with_a_reason(self):
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "No ICP Co"}).json()
+        q = self.client.post(f"/company/commercial/accounts/{acct['id']}/qualify",
+                             auth=self.auth, headers=self.headers).json()
+        self.assertFalse(q["qualified"])
+        self.assertTrue(q["needs_human"])
+        self.assertTrue(any("no linked ICP" in u for u in q["unmet"]))
+
+    def test_verdicts_persist_as_auditable_history(self):
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Hist Co"}).json()
+        first = self.client.post(f"/company/commercial/accounts/{acct['id']}/qualify",
+                                 auth=self.auth, headers=self.headers).json()
+        detail = self.client.get(f"/company/commercial/accounts/{acct['id']}",
+                                 auth=self.auth).json()
+        quals = [a for a in detail["activities"] if a["type"] == "qualification"]
+        self.assertEqual(len(quals), 1)
+        self.assertEqual(quals[0]["outcome"],
+                         "qualified" if first["qualified"] else "not_qualified")
+        second = self.client.post(f"/company/commercial/accounts/{acct['id']}/qualify",
+                                  auth=self.auth, headers=self.headers).json()
+        self.assertEqual(second["qualified"], first["qualified"])
+        detail = self.client.get(f"/company/commercial/accounts/{acct['id']}",
+                                 auth=self.auth).json()
+        self.assertEqual(len([a for a in detail["activities"]
+                              if a["type"] == "qualification"]), 2)
+
+    def test_activities_migration_keeps_old_tables_working(self):
+        # Installs predating updated_at must not break log_activity or qualify.
+        from core import commercial_store
+        with commercial_store.connect() as db:
+            db.execute("DROP TABLE IF EXISTS commercial_activities")
+            db.execute(
+                """CREATE TABLE commercial_activities (
+                    id TEXT PRIMARY KEY, org_id INTEGER NOT NULL DEFAULT 0,
+                    type TEXT NOT NULL, timestamp TEXT NOT NULL,
+                    outcome TEXT NOT NULL DEFAULT '', owner TEXT NOT NULL DEFAULT '',
+                    account_id TEXT, contact_id TEXT, lead_id TEXT,
+                    opportunity_id TEXT, campaign_id TEXT,
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    audit_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL)""")
+        commercial_store.init_commercial_db()
+        with commercial_store.connect() as db:
+            cols = {r["name"] for r in db.execute("PRAGMA table_info(commercial_activities)")}
+        self.assertIn("updated_at", cols)
+        acct = self.client.post("/company/commercial/accounts", auth=self.auth,
+                                headers=self.headers,
+                                json={"company_name": "Mig Co"}).json()
+        q = self.client.post(f"/company/commercial/accounts/{acct['id']}/qualify",
+                             auth=self.auth, headers=self.headers)
+        self.assertEqual(q.status_code, 200, q.text)
+
 
 DEFAULT_STAGES = [
     {"key": "prospect", "label": "Prospect", "allowed_next": ["qualified", "disqualified"]},
@@ -464,3 +583,4 @@ def json_dump(o) -> str:
 
 if __name__ == "__main__":
     unittest.main()
+

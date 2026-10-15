@@ -299,7 +299,12 @@ section, 13px body, readable tables, board columns, modal dialogs, stepper. Full
   mandatory reasons for lost/deferred/disqualified — enforced server-side.
 - **Qualification:** fit (weighted criteria + hard exclusions), intent
   (recorded events only), and rules evaluated separately; `needs_human` when
-  anything is unmet.
+  anything is unmet. Rules honor their `icp_id`/`pipeline_id` scope (out of
+  scope is reported as skipped, never silently passed); `qualification`-type
+  rules demand named evidence from the account record; the old hardcoded
+  fit-40 floor is a seeded editable rule. Every verdict persists as a
+  `qualification` activity with its scores, so history — not just the latest
+  answer — feeds review and evolution.
 - **Integrations:** catalog states (`healthy/action_required/disconnected` +
   `available/unavailable/coming_soon`) from stored rows, env presence, and
   live checks. OAuth providers (HubSpot, Salesforce, Google Ads/Analytics,

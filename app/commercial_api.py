@@ -615,31 +615,118 @@ def create_rule(payload: RuleIn) -> dict:
 @router.post("/accounts/{rid}/qualify")
 def qualify_account(rid: str) -> dict:
     org = _org()
-    acct = store._row("commercial_accounts", org=org, rid=rid) if False else store._row(
-        "commercial_accounts", rid, org)
+    acct = store._row("commercial_accounts", rid, org)
     if not acct:
         raise HTTPException(404, "account not found")
+    _ensure_default_rules(org)
     fit = store.evaluate_fit(acct, store._row("icp_profiles", acct["icp_id"], org)
                              ) if acct.get("icp_id") else {"score": None, "grade": "unknown",
                                                            "explanations": [], "missing": ["icp_id"]}
     intent = store.evaluate_intent(org, rid)
-    rules = [r for r in store._list("qualification_rules", org, 200) if r.get("active")]
-    unmet, hard_fail = [], False
-    for rule in rules:
+    evidence = _account_evidence(acct)
+    unmet, hard_fail, skipped, evaluated = [], False, [], []
+    if fit.get("score") is None:
+        # Unknown fit is not a pass: without a linked ICP nothing has judged
+        # this account, so it cannot clear qualification. needs_human follows
+        # from unmet below.
+        unmet.append("no linked ICP: fit is unknown")
+    for rule in [r for r in store._list("qualification_rules", org, 200) if r.get("active")]:
+        # Scoped rules only judge their own scope: an ICP-scoped rule means
+        # nothing to an account on another ICP, and a pipeline-scoped rule
+        # cannot be judged without a pipeline in context.
+        if rule.get("icp_id") and rule["icp_id"] != acct.get("icp_id"):
+            skipped.append({"rule": rule["name"], "reason": "scoped to another ICP"})
+            continue
+        if rule.get("pipeline_id"):
+            skipped.append({"rule": rule["name"], "reason": "needs a pipeline context"})
+            continue
+        evaluated.append(rule["id"])
         if rule["rule_type"] == "fit" and isinstance(fit.get("score"), int):
             if rule.get("threshold") is not None and fit["score"] < float(rule["threshold"]):
                 unmet.append(rule["name"])
                 if rule.get("hard_disqualify"):
                     hard_fail = True
-        if rule["rule_type"] == "intent" and rule.get("threshold") is not None:
+        elif rule["rule_type"] == "intent" and rule.get("threshold") is not None:
             if intent["score"] < float(rule["threshold"]):
                 unmet.append(rule["name"])
                 if rule.get("hard_disqualify"):
                     hard_fail = True
-    qualified = not hard_fail and not unmet and (fit.get("score") or 0) >= 40
-    return {"account_id": rid, "fit": fit, "intent": intent, "unmet": unmet,
-            "hard_fail": hard_fail, "qualified": qualified,
-            "needs_human": bool(hard_fail or unmet)}
+        elif rule["rule_type"] == "qualification":
+            # A qualification rule demands evidence: every required item must
+            # be present and non-empty on the account record. A rule demanding
+            # nothing is vacuously met.
+            try:
+                required = json.loads(rule.get("evidence_required_json") or "[]")
+            except ValueError:
+                required = []
+            if not isinstance(required, list):
+                required = []
+            missing_items = [item for item in required
+                             if not _has_evidence(evidence, item)]
+            if missing_items:
+                unmet.append(f"{rule['name']} (missing: {', '.join(missing_items)})")
+                if rule.get("hard_disqualify"):
+                    hard_fail = True
+    qualified = not hard_fail and not unmet
+    verdict = {"account_id": rid, "fit": fit, "intent": intent, "unmet": unmet,
+               "hard_fail": hard_fail, "qualified": qualified,
+               "needs_human": bool(hard_fail or unmet), "skipped": skipped,
+               "rules_evaluated": evaluated}
+    _save("commercial_activities", {
+        "id": store.new_id("act"), "type": "qualification",
+        "timestamp": _now(), "outcome": "qualified" if qualified else "not_qualified",
+        "owner": "", "account_id": rid, "source": "system",
+        "audit_json": json.dumps({
+            "fit_score": fit.get("score"), "fit_grade": fit.get("grade"),
+            "intent_score": intent.get("score"), "intent_level": intent.get("level"),
+            "unmet": unmet, "hard_fail": hard_fail, "rules_evaluated": evaluated,
+        }),
+        "created_at": _now()}, org)
+    return verdict
+
+
+def _has_evidence(evidence: dict, item: object) -> bool:
+    """True when the named evidence exists and is non-empty. Unknown stays unknown."""
+    value = evidence.get(item) if isinstance(item, str) else None
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, dict)):
+        return bool(len(value))
+    return True
+
+
+def _account_evidence(acct: dict) -> dict:
+    """Every known fact about the account, flat. Qualification rules check
+    their evidence_required items against exactly this mapping."""
+    flat: dict = {k: v for k, v in acct.items() if k != "attributes_json"}
+    try:
+        attrs = json.loads(acct.get("attributes_json") or "{}")
+    except ValueError:
+        attrs = {}
+    if isinstance(attrs, dict):
+        flat.update(attrs)
+    return flat
+
+
+def _ensure_default_rules(org: int) -> None:
+    """Seed the editable default bar once per org. The old hardcoded floor
+    (fit >= 40) lives here now as a normal rule the founder can change or
+    delete — behavior is identical until they do."""
+    with store.connect() as db:
+        count = db.execute(
+            "SELECT COUNT(*) FROM qualification_rules WHERE org_id=?", (org,)).fetchone()[0]
+        if count:
+            return
+        db.execute(
+            "INSERT INTO qualification_rules (id, org_id, name, criterion, rule_type,"
+            " weight, threshold, hard_disqualify, evidence_required_json, active,"
+            " version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (store.new_id("rule"), org, "Minimum fit score 40",
+             "fit score reaches 40", "fit", 1.0, 40.0, 0, "[]", 1, 1,
+             _now(), _now()),
+        )
 
 
 # ---------- activities ----------
