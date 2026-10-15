@@ -12,7 +12,7 @@ export type CAccount = { id: string; company_name: string; domain?: string | nul
 export type Pipeline = { id: string; name: string; stages_json: string }
 export type Opportunity = { id: string; account_id: string; stage: string; outcome: string }
 export type QualRule = { id: string; name: string; rule_type: string }
-export type Integration = { provider: string; label: string; state?: string; configured?: boolean; connection?: { status: string; sync_status: string } | null; blocker?: string }
+export type Integration = { provider: string; label: string; state?: string; configured?: boolean; keys?: string[]; connection?: { status: string; sync_status: string; credential_ref?: string } | null; blocker?: string }
 export type ImportPreview = { import_id: string; headers: string[]; suggested_mapping: Record<string, string>; totals: Record<string, number>; sample: Array<Record<string, string>>; ambiguous: Array<{ row: number; reason: string }> }
 export type OBSession = { id: string; path: string; current_step: string; completed: number; progress?: Record<string, unknown> }
 

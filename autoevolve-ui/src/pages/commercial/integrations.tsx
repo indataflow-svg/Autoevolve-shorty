@@ -51,6 +51,8 @@ export function IntegrationsSection({ credentials, token }: { credentials: Crede
                 {r.item.connection && <span> · <StateBadge tone={r.item.connection.status === 'healthy' ? 'green' : 'yellow'}>{r.item.connection.status.replaceAll('_', ' ')}</StateBadge>
                   <small>sync: {r.item.connection.sync_status.replaceAll('_', ' ')}</small></span>}</div>
               <p>{r.message}</p>
+              {r.item.connection?.credential_ref && <small>Connected via <code>{r.item.connection.credential_ref}</code></small>}
+              {!r.item.connection && (r.item.keys || []).length > 0 && <small>Needs: <code>{(r.item.keys || []).join(', ')}</code></small>}
               {r.detail && <details><summary>Technical detail</summary><p>{r.detail}</p></details>}
               <div className="cx-card-actions">
                 {r.action.action !== 'none' && <button
