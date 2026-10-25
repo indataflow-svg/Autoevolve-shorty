@@ -2335,6 +2335,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/company/sales/inbox/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Inbox
+         * @description Founder action: mirror recent Resend received emails into inbound replies.
+         *
+         *     Covers everything the ``email.received`` webhook missed while it was
+         *     unconfigured or down — Resend stores inbound mail regardless. Writes go
+         *     through the exact ingest path the webhook uses, so a re-sync is a no-op
+         *     duplicate rather than a second reply; senders that match no lead are
+         *     reported as unmatched instead of being silently dropped.
+         */
+        post: operations["sync_inbox_company_sales_inbox_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/company/commercial/forms/config": {
         parameters: {
             query?: never;
@@ -4864,6 +4890,16 @@ export interface components {
              * @default cloudflare_email_routing
              */
             source: string;
+        };
+        /** InboxSyncPayload */
+        InboxSyncPayload: {
+            /**
+             * Limit
+             * @default 25
+             */
+            limit: number;
+            /** To */
+            to?: string | null;
         };
         /** IncidentRecord */
         IncidentRecord: {
@@ -11192,6 +11228,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_inbox_company_sales_inbox_sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InboxSyncPayload"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

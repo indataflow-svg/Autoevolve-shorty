@@ -8323,6 +8323,69 @@
         }
       }
     },
+    "/company/sales/inbox/sync": {
+      "post": {
+        "tags": [
+          "sales-actions"
+        ],
+        "summary": "Sync Inbox",
+        "description": "Founder action: mirror recent Resend received emails into inbound replies.\n\nCovers everything the ``email.received`` webhook missed while it was\nunconfigured or down \u2014 Resend stores inbound mail regardless. Writes go\nthrough the exact ingest path the webhook uses, so a re-sync is a no-op\nduplicate rather than a second reply; senders that match no lead are\nreported as unmatched instead of being silently dropped.",
+        "operationId": "sync_inbox_company_sales_inbox_sync_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxSyncPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/company/commercial/forms/config": {
       "get": {
         "tags": [
@@ -16370,6 +16433,31 @@
           "from_email"
         ],
         "title": "InboundEmailPayload"
+      },
+      "InboxSyncPayload": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 25
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "type": "object",
+        "title": "InboxSyncPayload"
       },
       "IncidentRecord": {
         "properties": {
