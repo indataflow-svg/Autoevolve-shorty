@@ -49,6 +49,15 @@ class ConnectionSummary(BaseModel):
     last_sync_at: str | None = None
 
 
+class ProviderAccountSummary(BaseModel):
+    """One named Buffer account, masked. Channels are the bound platforms."""
+
+    name: str
+    api_key_present: bool
+    organization_id: str | None = None
+    channels: list[str] = []
+
+
 class ProviderGroup(BaseModel):
     id: str
     label: str
@@ -59,6 +68,7 @@ class ProviderGroup(BaseModel):
     configured_count: int
     total_keys: int
     connections: list[ConnectionSummary] = []
+    accounts: list[ProviderAccountSummary] = []
 
 
 class IntegrationsView(BaseModel):
@@ -72,13 +82,34 @@ class IntegrationsView(BaseModel):
 
 @router.get("/integrations", response_model=IntegrationsView)
 def integrations_view():
+    from services.buffer_setup import list_accounts
+
     status = group_status()
     summaries, key_of = _org_connections()
+    buffer_accounts = list_accounts()
     groups = []
     for group_id, spec in PROVIDER_GROUPS.items():
         current = status[group_id]
         configured = current["configured"]
         missing = current["missing"]
+        accounts = []
+        if group_id == "social":
+            accounts = [
+                {
+                    "name": account["name"],
+                    "api_key_present": account["api_key_present"],
+                    "organization_id": account["organization_id"],
+                    "channels": [
+                        platform
+                        for platform, key in (
+                            ("instagram", "instagram_channel_id"),
+                            ("x", "x_channel_id"),
+                        )
+                        if account[key]
+                    ],
+                }
+                for account in buffer_accounts
+            ]
         groups.append({
             "id": group_id, "label": spec["label"],
             "category": GROUP_CATEGORIES[group_id],
@@ -86,6 +117,7 @@ def integrations_view():
             "configured_keys": configured, "missing_keys": missing,
             "configured_count": len(configured), "total_keys": len(spec["keys"]),
             "connections": [s for s in summaries if key_of.get(s["provider"]) in spec["keys"]],
+            "accounts": accounts,
         })
     orphans = [s for s in summaries
                if not any(key_of.get(s["provider"]) in spec["keys"]
@@ -102,8 +134,14 @@ def integrations_view():
     return {
         "groups": groups,
         "total_groups": len(groups),
-        "groups_with_configuration": sum(bool(group["configured_count"]) for group in groups),
-        "fully_configured_groups": sum(not group["missing_keys"] for group in groups),
+        "groups_with_configuration": sum(
+            bool(group["configured_count"]) or bool(group["accounts"]) for group in groups
+        ),
+        "fully_configured_groups": sum(
+            (not group["missing_keys"])
+            or any(account["channels"] for account in group["accounts"])
+            for group in groups
+        ),
         "configured_keys": sum(group["configured_count"] for group in groups),
         "connected_providers": sum(
             1 for s in summaries if s["status"] in ("healthy", "connected")),

@@ -195,3 +195,20 @@ button.cx-card.cx-pick.active{border-color:var(--primary)}
 
 .tracked-link{display:block;font-size:10px;line-height:1.45;color:#9fc6e8;overflow-wrap:anywhere}
 .field-note{font-size:11px!important;color:#91a9be!important;margin:-6px 0 0!important;line-height:1.45}
+
+.page-tabs{margin:0 7px 16px}
+.setup-layout{display:flex;flex-direction:column;gap:14px;margin:0 7px 20px;max-width:980px}
+.setup-layout .home-panel{min-height:0}
+.setup-layout .home-panel-heading{padding:0 16px}
+.setup-stack{display:flex;flex-direction:column;gap:10px;padding:15px 16px 16px}
+.setup-layout .operational-label{display:flex;flex-direction:column;gap:5px;color:#b7c9d9;font-size:11px}
+.setup-layout .operational-label input,.setup-layout .operational-label select,.channel-row select{min-height:34px;border:1px solid #31506b;border-radius:5px;background:#0e1f30;color:#eaf2fa;padding:7px 9px;font-size:12px;width:100%}
+.setup-layout .key-list{max-height:none;margin:0}
+.setup-layout .operational-actions{margin-top:2px}
+.channel-row{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;align-items:center;font-size:12px;color:#c7d7e5}
+.key-replace summary{cursor:pointer;color:#9fc6e8;font-size:11px;padding:3px 0}
+.key-replace .setup-stack{padding:9px 0 0}
+@media(max-width:900px){.channel-row{grid-template-columns:1fr}}
+.setup-warning{border:1px solid #756a32;border-radius:5px;background:#3e391d;color:#f2d260;padding:8px 10px;font-size:11px;line-height:1.45}
+.channel-choice{display:flex;flex-direction:column;gap:4px;min-width:0}
+.channel-choice small{font-size:10.5px}

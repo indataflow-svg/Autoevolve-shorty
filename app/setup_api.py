@@ -87,3 +87,114 @@ def set_setup_step_route(payload: SetupStepPayload, _: None = Depends(verify_fou
 
     set_setup_step(payload.step.strip())
     return {"ok": True, "step": payload.step.strip()}
+
+
+# --- Guided Buffer setup ---------------------------------------------------
+#
+# The Buffer token is the only secret. Channels are identifiers discovered
+# from that token, so the UI asks for the token once, lists what it can reach,
+# and then binds the Instagram/X channel IDs. No token is ever returned.
+
+
+class BufferAccountView(BaseModel):
+    name: str
+    api_key_present: bool
+    organization_id: str | None
+    instagram_channel_id: str | None
+    x_channel_id: str | None
+
+
+class BufferSetupAccountsView(BaseModel):
+    accounts: list[BufferAccountView]
+
+
+class BufferChannelView(BaseModel):
+    id: str
+    name: str
+    display_name: str
+    descriptor: str
+    service: str
+    type: str
+    platform: str | None
+    supported: bool
+    usable: bool
+
+
+class BufferOrganizationView(BaseModel):
+    id: str
+    name: str
+    channels: list[BufferChannelView]
+
+
+class BufferDiscoveryView(BaseModel):
+    account: str
+    account_id: str
+    organizations: list[BufferOrganizationView]
+
+
+class BufferDiscoverPayload(BaseModel):
+    account: str = Field(default="default", min_length=1, max_length=40)
+    api_key: str | None = Field(default=None, max_length=500)
+
+
+class BufferConnectPayload(BaseModel):
+    account: str = Field(default="default", min_length=1, max_length=40)
+    api_key: str | None = Field(default=None, max_length=500)
+    organization_id: str = Field(min_length=1, max_length=200)
+    instagram_channel_id: str | None = Field(default=None, max_length=200)
+    x_channel_id: str | None = Field(default=None, max_length=200)
+
+
+class BufferConnectResult(BaseModel):
+    ok: bool
+    account: str
+    organization_id: str
+    instagram_channel_id: str | None
+    x_channel_id: str | None
+    warnings: list[str]
+    saved: list[str]
+    backup: str | None
+    restart_required: bool
+
+
+def _buffer_failure(exc: Exception) -> HTTPException:
+    if isinstance(exc, ValueError):
+        return HTTPException(422, str(exc))
+    return HTTPException(502, f"Buffer request failed: {exc}")
+
+
+@router.get("/buffer/accounts", response_model=BufferSetupAccountsView)
+def buffer_setup_accounts():
+    from services.buffer_setup import list_accounts
+
+    return {"accounts": list_accounts()}
+
+
+@router.post("/buffer/discover", response_model=BufferDiscoveryView)
+def discover_buffer_channels(
+    payload: BufferDiscoverPayload, _: None = Depends(verify_founder_action)
+):
+    from services.buffer_setup import discover
+
+    try:
+        return discover(payload.account, payload.api_key)
+    except Exception as exc:
+        raise _buffer_failure(exc) from exc
+
+
+@router.post("/buffer/connect", response_model=BufferConnectResult)
+def connect_buffer_account(
+    payload: BufferConnectPayload, _: None = Depends(verify_founder_action)
+):
+    from services.buffer_setup import bind
+
+    try:
+        return bind(
+            payload.account,
+            api_key=payload.api_key,
+            organization_id=payload.organization_id,
+            instagram_channel_id=payload.instagram_channel_id,
+            x_channel_id=payload.x_channel_id,
+        )
+    except Exception as exc:
+        raise _buffer_failure(exc) from exc

@@ -121,6 +121,11 @@ def _read_values(path: Path) -> dict[str, str]:
     return {key: value for key, value in dotenv_values(path).items() if value is not None}
 
 
+def read_values(path: Path) -> dict[str, str]:
+    """Public, read-only access to an env file (values never leave the server)."""
+    return _read_values(path)
+
+
 def group_status() -> dict[str, dict]:
     """Masked per-group status: which keys are set (never values)."""
     env_values = _read_values(env_file())
@@ -218,16 +223,13 @@ def _prune_backups(path: Path, keep: int = 5) -> None:
             pass
 
 
-def save_group(group: str, values: dict[str, str]) -> dict:
-    """Validate, backup, then write. Rolls back the file on any failure."""
-    if group not in PROVIDER_GROUPS:
-        return {"ok": False, "error": f"unknown group: {group}"}
-    spec = PROVIDER_GROUPS[group]
-    cleaned = {k: (v or "").strip() for k, v in values.items() if k in spec["keys"]}
-    validation = validate_group(group, cleaned)
-    if not validation.get("ok"):
-        return validation
-    path = g3_env_file() if spec["file"] == "g3env" else env_file()
+def write_values(path: Path, values: dict[str, str]) -> dict:
+    """Backup, then update keys in place. Rolls the file back on any failure.
+
+    Unlike ``save_group`` this accepts arbitrary key names, which is what the
+    named Buffer accounts need (``BUFFER_<NAME>_API_KEY`` and friends).
+    Empty strings are written so a binding can be cleared deliberately.
+    """
     if not path.exists():
         return {"ok": False, "error": f"env file not found: {path} (run make init first)"}
     original = path.read_bytes()
@@ -240,15 +242,15 @@ def save_group(group: str, values: dict[str, str]) -> dict:
             stripped = line.strip()
             if stripped and not stripped.startswith("#") and "=" in stripped:
                 key = stripped.partition("=")[0].strip().removeprefix("export ").strip()
-                if key in cleaned:
+                if key in values:
                     prefix = "export " if stripped.startswith("export ") else ""
-                    updated.append(f"{prefix}{key}={cleaned[key]}")
+                    updated.append(f"{prefix}{key}={values[key]}")
                     seen.add(key)
                     continue
             updated.append(line)
-        for key in spec["keys"]:
-            if key in cleaned and key not in seen:
-                updated.append(f"{key}={cleaned[key]}")
+        for key, value in values.items():
+            if key not in seen:
+                updated.append(f"{key}={value}")
         path.write_text("\n".join(updated) + "\n")
     except Exception as exc:
         try:
@@ -258,8 +260,26 @@ def save_group(group: str, values: dict[str, str]) -> dict:
         return {"ok": False, "error": f"write failed, rolled back: {exc}"}
     return {
         "ok": True,
-        "group": group,
-        "saved": sorted(cleaned),
+        "saved": sorted(values),
         "backup": str(backup) if backup else None,
+    }
+
+
+def save_group(group: str, values: dict[str, str]) -> dict:
+    """Validate, backup, then write. Rolls back the file on any failure."""
+    if group not in PROVIDER_GROUPS:
+        return {"ok": False, "error": f"unknown group: {group}"}
+    spec = PROVIDER_GROUPS[group]
+    cleaned = {k: (v or "").strip() for k, v in values.items() if k in spec["keys"]}
+    validation = validate_group(group, cleaned)
+    if not validation.get("ok"):
+        return validation
+    path = g3_env_file() if spec["file"] == "g3env" else env_file()
+    written = write_values(path, cleaned)
+    if not written.get("ok"):
+        return written
+    return {
+        **written,
+        "group": group,
         "restart_required": True,
     }

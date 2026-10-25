@@ -851,6 +851,15 @@ session; a 403 leaves it intact.
 (`SECRET_HINTS`), backs up `.env` before writing, and **prunes to 5 backups**.
 `g3.env` is stored separately and kept private.
 
+`GET /company/setup/buffer/accounts` · `POST /buffer/discover` ·
+`POST /buffer/connect` back the guided publishing setup. One Buffer token
+discovers the organizations and channels it can reach; the operator then binds
+the Instagram/X channel IDs. Channel IDs are identifiers, not extra secrets,
+and the token is never returned. Named accounts use G3's `BUFFER_<NAME>_*`
+prefix and are visible immediately after saving. The Integrations page keeps
+read-only **Overview** separate from **Setup**, and generates key inputs from
+the provider registry instead of a fixed list.
+
 ### Model routing
 
 `core/models.py` exposes five routes — `fast`, `reasoning`, `free`, `coding`,
@@ -860,8 +869,9 @@ session; a 403 leaves it intact.
 ### Memory, workspace, session
 
 `GET /company/ui/session` validates credentials without touching a product
-domain. `GET /company/ui/integrations` reports provider groups and
-capabilities. `GET /company/ui/settings` returns orgs and public links.
+domain. `GET /company/ui/integrations` reports provider groups, named Buffer
+accounts, and capabilities. `GET /company/ui/settings` returns orgs and public
+links.
 `GET /company/ui/home` is the review queue: what needs your attention.
 
 ### Operations
