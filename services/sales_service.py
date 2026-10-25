@@ -778,13 +778,51 @@ def _research_result_key(item: dict[str, Any]) -> str | None:
     ) or f"lead:{lead.get('id')}"
 
 
-def _result_match(item: dict[str, Any], contributors: list[str]) -> dict[str, Any]:
+def _query_relevance(company_name: Any, domain: Any, industry: str) -> dict[str, Any]:
+    """How strongly a candidate matches the literal query — the only ranking
+    signal allowed to come from the request itself.
+
+    Providers match loosely on purpose (Prospero ``include_all=False`` plus
+    ``search_everywhere``, Apollo/Lusha free-text keywords), so a law firm
+    whose site mentions freight forwarders is a *valid* provider answer to
+    "freight forwarder". Relevance is judged here, on the only text every
+    candidate carries: the company name first, the domain second. A company
+    like Maersk scores 0 on the words alone and still ranks on corroboration
+    below — description-level relevance only exists after enrichment, and the
+    ranking must not pretend otherwise.
+    """
+    words = [word.casefold() for word in _prospeo_content_words(industry)]
+    name = "".join(ch for ch in str(company_name or "").lower() if ch.isalnum())
+    host = str(domain or "").lower()
+    phrase = " ".join(str(industry).strip().lower().split())
+    compact_phrase = "".join(ch for ch in phrase if ch.isalnum())
+    hits: list[str] = []
+    score = 0
+    if compact_phrase and compact_phrase in name:
+        score += 3
+        hits.append(f"phrase:{phrase}")
+    if compact_phrase and compact_phrase in host.replace(".", ""):
+        score += 2
+        hits.append(f"domain-phrase:{phrase}")
+    for word in words:
+        if word in name and f"word:{word}" not in hits:
+            score += 1
+            hits.append(f"word:{word}")
+        if word in host.replace(".", "") and f"domain-word:{word}" not in hits:
+            score += 1
+            hits.append(f"domain-word:{word}")
+    return {"score": score, "terms": hits}
+
+
+def _result_match(item: dict[str, Any], contributors: list[str], industry: str) -> dict[str, Any]:
     """Explain why a merged result ranks where it does — without judging fit.
 
-    Corroboration (independent databases returning the same company) outranks
-    everything; completeness of neutral contact/company facts breaks ties.
-    No industry terms, no geography, no ICP: only agreement between providers
-    and whether the record is actually usable.
+    Relevance to the literal query outranks everything: providers match
+    loosely by design, so a law firm whose site mentions freight forwarders
+    is a valid provider answer but a bad top result. Corroboration (independent
+    databases returning the same company) comes next, then completeness of
+    neutral facts. No ICP, no geography: only the request wording, agreement
+    between providers, and whether the record is actually usable.
     """
     lead = item.get("lead") if isinstance(item.get("lead"), dict) else {}
     metadata = lead.get("metadata") if isinstance(lead.get("metadata"), dict) else {}
@@ -794,11 +832,13 @@ def _result_match(item: dict[str, Any], contributors: list[str]) -> dict[str, An
         "has_country": bool(str(lead.get("country") or "").strip()),
         "has_company_id": bool(str(metadata.get("provider_company_id") or "").strip()),
     }
+    relevance = _query_relevance(lead.get("company"), lead.get("company_domain"), industry)
     return {
         "providers": list(contributors),
         "corroboration": len(contributors),
         "signals": signals,
         "completeness": sum(1 for present in signals.values() if present),
+        "relevance": relevance,
     }
 
 
@@ -806,8 +846,10 @@ def _rank_research_results(
     results: list[dict[str, Any]],
     sources: dict[str, list[str]],
     key_fn,
+    industry: str,
 ) -> list[dict[str, Any]]:
-    """Order merged results best-first: most corroborated, then most complete.
+    """Order merged results best-first: query relevance, then corroboration,
+    then neutral completeness.
 
     Stable: ties keep fan-out order, so the ranking can only promote, never
     silently reshuffle equal candidates. Each item gains a ``match`` note
@@ -820,12 +862,12 @@ def _rank_research_results(
         if not contributors:
             source = ((item.get("lead") or {}).get("source") if isinstance(item, dict) else "") or ""
             contributors = [str(source)] if source else []
-        match = _result_match(item, contributors)
-        scored.append((-match["corroboration"], -match["completeness"], index, match, item))
-    scored.sort(key=lambda entry: (entry[0], entry[1], entry[2]))
+        match = _result_match(item, contributors, industry)
+        scored.append((-match["relevance"]["score"], -match["corroboration"], -match["completeness"], index, match, item))
+    scored.sort(key=lambda entry: (entry[0], entry[1], entry[2], entry[3]))
     return [
         {**item, "match": match} if isinstance(item, dict) else item
-        for _, _, _, match, item in scored
+        for _, _, _, _, match, item in scored
     ]
 
 
@@ -845,7 +887,7 @@ def research_market_leads(*, industry: str, location: str | None = None, limit_p
         key_fn=_research_result_key,
         warn_fn=_provider_failure_note,
     )
-    ranked = _rank_research_results(run["results"], run.get("sources") or {}, _research_result_key)
+    ranked = _rank_research_results(run["results"], run.get("sources") or {}, _research_result_key, normalized_industry)
     return {
         "results": ranked,
         "providers": run["providers"],

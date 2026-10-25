@@ -235,6 +235,32 @@ class ResearchRankingTests(ResearchBase):
         domains = [item["lead"]["company_domain"] for item in result["results"]]
         self.assertEqual(domains, ["rich.example", "sparse.example"])
 
+    def test_irrelevant_but_complete_result_does_not_outrank_a_query_match(self):
+        from services.sales_service import research_market_leads
+
+        # A law firm whose site mentions freight forwarders is a valid loose
+        # provider answer, but it must never top a literal query match —
+        # even corroborated and complete.
+        law = [self._item("Smith and Associates", "smithlaw.test", "prospeo", country="Kenya"),
+               self._item("Smith and Associates", "smithlaw.test", "apollo", country="Kenya")]
+        freight = [self._item("Freight Forwarder Inc", "ffireight.test", "lusha")]
+        with patch("services.sales_service.research_prospeo_market_leads",
+                   return_value=[law[0]]), \
+             patch("services.sales_service.research_apollo_market_leads",
+                   return_value=[law[1]]), \
+             patch("services.sales_service.research_lusha_market_leads",
+                   return_value=freight):
+            result = research_market_leads(industry="freight forwarder", limit_per_provider=5)
+
+        domains = [item["lead"]["company_domain"] for item in result["results"]]
+        self.assertEqual(domains, ["ffireight.test", "smithlaw.test"])
+        best = result["results"][0]["match"]
+        self.assertGreater(best["relevance"]["score"], 0)
+        self.assertIn("phrase:freight forwarder", best["relevance"]["terms"])
+        runner_up = result["results"][1]["match"]
+        self.assertEqual(runner_up["relevance"]["score"], 0)
+        self.assertEqual(runner_up["corroboration"], 2)
+
     def test_waterfall_records_every_provider_that_returned_a_key(self):
         from services import provider_registry as registry
 

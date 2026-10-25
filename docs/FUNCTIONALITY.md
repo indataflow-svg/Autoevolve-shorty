@@ -439,8 +439,10 @@ unrecognised location instead of searching worldwide (`widen=True` restores
 the old ladder explicitly), and `score_lead` carries no industry or geography
 bonuses — ranking reflects deliverability signals (verified email, title,
 phone), never ICP fit or origin. Merged market results are ordered best-first
-by cross-provider corroboration then neutral completeness, with each item's
-`match` naming the providers and signals behind its position.
+by query relevance (literal name/domain match on the request wording — a loose
+provider hit like a law firm for "freight forwarder" can never top an exact
+match), then cross-provider corroboration, then neutral completeness, with each
+item's `match` naming the providers and signals behind its position.
 
 ### 3.3 Drafting
 
