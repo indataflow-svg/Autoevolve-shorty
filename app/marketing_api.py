@@ -274,6 +274,19 @@ class BufferScheduleResult(BaseModel):
     message: str
 
 
+class BufferSendConfirmation(BaseModel):
+    checked_at: str
+    overall: str
+    posts: dict[str, Any]
+
+
+class BufferConfirmResult(BaseModel):
+    ok: bool
+    post: ManualPostActionRecord
+    confirmation: BufferSendConfirmation
+    message: str
+
+
 BUFFER_ACCOUNT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,30}$")
 MAX_BUFFER_ACCOUNTS = 5
 
@@ -1301,19 +1314,14 @@ def buffer_accounts():
     return {"accounts": accounts}
 
 
-@router.get("/manual-posts/{post_record_id}/buffer-insights", response_model=BufferInsightsView)
-def manual_post_buffer_insights(post_record_id: str, post_id: str | None = None):
-    """Read one saved Buffer post's provider state and optional personal-key metrics."""
-    post = get_manual_post(post_record_id)
-    if not post:
-        raise HTTPException(404, "manual post not found")
-    metadata = post.get("metadata") or {}
-    saved_ids = [str(value) for value in metadata.get("buffer_post_ids") or [] if value]
-    if not saved_ids:
-        raise HTTPException(409, "this manual post has no confirmed Buffer post ID")
-    selected_id = post_id or saved_ids[0]
-    if selected_id not in saved_ids:
-        raise HTTPException(404, "Buffer post ID is not saved for this manual post")
+def _saved_buffer_post_ids(metadata: dict) -> list[str]:
+    return [str(value) for value in metadata.get("buffer_post_ids") or [] if value]
+
+
+def _buffer_account_for_post(metadata: dict, selected_id: str) -> str:
+    """Which saved Buffer account owns a post ID. Shared by the read-only
+    insights view and the send-confirmation pass so the two can never resolve
+    the same post to different accounts."""
     account_names = set()
     for account, output in (metadata.get("buffer_result") or {}).items():
         if not isinstance(output, dict):
@@ -1327,7 +1335,35 @@ def manual_post_buffer_insights(post_record_id: str, post_id: str | None = None)
             account_names.add(str(fallback))
     if len(account_names) != 1:
         raise HTTPException(409, "Buffer account for this post cannot be determined")
-    account = next(iter(account_names))
+    return next(iter(account_names))
+
+
+def _classify_provider_status(raw: object) -> str:
+    """Map Buffer's post status to an honest verdict. Only an explicit sent
+    counts as sent; anything alarming counts as failed; the rest — including
+    statuses Buffer invents tomorrow — stays pending, never assumed."""
+    normalized = str(raw or "").strip().lower()
+    if normalized == "sent":
+        return "sent"
+    if any(token in normalized for token in ("fail", "error", "cancel", "reject")):
+        return "failed"
+    return "pending"
+
+
+@router.get("/manual-posts/{post_record_id}/buffer-insights", response_model=BufferInsightsView)
+def manual_post_buffer_insights(post_record_id: str, post_id: str | None = None):
+    """Read one saved Buffer post's provider state and optional personal-key metrics."""
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    metadata = post.get("metadata") or {}
+    saved_ids = _saved_buffer_post_ids(metadata)
+    if not saved_ids:
+        raise HTTPException(409, "this manual post has no confirmed Buffer post ID")
+    selected_id = post_id or saved_ids[0]
+    if selected_id not in saved_ids:
+        raise HTTPException(404, "Buffer post ID is not saved for this manual post")
+    account = _buffer_account_for_post(metadata, selected_id)
     config = MarketingConfig.load()
     if not config.g3_bin.is_file():
         raise HTTPException(503, f"G3 command not found: {config.g3_bin}")
@@ -1351,6 +1387,81 @@ def manual_post_buffer_insights(post_record_id: str, post_id: str | None = None)
         "metrics": provider_post.get("metrics"), "metrics_updated_at": provider_post.get("metricsUpdatedAt"),
         "experimental": True,
     }
+
+
+@router.post("/manual-posts/{post_record_id}/buffer-confirm", response_model=BufferConfirmResult, dependencies=[Depends(verify_founder_action)])
+def confirm_manual_post_send(post_record_id: str):
+    """Ask Buffer for the fate of every scheduled post ID and persist the verdict.
+
+    Manual and explicit: nothing here schedules, drafts, or publishes. The
+    local ``buffer_status`` is left untouched — this records what the provider
+    says next to it, so "scheduled (our record)" and "sent (their word)" can
+    never be confused. Only an explicit ``sent`` counts as sent.
+    """
+    from core.state import now_iso
+
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    metadata = dict(post.get("metadata") or {})
+    saved_ids = _saved_buffer_post_ids(metadata)
+    if not saved_ids:
+        raise HTTPException(409, "this manual post has no scheduled Buffer post to confirm")
+    config = MarketingConfig.load()
+    if not config.g3_bin.is_file():
+        raise HTTPException(503, f"G3 command not found: {config.g3_bin}")
+    log_dir = PROJECTS_ROOT / ".logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    entries: dict[str, dict] = {}
+    for selected_id in saved_ids:
+        account = _buffer_account_for_post(metadata, selected_id)
+        try:
+            output = _last_json(_run(
+                [str(config.g3_bin), *_g3_account_args(account), "insights", selected_id],
+                cwd=config.g3_root, env_file=config.g3_env_file, timeout=45,
+                log_path=log_dir / "g3_confirm.log",
+            ))
+        except Exception as exc:
+            entries[selected_id] = {
+                "buffer_account": account, "status": "unknown", "verdict": "unknown",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+            continue
+        provider_post = output.get("post") if isinstance(output, dict) and output.get("ok") else None
+        if not isinstance(provider_post, dict) or str(provider_post.get("id") or "") != selected_id:
+            entries[selected_id] = {
+                "buffer_account": account, "status": "unknown", "verdict": "unknown",
+                "error": "Buffer did not confirm the requested post",
+            }
+            continue
+        raw_status = str(provider_post.get("status") or "unknown")
+        entries[selected_id] = {
+            "buffer_account": account, "status": raw_status,
+            "verdict": _classify_provider_status(raw_status),
+            "due_at": provider_post.get("dueAt"),
+            "external_link": provider_post.get("externalLink"),
+        }
+    verdicts = {entry["verdict"] for entry in entries.values()}
+    if verdicts == {"sent"}:
+        overall = "sent"
+    elif "failed" in verdicts:
+        overall = "failed"
+    elif "unknown" in verdicts:
+        overall = "unknown"
+    else:
+        overall = "pending"
+    confirmation = {"checked_at": now_iso(), "overall": overall, "posts": entries}
+    metadata["buffer_send_confirmation"] = confirmation
+    updated = update_manual_post(post_record_id, metadata_json=json.dumps(metadata, ensure_ascii=False))
+    if overall == "sent":
+        message = "Buffer confirms every scheduled post was sent."
+    elif overall == "failed":
+        message = "Buffer reports a failed post — see the per-post verdicts."
+    elif overall == "unknown":
+        message = "Buffer could not be reached for at least one post — nothing confirmed."
+    else:
+        message = "Buffer has not sent yet — still scheduled on the provider side."
+    return {"ok": True, "post": _public_manual_post(updated), "confirmation": confirmation, "message": message}
 
 
 @router.post("/manual-posts/{post_record_id}/buffer-draft")

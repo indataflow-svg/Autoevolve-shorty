@@ -391,6 +391,7 @@ class ContentItem(BaseModel):
     buffer_accounts: list[str]
     buffer_scheduled_at: str | None
     preferred_buffer_account: str | None = None
+    send_confirmation: dict | None = None
 
 
 class ContentView(BaseModel):
@@ -424,6 +425,7 @@ def content_view():
             "buffer_accounts": [str(value) for value in metadata.get("buffer_accounts") or [] if value],
             "buffer_scheduled_at": metadata.get("buffer_scheduled_at"),
             "preferred_buffer_account": metadata.get("preferred_buffer_account"),
+            "send_confirmation": metadata.get("buffer_send_confirmation"),
         })
     active = get_active_org()
     packs = list_asset_packs(project_slug=active["slug"], limit=100) if active else []
@@ -436,7 +438,7 @@ def content_view():
             "asset_count": len(public_pack["assets"]),
             "asset_urls": [asset["asset_url"] for asset in public_pack["assets"]], "updated_at": pack.get("updated_at"),
             "buffer_post_ids": [], "buffer_accounts": [], "buffer_scheduled_at": None,
-            "preferred_buffer_account": None,
+            "preferred_buffer_account": None, "send_confirmation": None,
         })
     items.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
     pack_root = None

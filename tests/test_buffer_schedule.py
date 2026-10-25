@@ -96,6 +96,43 @@ class BufferScheduleTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         run_mock.assert_called_once()
 
+    def test_confirm_records_provider_verdicts_without_touching_local_status(self):
+        post = self._post(
+            buffer_status="scheduled", buffer_post_ids=["p1", "p2"],
+            buffer_accounts=["default"], buffer_account="default",
+            buffer_result={"default": {"results": [{"post_id": "p1"}, {"post_id": "p2"}]}},
+        )
+        def fake_run(command, **kwargs):
+            selected = command[-1]
+            status = "sent" if selected == "p1" else "failed"
+            return json.dumps({"ok": True, "post": {
+                "id": selected, "status": status, "dueAt": None,
+                "externalLink": f"https://example.test/{selected}",
+            }})
+        with patch("app.marketing_api.MarketingConfig.load", return_value=_config()), \
+                patch("app.marketing_api._run", side_effect=fake_run):
+            response = self.client.post(
+                f"/company/marketing/manual-posts/{post['id']}/buffer-confirm",
+                auth=self.auth, headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        confirmation = body["confirmation"]
+        self.assertEqual(confirmation["overall"], "failed")
+        self.assertEqual(confirmation["posts"]["p1"]["verdict"], "sent")
+        self.assertEqual(confirmation["posts"]["p2"]["verdict"], "failed")
+        self.assertIn("checked_at", confirmation)
+        self.assertEqual(body["post"]["buffer_status"], "scheduled")
+        self.assertEqual(
+            body["post"]["metadata"]["buffer_send_confirmation"]["overall"], "failed")
+
+    def test_confirm_needs_scheduled_post_ids(self):
+        post = self._post()
+        with patch("app.marketing_api.MarketingConfig.load", return_value=_config()):
+            response = self.client.post(
+                f"/company/marketing/manual-posts/{post['id']}/buffer-confirm",
+                auth=self.auth, headers=self.headers)
+        self.assertEqual(response.status_code, 409, response.text)
+
     def test_schedule_without_r2_fails_fast_before_g3(self):
         post = self._post(assets=[{"filename": "frame.png", "content_type": "image/png"}])
         blanked = {key: "" for key in (

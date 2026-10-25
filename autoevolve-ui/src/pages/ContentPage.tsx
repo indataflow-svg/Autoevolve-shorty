@@ -3,10 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createColumnHelper } from '@tanstack/react-table'
 import { useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileImage, Layers3, Plus, Send, Video } from 'lucide-react'
-import { assetBlob, bufferAccounts, bufferInsights, contentView, createAssetPack, createManualPost, previewManualPost, scheduleManualPost, type ContentItem } from '../api/workflows'
+import { assetBlob, bufferAccounts, bufferInsights, confirmBufferSend, contentView, createAssetPack, createManualPost, previewManualPost, scheduleManualPost, type ContentItem } from '../api/workflows'
 import { useCredentials } from '../app/Auth'
 import { AppShell } from '../components/Shell'
-import { DataState, LoadingRows, RightDrawer } from '../components/Primitives'
+import { DataState, LoadingRows, RightDrawer, StateBadge } from '../components/Primitives'
 import { ShortDate, StatusText, WorkflowMetrics, WorkflowTable } from '../components/WorkflowTable'
 
 const postStages = ['saved', 'uploading', 'ready', 'buffer_draft', 'scheduled', 'failed']
@@ -27,6 +27,16 @@ function AssetPreview({ path }: { path: string }) {
   return result.isError ? <span className="asset-fallback">Preview unavailable</span> : url ? result.data?.type.startsWith('video/') ? <video src={url} controls aria-label="Saved content video" /> : <img src={url} alt="Saved content asset" /> : <span className="asset-fallback">Loading preview…</span>
 }
 
+type SendConfirmationPost = { verdict?: string; status?: string; buffer_account?: string; external_link?: string; error?: string }
+type SendConfirmation = { overall: string; checked_at: string; posts: Record<string, SendConfirmationPost> }
+
+function readSendConfirmation(value: unknown): SendConfirmation | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (typeof record.overall !== 'string' || typeof record.checked_at !== 'string' || !record.posts || typeof record.posts !== 'object') return null
+  return record as unknown as SendConfirmation
+}
+
 function ContentDrawer({ item, close }: { item: ContentItem; close: () => void }) {
   const credentials = useCredentials()
   const queryClient = useQueryClient()
@@ -38,6 +48,22 @@ function ContentDrawer({ item, close }: { item: ContentItem; close: () => void }
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [pending, setPending] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [confirmError, setConfirmError] = useState('')
+  const sendConfirmation = item.kind === 'manual_post' ? readSendConfirmation(item.send_confirmation) : null
+  async function runConfirm() {
+    setConfirmError('')
+    if (item.kind !== 'manual_post') return
+    if (!token.trim()) { setConfirmError('Enter the founder action token.'); return }
+    setConfirming(true)
+    try {
+      const response = await confirmBufferSend(credentials, item.id, token.trim())
+      if (!response.ok) throw new Error('Backend did not confirm the send status.')
+      await queryClient.invalidateQueries({ queryKey: ['content'] })
+      setToken('')
+    } catch (reason) { setConfirmError(reason instanceof Error ? reason.message : 'Send check failed.') }
+    finally { setConfirming(false) }
+  }
   const maySchedule = item.kind === 'manual_post' && ['ready', 'buffer_draft'].includes(item.stage) && !['queued', 'running', 'scheduled'].includes(item.buffer_status || '')
   const accounts = useQuery({ queryKey: ['buffer-accounts'], queryFn: () => bufferAccounts(credentials), enabled: maySchedule, staleTime: 60_000 })
   const accountNames = (accounts.data?.accounts || []).map(item => item.name)
@@ -69,6 +95,7 @@ function ContentDrawer({ item, close }: { item: ContentItem; close: () => void }
       {item.caption && <section className="detail-card"><h3>{item.kind === 'manual_post' ? 'Caption / creative' : 'Source excerpt'}</h3><p className="workflow-message">{item.caption}</p></section>}
       {item.asset_urls.length > 0 && <section className="detail-card"><h3>Assets</h3><div className="content-preview-grid">{item.asset_urls.slice(0, 6).map(path => <AssetPreview key={path} path={path} />)}</div>{item.asset_urls.length > 6 && <p className="operational-note">Showing 6 of {item.asset_urls.length} assets.</p>}</section>}
       {item.kind === 'manual_post' && item.buffer_post_ids.length > 0 && <section className="detail-card"><h3>Buffer post insights</h3><p className="operational-note">Live, experimental provider read using a personal Buffer API key. Metrics can be delayed or unavailable.</p>{item.buffer_post_ids.length > 1 && <label className="operational-label">Buffer post<select value={selectedPostId} onChange={event => setPostId(event.target.value)}>{item.buffer_post_ids.map(id => <option key={id} value={id}>{id}</option>)}</select></label>}{insights.isPending ? <p className="operational-note">Loading provider status…</p> : insights.isError ? <p className="form-error" role="alert">Insights unavailable: {insights.error.message}</p> : insights.data && <><dl className="company-fields"><div><dt>Provider state</dt><dd><StatusText value={insights.data.status} known={['draft', 'scheduled', 'sent', 'error', 'pending']} tone={insights.data.status === 'sent' ? 'green' : insights.data.status === 'error' ? 'red' : 'blue'} /></dd></div><div><dt>Account</dt><dd>{insights.data.buffer_account}</dd></div><div><dt>Due</dt><dd><ShortDate value={insights.data.due_at} /></dd></div><div><dt>Metrics refreshed</dt><dd><ShortDate value={insights.data.metrics_updated_at} /></dd></div></dl>{insights.data.external_link?.startsWith('https://') && <a className="contact-link" href={insights.data.external_link} target="_blank" rel="noreferrer">Open provider post</a>}{insights.data.metrics?.length ? <div className="buffer-metrics">{insights.data.metrics.map(metric => <div key={metric.type}><span>{metric.name}</span><strong>{metric.value.toLocaleString()}{metric.unit === 'percentage' ? '%' : ''}</strong></div>)}</div> : <p className="operational-note">No provider metrics are available for this post.</p>}</>}</section>}
+      {item.kind === 'manual_post' && (item.buffer_post_ids.length > 0 || sendConfirmation) && <section className="detail-card"><h3>Send confirmation</h3>{sendConfirmation ? <><dl className="company-fields"><div><dt>Provider verdict</dt><dd><StatusText value={sendConfirmation.overall} known={['sent', 'failed', 'pending', 'unknown']} tone={sendConfirmation.overall === 'sent' ? 'green' : sendConfirmation.overall === 'failed' ? 'red' : 'blue'} /></dd></div><div><dt>Checked</dt><dd><ShortDate value={sendConfirmation.checked_at} /></dd></div></dl><div className="key-list">{Object.entries(sendConfirmation.posts).map(([postId, entry]) => <div key={postId}><code>{postId}</code><StateBadge tone={entry.verdict === 'sent' ? 'green' : entry.verdict === 'failed' ? 'red' : 'blue'}>{entry.verdict || 'pending'} · {entry.status || 'unknown'}</StateBadge>{entry.error ? <small className="muted-copy break-value">{entry.error}</small> : <small className="muted-copy break-value">{entry.buffer_account || ''}{entry.external_link?.startsWith('https://') ? ` · ${entry.external_link}` : ''}</small>}</div>)}</div><p className="operational-note">Only an explicit sent counts as sent. This never changes the local scheduled record.</p></> : <p className="operational-note">Scheduled on our side — Buffer has not confirmed anything yet.</p>}<div className="operational-actions"><button className="button secondary" type="button" onClick={() => void runConfirm()} disabled={confirming}>{confirming ? 'Checking…' : 'Check send status'}</button></div>{confirmError && <p className="form-error" role="alert">{confirmError}</p>}</section>}
       {item.kind === 'manual_post' && <p className="operational-note">A Buffer draft or scheduled post does not confirm publication.</p>}
     </div>
     {maySchedule && <div className="drawer-footer"><form className="workflow-form" onSubmit={schedule}><h3>Schedule in Buffer</h3><label>Account<select aria-label="Buffer account" value={selectedAccount} onChange={event => setAccount(event.target.value)}>{accounts.data?.accounts.length ? accounts.data.accounts.map(value => <option key={value.name} value={value.name}>{value.name}{item.platform === 'x' && !value.x_channel_id || item.platform === 'instagram' && !value.instagram_channel_id || item.platform === 'linkedin' && !value.linkedin_channel_id ? ' · channel unconfigured' : ''}</option>) : <option value="default">default</option>}</select></label>{accounts.data?.error && <p className="form-error" role="alert">Buffer configuration: {accounts.data.error}</p>}{accounts.isError && <p className="form-error" role="alert">Buffer accounts could not be loaded: {accounts.error.message}</p>}<label>Mode<select value={mode} onChange={event => setMode(event.target.value as 'queue' | 'next' | 'timed')}><option value="queue">Queue</option><option value="next">Next slot</option><option value="timed">Specific time</option></select></label>{mode === 'timed' && <label>Date and time<input type="datetime-local" value={dueAt} onChange={event => setDueAt(event.target.value)} required /></label>}<label>Founder action token<input type="password" aria-label="Founder action token" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} /></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="button primary" disabled={pending || accounts.isPending || accounts.isError || !!accounts.data?.error}>Schedule post</button></form></div>}

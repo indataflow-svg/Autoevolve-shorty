@@ -571,6 +571,12 @@ Two paths: **manual** (operator uploads their own assets) and **generated**
   leave the server**.
 - `POST /manual-posts/{id}/buffer-draft` → `/buffer-schedule` → `GET
   /buffer-insights`.
+- `POST /manual-posts/{id}/buffer-confirm` (founder-gated) asks Buffer for the
+  fate of every scheduled post ID and persists the verdict
+  (`buffer_send_confirmation`: per-post `sent`/`failed`/`pending`/`unknown`
+  plus an overall) next to the untouched local `buffer_status`. Only an
+  explicit `sent` counts as sent; the drawer shows both records side by side
+  so "scheduled (our record)" and "sent (their word)" can never be confused.
 
 **Attribution is the point.** `_tracked_post_url` embeds
 `?utm_campaign`, `campaign_id`, `post_id`, `source_detail`, `post_type`;
