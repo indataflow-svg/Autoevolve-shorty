@@ -115,19 +115,22 @@ function ResearchDialog({ onClose, onComplete }: { onClose: () => void; onComple
   const credentials = useCredentials()
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
+  const [report, setReport] = useState<{ providers: Record<string, number>; warnings: string[] } | null>(null)
   const mutation = useMutation({ mutationFn: ({ input, token }: { input: { industry: string; location?: string; limit_per_provider: number }; token: string }) => runCompanyResearch(credentials, input, token) })
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     const input = { industry: String(data.get('industry') || '').trim(), location: String(data.get('location') || '').trim() || undefined, limit_per_provider: Number(data.get('limit') || 5) }
     setError('')
+    setReport(null)
     try {
       const response = await mutation.mutateAsync({ input, token: String(data.get('token') || '') })
       await queryClient.invalidateQueries({ queryKey: ['companies'] })
+      setReport({ providers: response.providers, warnings: response.warnings })
       onComplete(response.warnings.length ? `Research completed with ${response.warnings.length} provider warning(s). Review the saved records.` : 'Research completed. Review the saved company records.')
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Research failed') }
   }
-  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="new-research-title"><button className="icon-button modal-close" aria-label="Close" onClick={onClose}><X size={19} /></button><h2 id="new-research-title">New company research</h2><p>Search configured providers and save company candidates. This can use provider credits.</p><form onSubmit={submit}><label>Industry<input name="industry" required minLength={2} maxLength={160} placeholder="e.g. Logistics" /></label><label>Location (optional)<input name="location" maxLength={120} placeholder="e.g. North America" /></label><label>Results per provider<select name="limit" defaultValue="5"><option value="1">1</option><option value="3">3</option><option value="5">5</option></select></label><label>Founder action token<input name="token" type="password" autoComplete="off" required /></label><p className="muted-copy">Separate from your dashboard password.</p>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="button secondary" type="button" onClick={onClose}>Cancel</button><button className="button primary" disabled={mutation.isPending}>{mutation.isPending ? 'Researching…' : 'Run research'}</button></div></form></div></div>
+  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="new-research-title"><button className="icon-button modal-close" aria-label="Close" onClick={onClose}><X size={19} /></button><h2 id="new-research-title">New company research</h2><p>Search configured providers and save company candidates. This can use provider credits.</p><form onSubmit={submit}><label>Industry<input name="industry" required minLength={2} maxLength={160} placeholder="e.g. Logistics" /></label><label>Location (optional)<input name="location" maxLength={120} placeholder="e.g. North America" /></label><label>Results per provider<select name="limit" defaultValue="5"><option value="1">1</option><option value="3">3</option><option value="5">5</option></select></label><label>Founder action token<input name="token" type="password" autoComplete="off" required /></label><p className="muted-copy">Separate from your dashboard password.</p>{error && <p className="form-error" role="alert">{error}</p>}{report && <><p className="operational-note">Per-provider results: {Object.entries(report.providers).map(([name, count]) => `${name}: ${count}`).join(' · ') || 'none'}.</p>{report.warnings.length > 0 && <div className="key-list">{report.warnings.map((warning, index) => <div key={index}><span className="muted-copy break-value">{warning}</span></div>)}</div>}</>}<div className="modal-actions"><button className="button secondary" type="button" onClick={onClose}>Cancel</button><button className="button primary" disabled={mutation.isPending}>{mutation.isPending ? 'Researching…' : 'Run research'}</button></div></form></div></div>
 }
 
 export function CompanyWorkspacePage({ mode }: { mode: 'research' | 'companies' }) {
