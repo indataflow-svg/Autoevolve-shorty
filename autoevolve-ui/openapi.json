@@ -11735,6 +11735,11 @@
           "x_channel_id": {
             "type": "boolean",
             "title": "X Channel Id"
+          },
+          "linkedin_channel_id": {
+            "type": "boolean",
+            "title": "Linkedin Channel Id",
+            "default": false
           }
         },
         "type": "object",

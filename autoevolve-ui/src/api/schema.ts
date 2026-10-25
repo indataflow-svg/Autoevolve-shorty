@@ -3407,6 +3407,11 @@ export interface components {
             instagram_channel_id: boolean;
             /** X Channel Id */
             x_channel_id: boolean;
+            /**
+             * Linkedin Channel Id
+             * @default false
+             */
+            linkedin_channel_id: boolean;
         };
         /** BufferAccountView */
         BufferAccountView: {
