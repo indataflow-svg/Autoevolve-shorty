@@ -438,7 +438,9 @@ Research input stays verbatim: Prospeo runs one exact rung and rejects an
 unrecognised location instead of searching worldwide (`widen=True` restores
 the old ladder explicitly), and `score_lead` carries no industry or geography
 bonuses — ranking reflects deliverability signals (verified email, title,
-phone), never ICP fit or origin.
+phone), never ICP fit or origin. Merged market results are ordered best-first
+by cross-provider corroboration then neutral completeness, with each item's
+`match` naming the providers and signals behind its position.
 
 ### 3.3 Drafting
 

@@ -778,6 +778,57 @@ def _research_result_key(item: dict[str, Any]) -> str | None:
     ) or f"lead:{lead.get('id')}"
 
 
+def _result_match(item: dict[str, Any], contributors: list[str]) -> dict[str, Any]:
+    """Explain why a merged result ranks where it does — without judging fit.
+
+    Corroboration (independent databases returning the same company) outranks
+    everything; completeness of neutral contact/company facts breaks ties.
+    No industry terms, no geography, no ICP: only agreement between providers
+    and whether the record is actually usable.
+    """
+    lead = item.get("lead") if isinstance(item.get("lead"), dict) else {}
+    metadata = lead.get("metadata") if isinstance(lead.get("metadata"), dict) else {}
+    signals = {
+        "has_name": bool(str(lead.get("company") or "").strip()),
+        "has_domain": bool(str(lead.get("company_domain") or "").strip()),
+        "has_country": bool(str(lead.get("country") or "").strip()),
+        "has_company_id": bool(str(metadata.get("provider_company_id") or "").strip()),
+    }
+    return {
+        "providers": list(contributors),
+        "corroboration": len(contributors),
+        "signals": signals,
+        "completeness": sum(1 for present in signals.values() if present),
+    }
+
+
+def _rank_research_results(
+    results: list[dict[str, Any]],
+    sources: dict[str, list[str]],
+    key_fn,
+) -> list[dict[str, Any]]:
+    """Order merged results best-first: most corroborated, then most complete.
+
+    Stable: ties keep fan-out order, so the ranking can only promote, never
+    silently reshuffle equal candidates. Each item gains a ``match`` note
+    explaining its position; nothing is dropped.
+    """
+    scored = []
+    for index, item in enumerate(results):
+        key = key_fn(item)
+        contributors = sources.get(key, []) if key else []
+        if not contributors:
+            source = ((item.get("lead") or {}).get("source") if isinstance(item, dict) else "") or ""
+            contributors = [str(source)] if source else []
+        match = _result_match(item, contributors)
+        scored.append((-match["corroboration"], -match["completeness"], index, match, item))
+    scored.sort(key=lambda entry: (entry[0], entry[1], entry[2]))
+    return [
+        {**item, "match": match} if isinstance(item, dict) else item
+        for _, _, _, match, item in scored
+    ]
+
+
 def research_market_leads(*, industry: str, location: str | None = None, limit_per_provider: int = 5) -> dict[str, Any]:
     normalized_industry = industry.strip()
     normalized_location = location.strip() if location else None
@@ -794,8 +845,9 @@ def research_market_leads(*, industry: str, location: str | None = None, limit_p
         key_fn=_research_result_key,
         warn_fn=_provider_failure_note,
     )
+    ranked = _rank_research_results(run["results"], run.get("sources") or {}, _research_result_key)
     return {
-        "results": run["results"],
+        "results": ranked,
         "providers": run["providers"],
         "warnings": run["warnings"],
         "mode": "company_first",

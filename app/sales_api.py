@@ -131,6 +131,7 @@ class LeadCreateResult(BaseModel):
 class ProspectResult(BaseModel):
     lead: SalesLeadRecord
     created: bool
+    match: dict | None = None
 
 
 class ProspectActionResult(BaseModel):

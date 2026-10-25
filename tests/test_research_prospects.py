@@ -190,6 +190,74 @@ class ResearchActionTests(ResearchBase):
         self.assertIn("research_prospects", READ_ACTIONS)
 
 
+class ResearchRankingTests(ResearchBase):
+    @staticmethod
+    def _item(company, domain, source, country=None, company_id=None):
+        metadata = {"provider_company_id": company_id} if company_id else {}
+        return {"lead": {"id": f"lead-{source}-{domain or company}", "company": company,
+                         "company_domain": domain, "country": country, "source": source,
+                         "metadata": metadata},
+                "created": True}
+
+    def test_overlapping_company_ranks_first_with_all_providers_named(self):
+        from services.sales_service import research_market_leads
+
+        prospeo = [self._item("Example Logistics", "example.com", "prospeo", country="Kenya"),
+                   self._item("Other Freight", "other.example", "prospeo", country="Kenya")]
+        apollo = [self._item("Example Logistics", "example.com", "apollo", country="Kenya"),
+                  self._item("Third Haul", "third.example", "apollo", country="Kenya")]
+        with patch("services.sales_service.research_prospeo_market_leads", return_value=prospeo), \
+             patch("services.sales_service.research_apollo_market_leads", return_value=apollo), \
+             patch("services.sales_service.research_lusha_market_leads", return_value=[]):
+            result = research_market_leads(industry="Logistics", location="Kenya", limit_per_provider=5)
+
+        domains = [item["lead"]["company_domain"] for item in result["results"]]
+        self.assertEqual(domains, ["example.com", "other.example", "third.example"])
+        best = result["results"][0]["match"]
+        self.assertEqual(best["providers"], ["prospeo", "apollo"])
+        self.assertEqual(best["corroboration"], 2)
+        self.assertTrue(best["signals"]["has_domain"])
+        self.assertTrue(best["signals"]["has_country"])
+        # Single-source ties keep fan-out order: nothing is silently reshuffled.
+        self.assertEqual(result["results"][1]["match"]["providers"], ["prospeo"])
+        self.assertEqual(result["results"][2]["match"]["providers"], ["apollo"])
+
+    def test_completeness_breaks_corroboration_ties(self):
+        from services.sales_service import research_market_leads
+
+        sparse = [self._item("Sparse Co", "sparse.example", "prospeo")]
+        rich = [self._item("Rich Co", "rich.example", "apollo", country="Kenya")]
+        with patch("services.sales_service.research_prospeo_market_leads", return_value=sparse), \
+             patch("services.sales_service.research_apollo_market_leads", return_value=rich), \
+             patch("services.sales_service.research_lusha_market_leads", return_value=[]):
+            result = research_market_leads(industry="Logistics", location="Kenya", limit_per_provider=5)
+
+        domains = [item["lead"]["company_domain"] for item in result["results"]]
+        self.assertEqual(domains, ["rich.example", "sparse.example"])
+
+    def test_waterfall_records_every_provider_that_returned_a_key(self):
+        from services import provider_registry as registry
+
+        calls = {"b": 0}
+
+        def fetch_a():
+            return [{"k": "x"}, {"k": "y"}]
+
+        def fetch_b():
+            calls["b"] += 1
+            return [{"k": "y"}, {"k": "z"}]
+
+        run = registry.run_waterfall(
+            [("a", fetch_a, (ValueError,)), ("b", fetch_b, (ValueError,))],
+            target=None,
+            key_fn=lambda item: item.get("k"),
+            warn_fn=lambda name, exc: f"{name}: {exc}",
+        )
+        self.assertEqual([item["k"] for item in run["results"]], ["x", "y", "z"])
+        self.assertEqual(run["sources"], {"x": ["a"], "y": ["a", "b"], "z": ["b"]})
+        self.assertEqual(calls["b"], 1)
+
+
 class ResearchGovernanceTests(ResearchBase):
     def discovery_plan(self) -> dict:
         return plan_with_validation(method="prospect_discovery", channel="email",

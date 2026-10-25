@@ -77,6 +77,7 @@ def run_waterfall(
     warnings: list[str] = []
     log: list[dict[str, Any]] = []
     seen: set[str] = set()
+    sources: dict[str, list[str]] = {}
 
     for name, fetch, error_types in steps:
         if target is not None and len(results) >= target:
@@ -94,7 +95,11 @@ def run_waterfall(
         fresh = 0
         for item in items or []:
             key = key_fn(item)
-            if key is None or key in seen:
+            if key is None:
+                continue
+            if name not in sources.setdefault(key, []):
+                sources[key].append(name)
+            if key in seen:
                 continue
             seen.add(key)
             results.append(item)
@@ -104,4 +109,4 @@ def run_waterfall(
         log.append({"provider": name, "status": "hit" if fresh else "miss", "count": len(items or [])})
         if not fresh:
             warnings.append(f"{name}: {warnings_note} (tried; moving on)")
-    return {"results": results, "providers": providers, "warnings": warnings, "waterfall": log}
+    return {"results": results, "providers": providers, "warnings": warnings, "waterfall": log, "sources": sources}
