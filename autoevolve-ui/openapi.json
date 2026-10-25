@@ -11617,6 +11617,17 @@
             ],
             "title": "Org Id"
           },
+          "buffer_account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buffer Account"
+          },
           "assets": {
             "items": {
               "type": "string",
@@ -15086,6 +15097,17 @@
               }
             ],
             "title": "Buffer Scheduled At"
+          },
+          "preferred_buffer_account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Buffer Account"
           }
         },
         "type": "object",
@@ -16893,6 +16915,18 @@
               }
             ],
             "title": "Org Id"
+          },
+          "buffer_account": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buffer Account"
           }
         },
         "type": "object",

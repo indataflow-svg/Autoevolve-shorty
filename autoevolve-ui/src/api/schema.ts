@@ -3364,6 +3364,8 @@ export interface components {
             link_label?: string | null;
             /** Org Id */
             org_id?: number | null;
+            /** Buffer Account */
+            buffer_account?: string | null;
             /**
              * Assets
              * @default []
@@ -4413,6 +4415,8 @@ export interface components {
             buffer_accounts: string[];
             /** Buffer Scheduled At */
             buffer_scheduled_at: string | null;
+            /** Preferred Buffer Account */
+            preferred_buffer_account?: string | null;
         };
         /** ContentView */
         ContentView: {
@@ -5043,6 +5047,8 @@ export interface components {
             link_label?: string | null;
             /** Org Id */
             org_id?: number | null;
+            /** Buffer Account */
+            buffer_account?: string | null;
         };
         /**
          * MarketFacts
