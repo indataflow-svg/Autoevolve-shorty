@@ -401,6 +401,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/company/marketing/manual-posts/{post_record_id}/buffer-confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Manual Post Send
+         * @description Ask Buffer for the fate of every scheduled post ID and persist the verdict.
+         *
+         *     Manual and explicit: nothing here schedules, drafts, or publishes. The
+         *     local ``buffer_status`` is left untouched — this records what the provider
+         *     says next to it, so "scheduled (our record)" and "sent (their word)" can
+         *     never be confused. Only an explicit ``sent`` counts as sent.
+         */
+        post: operations["confirm_manual_post_send_company_marketing_manual_posts__post_record_id__buffer_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/company/marketing/manual-posts/{post_record_id}/buffer-draft": {
         parameters: {
             query?: never;
@@ -3458,6 +3483,15 @@ export interface components {
             /** Usable */
             usable: boolean;
         };
+        /** BufferConfirmResult */
+        BufferConfirmResult: {
+            /** Ok */
+            ok: boolean;
+            post: components["schemas"]["ManualPostActionRecord"];
+            confirmation: components["schemas"]["BufferSendConfirmation"];
+            /** Message */
+            message: string;
+        };
         /** BufferConnectPayload */
         BufferConnectPayload: {
             /**
@@ -3581,6 +3615,17 @@ export interface components {
             };
             /** Message */
             message: string;
+        };
+        /** BufferSendConfirmation */
+        BufferSendConfirmation: {
+            /** Checked At */
+            checked_at: string;
+            /** Overall */
+            overall: string;
+            /** Posts */
+            posts: {
+                [key: string]: unknown;
+            };
         };
         /** BufferSetupAccountsView */
         BufferSetupAccountsView: {
@@ -4417,6 +4462,10 @@ export interface components {
             buffer_scheduled_at: string | null;
             /** Preferred Buffer Account */
             preferred_buffer_account?: string | null;
+            /** Send Confirmation */
+            send_confirmation?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ContentView */
         ContentView: {
@@ -7187,6 +7236,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BufferInsightsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_manual_post_send_company_marketing_manual_posts__post_record_id__buffer_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                post_record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BufferConfirmResult"];
                 };
             };
             /** @description Validation Error */

@@ -1128,6 +1128,70 @@
         }
       }
     },
+    "/company/marketing/manual-posts/{post_record_id}/buffer-confirm": {
+      "post": {
+        "tags": [
+          "marketing"
+        ],
+        "summary": "Confirm Manual Post Send",
+        "description": "Ask Buffer for the fate of every scheduled post ID and persist the verdict.\n\nManual and explicit: nothing here schedules, drafts, or publishes. The\nlocal ``buffer_status`` is left untouched \u2014 this records what the provider\nsays next to it, so \"scheduled (our record)\" and \"sent (their word)\" can\nnever be confused. Only an explicit ``sent`` counts as sent.",
+        "operationId": "confirm_manual_post_send_company_marketing_manual_posts__post_record_id__buffer_confirm_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "post_record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Post Record Id"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BufferConfirmResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/company/marketing/manual-posts/{post_record_id}/buffer-draft": {
       "post": {
         "tags": [
@@ -11915,6 +11979,32 @@
         ],
         "title": "BufferChannelView"
       },
+      "BufferConfirmResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "post": {
+            "$ref": "#/components/schemas/ManualPostActionRecord"
+          },
+          "confirmation": {
+            "$ref": "#/components/schemas/BufferSendConfirmation"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "post",
+          "confirmation",
+          "message"
+        ],
+        "title": "BufferConfirmResult"
+      },
       "BufferConnectPayload": {
         "properties": {
           "account": {
@@ -12313,6 +12403,30 @@
           "message"
         ],
         "title": "BufferScheduleResult"
+      },
+      "BufferSendConfirmation": {
+        "properties": {
+          "checked_at": {
+            "type": "string",
+            "title": "Checked At"
+          },
+          "overall": {
+            "type": "string",
+            "title": "Overall"
+          },
+          "posts": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Posts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "checked_at",
+          "overall",
+          "posts"
+        ],
+        "title": "BufferSendConfirmation"
       },
       "BufferSetupAccountsView": {
         "properties": {
@@ -15108,6 +15222,18 @@
               }
             ],
             "title": "Preferred Buffer Account"
+          },
+          "send_confirmation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Confirmation"
           }
         },
         "type": "object",
