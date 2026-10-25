@@ -261,6 +261,47 @@ class ResearchRankingTests(ResearchBase):
         self.assertEqual(runner_up["relevance"]["score"], 0)
         self.assertEqual(runner_up["corroboration"], 2)
 
+    def test_registry_verification_corroborates_and_names_the_registry(self):
+        from services.sales_service import research_market_leads
+
+        prospeo = [self._item("Example Logistics", "example.com", "prospeo", country="Kenya")]
+        apollo = [self._item("Other Freight", "other.example", "apollo", country="Kenya")]
+
+        class FakeOC:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def verify_company(self, name, jurisdiction=None):
+                if "Example" in name and jurisdiction == "ke":
+                    return {"name": name, "company_number": "BN-123", "jurisdiction_code": "ke"}
+                return None
+
+        with patch("services.sales_service.research_prospeo_market_leads", return_value=prospeo), \
+             patch("services.sales_service.research_apollo_market_leads", return_value=apollo), \
+             patch("services.sales_service.research_lusha_market_leads", return_value=[]), \
+             patch("services.opencorporates.OpenCorporatesClient", FakeOC):
+            result = research_market_leads(industry="Logistics", location="Kenya", limit_per_provider=5)
+
+        by_domain = {item["lead"]["company_domain"]: item for item in result["results"]}
+        verified = by_domain["example.com"]["match"]
+        self.assertIn("opencorporates", verified["providers"])
+        self.assertEqual(verified["registry"], {"company_number": "BN-123", "jurisdiction_code": "ke"})
+        self.assertNotIn("registry", by_domain["other.example"]["match"])
+        self.assertNotIn("opencorporates", by_domain["other.example"]["match"]["providers"])
+
+    def test_registry_verification_missing_key_skips_quietly(self):
+        from services.sales_service import research_market_leads
+
+        prospeo = [self._item("Example Logistics", "example.com", "prospeo", country="Kenya")]
+        with patch.dict("os.environ", {"OPENCORPORATES_API_KEY": ""}, clear=False), \
+             patch("services.sales_service.research_prospeo_market_leads", return_value=prospeo), \
+             patch("services.sales_service.research_apollo_market_leads", return_value=[]), \
+             patch("services.sales_service.research_lusha_market_leads", return_value=[]):
+            result = research_market_leads(industry="Logistics", location="Kenya", limit_per_provider=5)
+
+        self.assertEqual([item["lead"]["company_domain"] for item in result["results"]], ["example.com"])
+        self.assertFalse(any("opencorporates" in warning for warning in result["warnings"]))
+
     def test_waterfall_records_every_provider_that_returned_a_key(self):
         from services import provider_registry as registry
 

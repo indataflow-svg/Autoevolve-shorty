@@ -121,6 +121,86 @@ class LushaClientTests(unittest.TestCase):
         self.assertIn("size must be between 10 and 100", str(ctx.exception))
 
 
+class OpenCorporatesClientTests(unittest.TestCase):
+    def setUp(self):
+        self.env = patch.dict("os.environ", {"OPENCORPORATES_API_KEY": "oc_test"}, clear=False)
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+
+    def _fake(self, payload=None, status=200):
+        import urllib.error
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps(payload or {}).encode("utf-8")
+
+        def fake_open(request, timeout=None):
+            if status != 200:
+                raise urllib.error.HTTPError(request.full_url, status, "error", hdrs=None, fp=io.BytesIO(b"{}"))
+            fake_open.url = request.full_url
+            return FakeResponse()
+
+        return fake_open
+
+    def test_search_builds_the_documented_query(self):
+        from services.opencorporates import OpenCorporatesClient
+
+        fake_open = self._fake({"results": {"companies": []}})
+        with patch("urllib.request.urlopen", fake_open):
+            self.assertEqual(OpenCorporatesClient().search_companies("Example", jurisdiction="ke"), [])
+        self.assertIn("v0.4/companies/search", fake_open.url)
+        self.assertIn("q=Example", fake_open.url)
+        self.assertIn("jurisdiction_code=ke", fake_open.url)
+        self.assertIn("api_token=oc_test", fake_open.url)
+
+    def test_verify_accepts_only_an_exact_registry_match(self):
+        from services.opencorporates import OpenCorporatesClient
+
+        payload = {"results": {"companies": [
+            {"company": {"name": "Example Logistics Limited", "company_number": "123", "jurisdiction_code": "ke"}},
+            {"company": {"name": "Other Freight Ltd", "company_number": "999", "jurisdiction_code": "ke"}},
+        ]}}
+        with patch("urllib.request.urlopen", self._fake(payload)):
+            hit = OpenCorporatesClient().verify_company("Example Logistics Limited", jurisdiction="ke")
+            miss = OpenCorporatesClient().verify_company("Example Logistics", jurisdiction="ke")
+        self.assertEqual(hit["company_number"], "123")
+        self.assertIsNone(miss)
+
+    def test_verify_rejects_a_wrong_jurisdiction_hit(self):
+        from services.opencorporates import OpenCorporatesClient
+
+        payload = {"results": {"companies": [
+            {"company": {"name": "Example Logistics", "company_number": "1", "jurisdiction_code": "gb"}},
+        ]}}
+        with patch("urllib.request.urlopen", self._fake(payload)):
+            self.assertIsNone(OpenCorporatesClient().verify_company("Example Logistics", jurisdiction="ke"))
+
+    def test_missing_key_explains_where_to_get_one(self):
+        from services.opencorporates import OpenCorporatesError, OpenCorporatesClient
+
+        with patch.dict("os.environ", {"OPENCORPORATES_API_KEY": ""}, clear=False):
+            with self.assertRaisesRegex(OpenCorporatesError, "free"):
+                OpenCorporatesClient()
+
+    def test_quota_and_auth_errors_are_distinct(self):
+        from services.opencorporates import OpenCorporatesClient, OpenCorporatesError
+
+        with patch("urllib.request.urlopen", self._fake(status=403)):
+            with self.assertRaisesRegex(OpenCorporatesError, "quota"):
+                OpenCorporatesClient().search_companies("Example")
+        with patch("urllib.request.urlopen", self._fake(status=401)):
+            with self.assertRaises(OpenCorporatesError):
+                OpenCorporatesClient().search_companies("Example")
+
+
 class CompanyEnrichExtractTests(unittest.TestCase):
     def test_extract_reads_nested_location_and_socials(self):
         from services.company_enrich import CompanyEnrichClient

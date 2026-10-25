@@ -842,11 +842,68 @@ def _result_match(item: dict[str, Any], contributors: list[str], industry: str) 
     }
 
 
+def _verify_companies_oc(results: list[dict[str, Any]], key_fn, country_hint: str | None = None) -> tuple[dict[str, list[str]], dict[str, dict], str | None]:
+    """Corroborate merged candidates against the company registry.
+
+    One OpenCorporates lookup per unique candidate (deduped by key, then by
+    name+jurisdiction), restricted to registries we can map confidently from
+    the candidate's country. Unknown registry, no match, or provider trouble
+    simply yields no corroboration — a registry can only confirm, never
+    refute, since absence may mean unindexed rather than nonexistent.
+    Returns (extra_sources, registry_notes, warning).
+    """
+    from services.opencorporates import (
+        OpenCorporatesClient,
+        OpenCorporatesError,
+        jurisdiction_for_country,
+        normalize_company_name,
+    )
+
+    try:
+        client = OpenCorporatesClient()
+    except OpenCorporatesError:
+        # Unconfigured registry key is not research input and not a provider
+        # failure: skip silently. Setup already reports the missing key, and a
+        # nag on every search would train founders to ignore warnings.
+        return {}, {}, None
+    extra_sources: dict[str, list[str]] = {}
+    notes: dict[str, dict] = {}
+    cache: dict[tuple[str, str], dict | None] = {}
+    warning: str | None = None
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        lead = item.get("lead") if isinstance(item.get("lead"), dict) else {}
+        key = key_fn(item)
+        if not key or key in extra_sources:
+            continue
+        name = str(lead.get("company") or "")
+        jurisdiction = jurisdiction_for_country(lead.get("country") or country_hint)
+        if not jurisdiction or not normalize_company_name(name):
+            continue
+        cache_key = (normalize_company_name(name), jurisdiction)
+        if cache_key not in cache:
+            try:
+                cache[cache_key] = client.verify_company(name, jurisdiction=jurisdiction)
+            except OpenCorporatesError as exc:
+                warning = f"opencorporates: {exc} (remaining candidates unverified)"
+                break
+        hit = cache[cache_key]
+        if hit:
+            extra_sources[key] = ["opencorporates"]
+            notes[key] = {
+                "company_number": hit.get("company_number"),
+                "jurisdiction_code": hit.get("jurisdiction_code"),
+            }
+    return extra_sources, notes, warning
+
+
 def _rank_research_results(
     results: list[dict[str, Any]],
     sources: dict[str, list[str]],
     key_fn,
     industry: str,
+    registry_notes: dict[str, dict] | None = None,
 ) -> list[dict[str, Any]]:
     """Order merged results best-first: query relevance, then corroboration,
     then neutral completeness.
@@ -863,6 +920,8 @@ def _rank_research_results(
             source = ((item.get("lead") or {}).get("source") if isinstance(item, dict) else "") or ""
             contributors = [str(source)] if source else []
         match = _result_match(item, contributors, industry)
+        if registry_notes and key and key in registry_notes:
+            match["registry"] = registry_notes[key]
         scored.append((-match["relevance"]["score"], -match["corroboration"], -match["completeness"], index, match, item))
     scored.sort(key=lambda entry: (entry[0], entry[1], entry[2], entry[3]))
     return [
@@ -887,11 +946,23 @@ def research_market_leads(*, industry: str, location: str | None = None, limit_p
         key_fn=_research_result_key,
         warn_fn=_provider_failure_note,
     )
-    ranked = _rank_research_results(run["results"], run.get("sources") or {}, _research_result_key, normalized_industry)
+    sources = dict(run.get("sources") or {})
+    oc_sources, oc_notes, oc_warning = _verify_companies_oc(
+        run["results"], _research_result_key, country_hint=normalized_location
+    )
+    for key, providers in oc_sources.items():
+        known = sources.setdefault(key, [])
+        for provider in providers:
+            if provider not in known:
+                known.append(provider)
+    warnings = list(run["warnings"])
+    if oc_warning and oc_warning not in warnings:
+        warnings.append(oc_warning)
+    ranked = _rank_research_results(run["results"], sources, _research_result_key, normalized_industry, oc_notes)
     return {
         "results": ranked,
         "providers": run["providers"],
-        "warnings": run["warnings"],
+        "warnings": warnings,
         "mode": "company_first",
         "contact_enrichment": "on_demand",
         "requested": {"industry": normalized_industry, "location": normalized_location, "limit_per_provider": limit_per_provider},
@@ -2202,6 +2273,85 @@ def _sales_public_base_url() -> str:
 
 def _schedule_meeting_url() -> str:
     return (os.getenv("SALES_SCHEDULE_URL", "").strip() or f"{_sales_public_base_url()}/meet")
+
+
+def _booking_page_url(lead_id: str) -> str:
+    return f"{_sales_public_base_url()}/book/{lead_id}"
+
+
+def send_booking_request(lead_id: str, slots: list[str], note: str | None = None) -> dict[str, Any]:
+    """Email the contact a public booking page holding the founder's offered
+    slots. Nothing is scheduled here: the meeting is recorded only when the
+    contact picks a slot. Raises ValueError when the send path is not
+    configured, so the caller can report it without losing the request."""
+    lead = get_lead(lead_id)
+    if not lead:
+        raise ValueError("lead not found")
+    if not lead.get("email"):
+        raise ValueError("lead has no email address to send the booking link to")
+    sender = _resolved_resend_sender()
+    reply_to = os.getenv("SALES_REPLY_TO_EMAIL", "").strip() or None
+    booking_url = _booking_page_url(lead_id)
+    brand = company_name()
+    first_name = str(lead.get("full_name") or "").strip().split()[0] if lead.get("full_name") else ""
+    greeting = f"Hi {first_name}," if first_name else "Hi,"
+    slot_lines = "\n".join(f"- {slot}" for slot in slots)
+    text = "\n\n".join(filter(None, [
+        greeting,
+        f"Thanks for reaching out to {brand}. Here are the times we can meet:",
+        slot_lines,
+        str(note or "").strip() or None,
+        f"Pick the one that works for you: {booking_url}",
+        "The time you choose is held immediately; a calendar follow-up with the call details follows separately.",
+    ]))
+    slot_items = "".join(
+        f'<li style="margin:0 0 8px;font-size:15px;color:#111827;">{escape(slot)}</li>' for slot in slots
+    )
+    booking_href = escape(booking_url, quote=True)
+    html = (
+        f'<p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#374151;">{escape(greeting)}</p>'
+        f'<p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#374151;">'
+        f'Thanks for reaching out to {escape(brand)}. Here are the times we can meet:</p>'
+        f'<ul style="margin:0 0 16px;padding-left:20px;">{slot_items}</ul>'
+        + (f'<p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#374151;">{escape(str(note))}</p>' if str(note or "").strip() else "")
+        + f'<p style="margin:0 0 8px;"><a href="{booking_href}" style="display:inline-block;padding:12px 20px;border-radius:10px;'
+          f'background:#5E6AD2;color:#ffffff;text-decoration:none;font-weight:700;">Pick a time</a></p>'
+        f'<p style="margin:14px 0 0;font-size:13px;color:#6b7280;">The time you choose is held immediately; '
+        f'a calendar follow-up with the call details follows separately.</p>'
+    )
+    payload: dict[str, Any] = {
+        "from": sender,
+        "to": [lead["email"]],
+        "subject": f"Pick a time to meet — {brand}",
+        "html": html,
+        "text": text,
+        "headers": {"X-Lead-ID": lead_id},
+        "tags": [{"name": "lead_id", "value": lead_id}],
+    }
+    if reply_to:
+        payload["reply_to"] = reply_to
+    # Same request shape on every retry so a duplicate click cannot double-send.
+    idempotency_key = f"booking-request:{lead_id}:{hashlib.sha256(('\n'.join(slots)).encode('utf-8')).hexdigest()[:16]}"
+    result = _resend_request(payload, idempotency_key=idempotency_key)
+    provider_message_id = str(result.get("id") or "").strip()
+    add_interaction(
+        lead_id,
+        "outbound",
+        "email",
+        "meeting_invitation",
+        payload["subject"],
+        text,
+        provider_message_id or None,
+        metadata={
+            "provider": "resend",
+            "source": "booking_request",
+            "from_email": sender,
+            "to_email": lead["email"],
+            "booking_url": booking_url,
+            "slots": slots,
+        },
+    )
+    return {"provider_message_id": provider_message_id or None, "booking_url": booking_url}
 
 
 def _brand_logo_url() -> str:
