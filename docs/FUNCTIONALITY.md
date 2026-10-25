@@ -350,24 +350,51 @@ the detail editor are unchanged, and validation stays a human click.
 
 ## 3. Sales
 
-The largest department: **31 routes**, 5 tables, 6 provider integrations, and
+The largest department: **~45 routes** (sales, workflow views, and the custom
+form routers), 6 tables, 6 provider integrations, and
 the most careful failure handling in the codebase.
 
 ### 3.1 Lead intake (unauthenticated, shared-secret + rate limited)
 
 `POST /integrations/leads/website` · `/integrations/leads/tally` ·
-`/integrations/email/sales` · `/integrations/resend/sales`
+`/integrations/leads/form` · `/integrations/email/sales` ·
+`/integrations/resend/sales`
 
-Four ingress paths — website form, Tally webhook, inbound email, Resend
-webhook. Each verifies its own shared secret
+Five ingress paths — website form, Tally webhook, custom form, inbound email,
+Resend webhook. Each verifies its own shared secret
 (`X-Company-Core-Lead-Secret`, `X-Sales-Email-Webhook-Secret`, Svix signature
-for Resend). These four routes sit **outside** dashboard auth and are
+for Resend). These routes sit **outside** dashboard auth and are
 rate-limited per client IP by `rate_limit_intake` (`WINDOW_SECONDS`,
 `WEBHOOK_PATHS`), with a separate bucket for failed dashboard sign-ins.
 
 `upsert_lead(payload)` merges by email, passes `utm_*`/campaign/post
 parameters through **verbatim**, and returns `(lead, created)` so
 `maybe_auto_contact_lead` can react to genuinely new leads only.
+
+#### Custom lead forms (`core/form_store.py`, `app/forms_api.py`)
+
+A form is a slug plus an ordered field list (`form_definitions` table, one
+seeded `contact` form). The same definition drives two submission paths that
+land in exactly the same place:
+
+- **Hosted page** `GET/POST /f/{slug}` — branded, mobile-clean, honeypot
+  field, no secret (it is a public form). POST redirects to `?sent=1`.
+- **Shared endpoint** `POST /integrations/leads/form` — for external tools
+  (an indataflow form, any POSTing service). Accepts JSON
+  (`{"form": "contact", "answers": {...}}` or a flat object of answers) or
+  form-encoded bodies; enforces `X-Company-Core-Lead-Secret` when
+  `SALES_INTAKE_SECRET` is set.
+
+Known keys (`email`, `full_name`, `company`, `phone`, `message`, …) map onto
+the lead record; every non-empty answer is also kept under its form label as
+an inbound `form`/`submission` interaction, so Replies shows the submission
+as clean question/answer rows. `GET/POST/PATCH /company/commercial/forms`
+(authenticated + founder-gated writes) manage definitions. `GET
+/company/commercial/forms/config` returns the one-screen connection kit —
+the absolute endpoint URL plus `X-Company-Core-Lead-Secret` when set — shown
+in the Commercial → Forms "Connect an external form tool" panel. When
+`COMPANY_FORMS_URL` is empty, the workspace "Lead forms" link defaults to the
+hosted contact form at `{COMPANY_PUBLIC_URL}/f/contact`.
 
 ### 3.2 Research and enrichment
 
@@ -457,14 +484,28 @@ meetings all **stop the follow-up sequence**.
 `POST /leads/{id}/schedule-meeting` records a manual marker.
 `POST /leads/{id}/suppress` (`reason='founder_request'`) suppresses permanently.
 
+`POST /leads/{id}/meeting-request` (founder-gated) is the booking-link flow:
+the founder offers 1–5 slots and a note, which are saved as
+`metadata.meeting.status='awaiting_booking'` (the lead stage does **not**
+move), and an email listing the slots is sent to the contact's address via
+the same Resend path as drafts. Each slot links to the public
+`GET/POST /book/{lead_id}` page; the contact choosing a slot there is the
+only thing that records the meeting — `mark_meeting_scheduled(...,
+source='booking_link')` sets the marker, moves the stage to `scheduled`, and
+emits `meeting.scheduled`. If Resend is unconfigured the request is still
+saved and the API returns an honest warning (same pattern as enrichment).
+
 ### 3.6 Views
 
 `GET /company/ui/outreach[/{id}]` · `/replies[/{id}]` · `/meetings[/{lead_id}]`
 · `/company/sales/contacts[/{id}]` · `/companies[/{company_id}]`
 
 Paginated projections over joins of `sales_drafts`, `sales_leads`,
-`sales_interactions`, `sales_company_profiles`. Replies expose whether an
-inbound is the lead's latest interaction and the exact thread id.
+`sales_interactions`, `sales_company_profiles`. Replies cover both inbound
+channels — email replies and form submissions — expose whether an inbound is
+the lead's latest interaction and the exact thread id, and offer the
+meeting-request action. Meetings cover both marker states, `scheduled` and
+`awaiting_booking` (the offered slots are listed until the contact chooses).
 
 **Explicitly unsupported by the backend** (documented, and the UI omits them
 rather than faking them): outreach owner, due date, follow-up queue,
@@ -520,16 +561,16 @@ Two paths: **manual** (operator uploads their own assets) and **generated**
 - `POST /manual-posts/session` → `/manual-posts/{id}/assets` (upload) →
   `/finalize` — a three-step flow so uploads survive a failed finalize.
 - `POST /manual-posts` — single-shot from the UI with `File[]` assets.
-- `GET /buffer-accounts` — named accounts configured in `g3.env`; **keys never
-  leave the server**.
-- `POST /manual-posts/{id}/buffer-draft` → `/buffer-schedule` → `GET
-  /buffer-insights`.
 - `POST /manual-posts/preview` — read-only caption, CTA, and tracked-link
   preview built by the same helpers as finalize, so the operator sees the real
   output before saving. Nothing is persisted. The UI offers only platforms the
   configured Buffer accounts can reach (Instagram, X); LinkedIn is still
   accepted by the session API but has no G3 publishing path, so it is not
   offered.
+- `GET /buffer-accounts` — named accounts configured in `g3.env`; **keys never
+  leave the server**.
+- `POST /manual-posts/{id}/buffer-draft` → `/buffer-schedule` → `GET
+  /buffer-insights`.
 
 **Attribution is the point.** `_tracked_post_url` embeds
 `?utm_campaign`, `campaign_id`, `post_id`, `source_detail`, `post_type`;
@@ -864,6 +905,22 @@ R2 and hands Buffer the public URLs, so drafting or scheduling a post with
 media fails fast with a 409 naming the missing `R2_*` keys instead of dying
 inside the G3 subprocess. Posts without local media (text-only X) skip R2
 entirely.
+
+**Upgrade path: full two-bucket media flow.** The current setup is the
+minimal version — local disk is the private store and G3's uploader is the
+only writer to the public bucket. The full version makes the private bucket
+the canonical store: (1) dashboard asset uploads `PUT` to the private bucket
+instead of local disk; (2) asset serving reads it back from there;
+(3) at draft/schedule time the app copies the object server-side
+(`copy_object`, same credentials, no bytes through us) into
+`buffer-publishable-content` before the existing probe-and-send, so the
+private bucket is never publicly touched; (4) the private bucket keeps the
+custom domain for human/team access (optionally behind Access) while the
+public bucket stays on its `r2.dev` URL, immune to zone bot rules.
+Media goes public at draft time in either version, because Buffer drafts
+already carry the URLs — and the API token should be scoped to the public
+bucket only, with periodic deletion of `g3/` objects older than the
+scheduling horizon.
 
 ### Model routing
 
