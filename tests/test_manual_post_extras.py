@@ -150,6 +150,63 @@ class ManualPostExtrasTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["post"]["org_id"], self.project["id"])
 
+    def test_preview_is_read_only_and_matches_the_saved_caption(self):
+        before = len(marketing_store.list_manual_posts(limit=200))
+        payload = {
+            "platform": "instagram",
+            "post_type": "carousel",
+            "link_label": "customs workflow audit",
+            "filenames": ["trade-data-slide-1.png", "customs-delay-slide-2.png"],
+        }
+        with patch.dict(os.environ, {"MARKETING_FORMS_BASE_URL": "https://forms.test/apply"}, clear=False):
+            preview = self.client.post("/company/marketing/manual-posts/preview", auth=self.auth, json=payload)
+            self.assertEqual(preview.status_code, 200, preview.text)
+            self.assertEqual(len(marketing_store.list_manual_posts(limit=200)), before, "preview must not persist a post")
+            body = preview.json()
+            self.assertEqual(body["default_destination_url"], "https://forms.test/apply")
+            self.assertEqual(body["link_label"], "customs workflow audit")
+            self.assertIn("Link in bio · customs workflow audit", body["caption"])
+            self.assertIn("utm_source=instagram", body["tracked_url"])
+
+            created = self.client.post(
+                "/company/marketing/manual-posts",
+                auth=self.auth,
+                data={"platform": "instagram", "post_type": "carousel", "link_label": "customs workflow audit"},
+                files=[("assets", ("trade-data-slide-1.png", _png(), "image/png")),
+                       ("assets", ("customs-delay-slide-2.png", _png((200, 40, 40)), "image/png"))],
+            )
+        self.assertEqual(created.status_code, 200, created.text)
+        saved = created.json()["post"]
+        try:
+            self.assertEqual(saved["caption"], body["caption"])
+            self.assertEqual(saved["title"], body["title"])
+            self.assertTrue(saved["tracked_url"].startswith("https://forms.test/apply?"))
+        finally:
+            shutil.rmtree(Path(saved["asset_dir"]), ignore_errors=True)
+
+    def test_preview_defaults_and_platform_rules(self):
+        with patch.dict(os.environ, {"MARKETING_FORMS_BASE_URL": ""}, clear=False):
+            blank = self.client.post("/company/marketing/manual-posts/preview", auth=self.auth, json={
+                "platform": "x", "post_type": "video", "filenames": []})
+        self.assertEqual(blank.status_code, 200, blank.text)
+        body = blank.json()
+        self.assertEqual(body["link_label"], "ops audit")
+        self.assertEqual(body["title"], "X video")
+        self.assertIn("Get the ops audit:", body["caption"])
+        self.assertIn(body["tracked_url"], body["caption"])
+        self.assertEqual(body["post_type"], "video")
+
+        unsupported = self.client.post("/company/marketing/manual-posts/preview", auth=self.auth, json={
+            "platform": "myspace", "post_type": "carousel"})
+        self.assertEqual(unsupported.status_code, 422)
+
+        bad_type = self.client.post("/company/marketing/manual-posts/preview", auth=self.auth, json={
+            "platform": "x", "post_type": "reel"})
+        self.assertEqual(bad_type.status_code, 422)
+
+        bad_url = self.client.post("/company/marketing/manual-posts/preview", auth=self.auth, json={
+            "platform": "x", "post_type": "carousel", "destination_url": "ftp://example.com"})
+        self.assertEqual(bad_url.status_code, 422)
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -194,7 +195,8 @@ class OperationsUiTests(unittest.TestCase):
         self.assertTrue(body["ok"])
         post = body["post"]
         self.assertTrue(post["post_id"].startswith("instagram_carousel_"))
-        self.assertEqual(post["campaign_id"], "mkt_instagram_carousel_202609")
+        expected_month = datetime.now(timezone.utc).strftime("%Y%m")
+        self.assertEqual(post["campaign_id"], f"mkt_instagram_carousel_{expected_month}")
         self.assertEqual(post["workflow_status"], "ready")
         self.assertTrue(post["buffer_ready"])
         self.assertIn("utm_source=instagram", post["tracked_url"])

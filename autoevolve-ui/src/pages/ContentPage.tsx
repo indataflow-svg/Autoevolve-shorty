@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createColumnHelper } from '@tanstack/react-table'
 import { useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileImage, Layers3, Plus, Send, Video } from 'lucide-react'
-import { assetBlob, bufferAccounts, bufferInsights, contentView, createAssetPack, createManualPost, scheduleManualPost, type ContentItem } from '../api/workflows'
+import { assetBlob, bufferAccounts, bufferInsights, contentView, createAssetPack, createManualPost, previewManualPost, scheduleManualPost, type ContentItem } from '../api/workflows'
 import { useCredentials } from '../app/Auth'
 import { AppShell } from '../components/Shell'
 import { DataState, LoadingRows, RightDrawer } from '../components/Primitives'
@@ -93,13 +93,36 @@ function AssetPackCreate({ close, created }: { close: () => void; created: () =>
 
 function ManualPostCreate({ close, created }: { close: () => void; created: () => Promise<void> }) {
   const credentials = useCredentials()
-  const [platform, setPlatform] = useState<'instagram' | 'x' | 'linkedin'>('instagram')
+  const [platform, setPlatform] = useState<'instagram' | 'x'>('instagram')
   const [postType, setPostType] = useState<'carousel' | 'video'>('carousel')
   const [destinationUrl, setDestinationUrl] = useState('')
   const [linkLabel, setLinkLabel] = useState('')
   const [assets, setAssets] = useState<File[]>([])
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
+  // Debounce the inputs that shape the preview so typing a URL is not one request per key.
+  const [previewInput, setPreviewInput] = useState({ platform, postType, destinationUrl, linkLabel })
+  useEffect(() => {
+    const timer = window.setTimeout(() => setPreviewInput({ platform, postType, destinationUrl, linkLabel }), 350)
+    return () => window.clearTimeout(timer)
+  }, [platform, postType, destinationUrl, linkLabel])
+  const filenames = assets.map(asset => asset.name)
+  const accounts = useQuery({ queryKey: ['buffer-accounts'], queryFn: () => bufferAccounts(credentials), staleTime: 60_000, retry: false })
+  const preview = useQuery({
+    queryKey: ['manual-post-preview', previewInput.platform, previewInput.postType, previewInput.destinationUrl, previewInput.linkLabel, filenames.join('|')],
+    queryFn: () => previewManualPost(credentials, { platform: previewInput.platform, postType: previewInput.postType, destinationUrl: previewInput.destinationUrl, linkLabel: previewInput.linkLabel, filenames }),
+    retry: false,
+    staleTime: 30_000,
+  })
+  // Buffer capability decides whether scheduling can work; saving a local record never depends on it.
+  const bufferUnknown = accounts.isError || Boolean(accounts.data?.error)
+  const connected = new Set<string>()
+  for (const account of accounts.data?.accounts || []) {
+    if (account.instagram_channel_id) connected.add('instagram')
+    if (account.x_channel_id) connected.add('x')
+  }
+  const channelState = accounts.isPending || bufferUnknown ? 'unknown' : connected.has(platform) ? 'connected' : 'missing'
+  const label = linkLabel.trim() || 'ops audit'
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError('')
     if (!assets.length) { setError('Select at least one media file.'); return }
@@ -112,12 +135,24 @@ function ManualPostCreate({ close, created }: { close: () => void; created: () =
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Manual post could not be saved.') }
     finally { setPending(false) }
   }
-  return <div className="modal-backdrop" role="presentation"><div className="modal" role="dialog" aria-modal="true" aria-label="New manual post"><button className="modal-close icon-button" onClick={close} aria-label="Close new manual post">×</button><h2>New manual post</h2><p>Save uploaded media and a backend-generated caption. Buffer scheduling is a separate action.</p><form onSubmit={submit}>
-    <label>Platform<select value={platform} onChange={event => setPlatform(event.target.value as typeof platform)}><option value="instagram">Instagram</option><option value="x">X</option><option value="linkedin">LinkedIn</option></select></label>
+  return <div className="modal-backdrop" role="presentation"><div className="modal" role="dialog" aria-modal="true" aria-label="New manual post"><button className="modal-close icon-button" onClick={close} aria-label="Close new manual post">×</button><h2>New manual post</h2><p>Save media and the backend-generated caption. Nothing is published here; Buffer scheduling is a separate, founder-authorized step.</p><form onSubmit={submit}>
+    <label>Platform<select value={platform} onChange={event => setPlatform(event.target.value as typeof platform)}><option value="instagram">Instagram</option><option value="x">X</option></select></label>
+    <p className="field-note">{channelState === 'unknown' ? 'Buffer channel status is unavailable. You can save this post; scheduling may need a connection first.' : channelState === 'connected' ? 'A Buffer channel is connected for this platform.' : `No Buffer channel is connected for ${platform === 'instagram' ? 'Instagram' : 'X'}. You can save now and connect before scheduling.`} LinkedIn is not offered because the Buffer/G3 handoff does not support it yet.</p>
     <label>Format<select value={postType} onChange={event => { setPostType(event.target.value as typeof postType); setAssets([]) }}><option value="carousel">Carousel · PNG</option><option value="video">Video · MP4</option></select></label>
+    <p className="field-note">{postType === 'video' ? 'Exactly one MP4. Its file name seeds the caption.' : 'PNG images only, one or more. File names seed the caption.'}</p>
     <label>Media<input type="file" accept={postType === 'video' ? '.mp4,video/mp4' : '.png,image/png'} multiple={postType === 'carousel'} onChange={event => setAssets(Array.from(event.target.files || []))} required /></label>
-    <label>Destination URL<input type="url" value={destinationUrl} onChange={event => setDestinationUrl(event.target.value)} /></label>
-    <label>CTA label<input value={linkLabel} onChange={event => setLinkLabel(event.target.value)} maxLength={80} /></label>
+    <label>Destination URL<input type="url" value={destinationUrl} onChange={event => setDestinationUrl(event.target.value)} placeholder={preview.data?.default_destination_url || 'https://your-site.example/form'} /></label>
+    <p className="field-note">Leave blank to use {preview.data?.default_destination_url || 'your hosted form'}. UTM and post tracking parameters are appended to the saved link.</p>
+    <label>CTA label<input value={linkLabel} onChange={event => setLinkLabel(event.target.value)} maxLength={80} placeholder="ops audit" /></label>
+    <p className="field-note">{platform === 'instagram' ? `Rendered as "Link in bio · ${label}". Instagram captions cannot carry a clickable link.` : `Rendered as "Get the ${label}: <tracked link>".`}</p>
+    <section className="detail-card" aria-live="polite">
+      <h3>Caption preview</h3>
+      {preview.isPending ? <p className="operational-note">Building caption…</p> : preview.isError ? <p className="form-error" role="alert">Preview unavailable: {preview.error.message}. Saving still works; the backend builds the caption on save.</p> : preview.data && <>
+        <p className="workflow-message">{preview.data.caption}</p>
+        <dl className="company-fields"><div><dt>Title</dt><dd>{preview.data.title}</dd></div><div><dt>Tracked link</dt><dd><code className="tracked-link">{preview.data.tracked_url}</code></dd></div></dl>
+        <p className="operational-note">Sample link: post and campaign ids are assigned when you save. Captions are drafted from file names, not media contents.</p>
+      </>}
+    </section>
     {error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="button secondary" onClick={close}>Cancel</button><button className="button primary" disabled={pending}>Save manual post</button></div>
   </form></div></div>
 }

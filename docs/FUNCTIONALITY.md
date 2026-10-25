@@ -524,6 +524,12 @@ Two paths: **manual** (operator uploads their own assets) and **generated**
   leave the server**.
 - `POST /manual-posts/{id}/buffer-draft` → `/buffer-schedule` → `GET
   /buffer-insights`.
+- `POST /manual-posts/preview` — read-only caption, CTA, and tracked-link
+  preview built by the same helpers as finalize, so the operator sees the real
+  output before saving. Nothing is persisted. The UI offers only platforms the
+  configured Buffer accounts can reach (Instagram, X); LinkedIn is still
+  accepted by the session API but has no G3 publishing path, so it is not
+  offered.
 
 **Attribution is the point.** `_tracked_post_url` embeds
 `?utm_campaign`, `campaign_id`, `post_id`, `source_detail`, `post_type`;

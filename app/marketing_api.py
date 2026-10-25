@@ -90,6 +90,25 @@ class ManualPostSessionRequest(BaseModel):
         return text or None
 
 
+class ManualPostPreviewRequest(BaseModel):
+    platform: str = Field(min_length=1, max_length=40)
+    post_type: str = Field(default="carousel", min_length=3, max_length=20)
+    destination_url: str | None = Field(default=None, max_length=500)
+    link_label: str | None = Field(default=None, max_length=80)
+    filenames: list[str] = Field(default_factory=list)
+
+    @field_validator("platform", "post_type", mode="before")
+    @classmethod
+    def _normalize_choice(cls, value: object) -> str:
+        return str(value or "").strip().lower()
+
+    @field_validator("destination_url", "link_label", mode="before")
+    @classmethod
+    def _clean_optional(cls, value: object) -> object:
+        text = str(value or "").strip()
+        return text or None
+
+
 class AssetPackRequest(BaseModel):
     script: str = Field(min_length=20, max_length=12000)
     objective: str = Field(default="awareness", min_length=3, max_length=80)
@@ -229,6 +248,20 @@ class ManualPostCreateResult(BaseModel):
     ok: bool
     post: ManualPostActionRecord
     message: str
+
+
+class ManualPostPreviewView(BaseModel):
+    """What a manual post will look like before anything is persisted."""
+
+    platform: str
+    post_type: str
+    destination_url: str
+    default_destination_url: str
+    link_label: str
+    tracked_url: str
+    caption: str
+    cta: str
+    title: str
 
 
 class BufferScheduleResult(BaseModel):
@@ -953,6 +986,46 @@ def asset_pack_file(pack_id: str, relative_path: str):
         raise HTTPException(404, "asset file not found")
     media_type = "video/mp4" if path.suffix.lower() == ".mp4" else "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "image/png" if path.suffix.lower() == ".png" else "application/octet-stream"
     return FileResponse(path, media_type=media_type, filename=path.name)
+
+
+@router.post("/manual-posts/preview", response_model=ManualPostPreviewView)
+def preview_manual_post(payload: ManualPostPreviewRequest):
+    """Preview the caption and tracking link a manual post will receive.
+
+    Read-only: nothing is persisted and no provider is called. It reuses the
+    exact helpers the create path uses, so the operator sees the real caption
+    instead of a client-side approximation that could drift.
+    """
+    clean_platform = payload.platform.strip().lower()
+    if clean_platform not in {"instagram", "x", "linkedin"}:
+        raise HTTPException(422, "unsupported platform")
+    post_type = payload.post_type.strip().lower()
+    if post_type not in {"carousel", "video"}:
+        raise HTTPException(422, "post_type must be carousel or video")
+    destination_url = _normalize_destination_url(payload.destination_url)
+    link_label = (payload.link_label or "").strip() or "ops audit"
+    filenames = [Path(str(name)).name for name in payload.filenames if str(name).strip()]
+    assets = [{"filename": name} for name in filenames[:20]]
+    tracked_url = _tracked_post_url(
+        destination_url,
+        platform=clean_platform,
+        post_id=_generated_post_id(clean_platform, post_type),
+        campaign_id=_generated_campaign_id(clean_platform, post_type),
+        utm_campaign=_generated_utm_campaign(clean_platform, post_type),
+        source_detail=_generated_source_detail(clean_platform, post_type),
+        post_type=post_type,
+    )
+    return ManualPostPreviewView(
+        platform=clean_platform,
+        post_type=post_type,
+        destination_url=destination_url,
+        default_destination_url=_forms_base_url(),
+        link_label=link_label,
+        tracked_url=tracked_url,
+        caption=_generated_caption(clean_platform, assets, link_label=link_label, tracked_url=tracked_url),
+        cta=_caption_cta(clean_platform, link_label, tracked_url),
+        title=_asset_seed(assets) or f"{clean_platform.title()} {post_type}",
+    )
 
 
 @router.post("/manual-posts/session")

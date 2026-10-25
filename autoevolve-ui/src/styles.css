@@ -192,3 +192,6 @@ button.cx-card.cx-pick.active{border-color:var(--primary)}
 .modal.cx-wide{width:min(720px,100%)}
 .cx-table-wrap{overflow-x:auto}
 @media(max-width:760px){.cx-grid{grid-template-columns:1fr}.cx-section{padding:16px}.cx-section-head{flex-direction:column}.cx-board{grid-auto-columns:minmax(200px,85vw)}}
+
+.tracked-link{display:block;font-size:10px;line-height:1.45;color:#9fc6e8;overflow-wrap:anywhere}
+.field-note{font-size:11px!important;color:#91a9be!important;margin:-6px 0 0!important;line-height:1.45}

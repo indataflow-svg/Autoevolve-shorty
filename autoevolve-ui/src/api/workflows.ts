@@ -58,6 +58,17 @@ export function createManualPost(credentials: Credentials, input: { platform: 'i
   input.assets.forEach(asset => body.append('assets', asset))
   return api<components['schemas']['ManualPostCreateResult']>('/company/marketing/manual-posts', credentials, { method: 'POST', body })
 }
+export const previewManualPost = (credentials: Credentials, input: { platform: string; postType: string; destinationUrl: string; linkLabel: string; filenames: string[] }) =>
+  api<components['schemas']['ManualPostPreviewView']>('/company/marketing/manual-posts/preview', credentials, {
+    method: 'POST',
+    body: JSON.stringify({
+      platform: input.platform,
+      post_type: input.postType,
+      destination_url: input.destinationUrl || null,
+      link_label: input.linkLabel || null,
+      filenames: input.filenames,
+    }),
+  })
 export const bufferAccounts = (credentials: Credentials) => api<BufferAccountsView>('/company/marketing/buffer-accounts', credentials)
 export const bufferInsights = (credentials: Credentials, id: string, postId: string) => api<BufferInsightsView>(`/company/marketing/manual-posts/${encodeURIComponent(id)}/buffer-insights?post_id=${encodeURIComponent(postId)}`, credentials)
 export const scheduleManualPost = (credentials: Credentials, id: string, mode: 'queue' | 'next' | 'timed', dueAt: string | null, token: string, account: string) => api<components['schemas']['BufferScheduleResult']>(`/company/marketing/manual-posts/${encodeURIComponent(id)}/buffer-schedule?buffer_account=${encodeURIComponent(account)}`, credentials, { method: 'POST', body: JSON.stringify({ mode, due_at: dueAt }) }, token)
