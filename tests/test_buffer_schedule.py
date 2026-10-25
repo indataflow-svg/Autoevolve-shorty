@@ -42,6 +42,11 @@ class BufferScheduleTests(unittest.TestCase):
             "DASHBOARD_USER": "founder",
             "DASHBOARD_PASSWORD": "dashboard-secret",
             "SALES_ACTION_TOKEN": "action-secret",
+            "R2_ACCOUNT_ID": "test-account-id",
+            "R2_ACCESS_KEY_ID": "test-access-key",
+            "R2_SECRET_ACCESS_KEY": "test-secret-key",
+            "R2_BUCKET": "test-bucket",
+            "R2_PUBLIC_BASE_URL": "https://media.example.test",
         }, clear=False)
         self.env.start()
         self.headers = {"X-Founder-Action-Token": "action-secret"}
@@ -52,13 +57,13 @@ class BufferScheduleTests(unittest.TestCase):
         marketing_store.DB_PATH = self.old_marketing_path
         self.temporary.cleanup()
 
-    def _post(self, **metadata):
+    def _post(self, assets=None, **metadata):
         base = {"workflow_status": "ready"}
         base.update(metadata)
         return marketing_store.create_manual_post(
             org_id=self.project["id"], platform="x", post_id="x_post_1",
             destination_url="https://example.com", tracked_url="https://example.com/?x=1",
-            asset_dir=str(Path(self.temporary.name)), assets=[], metadata=base)
+            asset_dir=str(Path(self.temporary.name)), assets=assets or [], metadata=base)
 
     def _schedule(self, post_id, payload):
         return self.client.post(f"/company/marketing/manual-posts/{post_id}/buffer-schedule",
@@ -80,6 +85,43 @@ class BufferScheduleTests(unittest.TestCase):
         self.assertIn("schedule", command)
         self.assertIn("queue", command)
         self.assertNotIn("--due-at", command)
+
+    def test_schedule_with_media_and_r2_configured_proceeds(self):
+        post = self._post(assets=[{"filename": "frame.png", "content_type": "image/png"}])
+        with patch("app.marketing_api.MarketingConfig.load", return_value=_config()), \
+                patch("app.marketing_api._manual_post_handoff",
+                      return_value=(Path("/tmp/handoff.json"), Path(self.temporary.name))), \
+                patch("app.marketing_api._run", return_value=SCHEDULED_OUTPUT) as run_mock:
+            response = self._schedule(post["id"], {"mode": "queue"})
+        self.assertEqual(response.status_code, 200, response.text)
+        run_mock.assert_called_once()
+
+    def test_schedule_without_r2_fails_fast_before_g3(self):
+        post = self._post(assets=[{"filename": "frame.png", "content_type": "image/png"}])
+        blanked = {key: "" for key in (
+            "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
+            "R2_BUCKET", "R2_PUBLIC_BASE_URL")}
+        with patch.dict(os.environ, blanked, clear=False), \
+                patch("app.marketing_api.MarketingConfig.load", return_value=_config()), \
+                patch("app.marketing_api._run") as run_mock:
+            response = self._schedule(post["id"], {"mode": "queue"})
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn("media hosting (R2)", response.json()["detail"])
+        run_mock.assert_not_called()
+
+    def test_draft_without_r2_fails_fast_before_g3(self):
+        post = self._post(assets=[{"filename": "frame.png", "content_type": "image/png"}])
+        blanked = {key: "" for key in (
+            "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
+            "R2_BUCKET", "R2_PUBLIC_BASE_URL")}
+        with patch.dict(os.environ, blanked, clear=False), \
+                patch("app.marketing_api.MarketingConfig.load", return_value=_config()), \
+                patch("app.marketing_api._run") as run_mock:
+            response = self.client.post(
+                f"/company/marketing/manual-posts/{post['id']}/buffer-draft", auth=self.auth)
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn("R2_ACCOUNT_ID", response.json()["detail"])
+        run_mock.assert_not_called()
 
     def test_insights_read_uses_saved_buffer_id_and_account(self):
         post = self._post(

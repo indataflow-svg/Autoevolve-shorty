@@ -31,7 +31,7 @@ def test_typed_operational_views_keep_configuration_and_public_links_honest():
                     integrations = await client.get("/company/ui/integrations", auth=auth)
                     assert integrations.status_code == 200, integrations.text
                     body = integrations.json()
-                    assert body["total_groups"] == 6
+                    assert body["total_groups"] == 7
                     assert body["groups_with_configuration"] == 2
                     assert body["configured_keys"] == 2
                     prospecting = next(group for group in body["groups"] if group["id"] == "prospecting")

@@ -28,9 +28,26 @@ class OperationsUiTests(unittest.TestCase):
         sales_store.init_sales_db()
         self.project = state.create_org("Example Company", "company-core", env_prefix="BUFFER_")
         state.set_active_org(self.project["id"])
+        # Buffer draft/schedule routes read R2 from the same merged view G3
+        # will see (g3.env file wins over process env), so point the config
+        # at a temp file that carries the R2 media-hosting keys.
+        g3_env = Path(self.temporary.name) / "g3.env"
+        g3_env.write_text(
+            "R2_ACCOUNT_ID=test-account-id\n"
+            "R2_ACCESS_KEY_ID=test-access-key\n"
+            "R2_SECRET_ACCESS_KEY=test-secret-key\n"
+            "R2_BUCKET=test-bucket\n"
+            "R2_PUBLIC_BASE_URL=https://media.example.test\n"
+        )
         self.env = patch.dict(os.environ, {
             "DASHBOARD_USER": "founder",
             "DASHBOARD_PASSWORD": "dashboard-secret",
+            "MARKETING_G3_ENV_FILE": str(g3_env),
+            "R2_ACCOUNT_ID": "test-account-id",
+            "R2_ACCESS_KEY_ID": "test-access-key",
+            "R2_SECRET_ACCESS_KEY": "test-secret-key",
+            "R2_BUCKET": "test-bucket",
+            "R2_PUBLIC_BASE_URL": "https://media.example.test",
         }, clear=False)
         self.env.start()
         self.client = TestClient(app)

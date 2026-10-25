@@ -34,6 +34,7 @@ from core.marketing_store import (
 from core.marketing_config import MarketingConfig
 from core.branding import company_forms_url
 from core.state import now_iso, update_task_status
+from dotenv import dotenv_values
 from app.sales_api import verify_founder_action
 from services.caption_variants import build_short_caption_variants, enrich_platform_copy, _buyer_label
 from services.marketing_worker import _last_json, _run, spawn
@@ -646,6 +647,44 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+R2_MEDIA_KEYS = (
+    "R2_ACCOUNT_ID",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_BUCKET",
+    "R2_PUBLIC_BASE_URL",
+)
+
+
+def _missing_r2_media_keys(g3_env_file: Path | None) -> list[str]:
+    """Merged view of the environment G3 will actually see (file wins)."""
+    merged = dict(os.environ)
+    if g3_env_file and g3_env_file.is_file():
+        for key, value in dotenv_values(g3_env_file).items():
+            if value is not None:
+                merged[key] = value
+    return [key for key in R2_MEDIA_KEYS if not merged.get(key, "").strip()]
+
+
+def _require_r2_media_hosting(post: dict, config: MarketingConfig) -> None:
+    """Fail fast when a post with media cannot be hosted for Buffer.
+
+    G3 uploads every media file to R2 and hands Buffer the public URLs, so
+    without these keys the subprocess dies with an opaque RuntimeError.
+    Posts without local media (text-only X) skip R2 entirely.
+    """
+    if not (post.get("assets") or []):
+        return
+    missing = _missing_r2_media_keys(config.g3_env_file)
+    if missing:
+        raise HTTPException(
+            409,
+            f"media hosting (R2) is not configured ({', '.join(missing)} missing): "
+            "add the R2 keys in Integrations → Setup → Media hosting (R2). "
+            "Buffer needs public media URLs and G3 hosts post media on R2.",
+        )
 
 
 def _manual_post_handoff(post: dict) -> tuple[Path, Path]:
@@ -1314,6 +1353,7 @@ def create_manual_post_buffer_draft(post_record_id: str, buffer_account: str | N
     config = MarketingConfig.load()
     if not config.g3_bin.is_file():
         raise HTTPException(409, f"G3 command not found: {config.g3_bin}")
+    _require_r2_media_hosting(post, config)
     metadata = dict(post.get("metadata") or {})
     metadata["buffer_status"] = "running"
     metadata["buffer_accounts"] = accounts
@@ -1372,6 +1412,7 @@ def schedule_manual_post_buffer(post_record_id: str, payload: BufferScheduleRequ
     config = MarketingConfig.load()
     if not config.g3_bin.is_file():
         raise HTTPException(409, f"G3 command not found: {config.g3_bin}")
+    _require_r2_media_hosting(post, config)
     metadata = dict(post.get("metadata") or {})
     metadata["buffer_status"] = "running"
     metadata["buffer_accounts"] = accounts

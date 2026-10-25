@@ -85,6 +85,33 @@ class SetupKeysTests(unittest.TestCase):
         self.assertNotIn("EVIL_KEY", result.get("saved", []))
         self.assertNotIn("EVIL_KEY", self.env_file.read_text())
 
+    def test_media_hosting_group_tracks_r2_keys(self):
+        from core.setup_keys import group_status, save_group
+
+        status = group_status()["media_hosting"]
+        self.assertEqual(status["label"], "Media hosting (R2)")
+        self.assertEqual(len(status["missing"]), 5)
+        self.assertIn("R2_PUBLIC_BASE_URL", status["missing"])
+        result = save_group("media_hosting", {
+            "R2_ACCOUNT_ID": "test-account-id",
+            "R2_ACCESS_KEY_ID": "test-access-key",
+            "R2_SECRET_ACCESS_KEY": "test-secret-key",
+            "R2_BUCKET": "test-bucket",
+            "R2_PUBLIC_BASE_URL": "https://media.example.test",
+        })
+        self.assertTrue(result["ok"], result)
+        refreshed = group_status()["media_hosting"]
+        self.assertEqual(refreshed["missing"], [])
+        self.assertIn("R2_BUCKET", self.g3_file.read_text())
+        self.assertNotIn("test-secret-key", str(refreshed))
+
+    def test_media_hosting_rejects_non_https_public_base(self):
+        from core.setup_keys import validate_group
+
+        result = validate_group("media_hosting", {"R2_PUBLIC_BASE_URL": "http://media.example.test"})
+        self.assertFalse(result["ok"])
+        self.assertIn("R2_PUBLIC_BASE_URL", result["errors"])
+
     def test_router_endpoints(self):
         import core.sales_store as sales_store
         import core.state as state

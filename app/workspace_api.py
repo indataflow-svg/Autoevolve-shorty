@@ -26,14 +26,16 @@ def session_status():
 
 GROUP_CATEGORIES = {
     "ai_gateway": "AI", "prospecting": "Lead data", "email": "Email",
-    "media": "Media", "social": "Publishing", "forms": "Forms",
+    "media": "Media", "social": "Publishing", "media_hosting": "Publishing",
+    "forms": "Forms",
 }
 GROUP_CAPABILITIES = {
     "ai_gateway": ["Model routing", "Coding"],
     "prospecting": ["Prospecting", "Enrichment"],
     "email": ["Outbound email", "Inbound replies"],
     "media": ["Stock media", "Image generation"],
-    "social": ["Buffer drafts", "Media hosting"],
+    "social": ["Buffer drafts", "Scheduled posts"],
+    "media_hosting": ["Media hosting for Buffer"],
     "forms": ["Lead capture", "Attribution"],
 }
 

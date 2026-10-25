@@ -858,7 +858,12 @@ the Instagram/X channel IDs. Channel IDs are identifiers, not extra secrets,
 and the token is never returned. Named accounts use G3's `BUFFER_<NAME>_*`
 prefix and are visible immediately after saving. The Integrations page keeps
 read-only **Overview** separate from **Setup**, and generates key inputs from
-the provider registry instead of a fixed list.
+the provider registry instead of a fixed list. The registry also has a
+**Media hosting (R2)** group: G3 uploads every post media file to Cloudflare
+R2 and hands Buffer the public URLs, so drafting or scheduling a post with
+media fails fast with a 409 naming the missing `R2_*` keys instead of dying
+inside the G3 subprocess. Posts without local media (text-only X) skip R2
+entirely.
 
 ### Model routing
 

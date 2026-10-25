@@ -1,10 +1,11 @@
 """Setup key management: grouped provider keys with test-before-save.
 
 Writes go to the repo .env (root keys) or engines/g3/config/g3.env
-(Buffer keys), always with a timestamped .bak first and rollback
+(Buffer and R2 keys), always with a timestamped .bak first and rollback
 on validation failure. Reads are masked: values never leave the server.
-R2 storage keys live in g3.env too but are pipeline infrastructure, not a
-connectable group (see PROVIDER_GROUPS below).
+R2 storage keys live in g3.env too; they are pipeline infrastructure for
+Buffer media hosting, so they get their own group rather than sitting
+inside the Buffer publishing group.
 """
 
 from __future__ import annotations
@@ -93,13 +94,29 @@ PROVIDER_GROUPS: dict[str, dict] = {
         "label": "Buffer publishing",
         # Buffer is the tool founders connect. The R2_* variables used to live
         # here, but object storage is pipeline infrastructure, not a tool
-        # choice: engines/g3 reads it directly, almost nobody brings their
-        # own, and its presence made Buffer look unconfigured.
+        # choice: engines/g3 reads it directly and almost nobody brings their
+        # own. It now has its own "media hosting" group below, because Buffer
+        # scheduling fails without it and the failure used to surface as an
+        # opaque G3 RuntimeError.
         "keys": [
             "BUFFER_API_KEY",
             "BUFFER_ORGANIZATION_ID",
             "BUFFER_INSTAGRAM_CHANNEL_ID",
             "BUFFER_X_CHANNEL_ID",
+        ],
+    },
+    "media_hosting": {
+        "file": "g3env",
+        "label": "Media hosting (R2)",
+        # Cloudflare R2 hosts post media at public HTTPS URLs for Buffer.
+        # engines/g3 uploads every media file there before drafting or
+        # scheduling, so these keys are required for any post with media.
+        "keys": [
+            "R2_ACCOUNT_ID",
+            "R2_ACCESS_KEY_ID",
+            "R2_SECRET_ACCESS_KEY",
+            "R2_BUCKET",
+            "R2_PUBLIC_BASE_URL",
         ],
     },
     "forms": {
@@ -168,6 +185,9 @@ def validate_group(group: str, values: dict[str, str]) -> dict:
         sender = cleaned["SALES_FROM_EMAIL"].lower()
         if not sender.endswith("@" + domain) and not sender.endswith("." + domain):
             errors["SALES_FROM_EMAIL"] = f"sender domain must match verified domain {domain}"
+    if group == "media_hosting" and cleaned.get("R2_PUBLIC_BASE_URL"):
+        if not cleaned["R2_PUBLIC_BASE_URL"].lower().startswith("https://"):
+            errors["R2_PUBLIC_BASE_URL"] = "must be an https:// URL (G3 verifies anonymous HTTPS reads)"
     if errors:
         return {"ok": False, "errors": errors}
     if group == "ai_gateway":
