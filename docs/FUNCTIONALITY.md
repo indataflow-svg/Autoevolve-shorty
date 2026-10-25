@@ -564,9 +564,9 @@ Two paths: **manual** (operator uploads their own assets) and **generated**
 - `POST /manual-posts/preview` — read-only caption, CTA, and tracked-link
   preview built by the same helpers as finalize, so the operator sees the real
   output before saving. Nothing is persisted. The UI offers only platforms the
-  configured Buffer accounts can reach (Instagram, X); LinkedIn is still
-  accepted by the session API but has no G3 publishing path, so it is not
-  offered.
+  configured Buffer accounts can reach (Instagram, X, LinkedIn). LinkedIn
+  publishes text, up to 20 Buffer-supported images, or a single video through
+  the same G3 handoff.
 - `GET /buffer-accounts` — named accounts configured in `g3.env`; **keys never
   leave the server**.
 - `POST /manual-posts/{id}/buffer-draft` → `/buffer-schedule` → `GET
@@ -895,7 +895,7 @@ session; a 403 leaves it intact.
 `GET /company/setup/buffer/accounts` · `POST /buffer/discover` ·
 `POST /buffer/connect` back the guided publishing setup. One Buffer token
 discovers the organizations and channels it can reach; the operator then binds
-the Instagram/X channel IDs. Channel IDs are identifiers, not extra secrets,
+the Instagram/X/LinkedIn channel IDs. Channel IDs are identifiers, not extra secrets,
 and the token is never returned. Named accounts use G3's `BUFFER_<NAME>_*`
 prefix and are visible immediately after saving. The Integrations page keeps
 read-only **Overview** separate from **Setup**, and generates key inputs from

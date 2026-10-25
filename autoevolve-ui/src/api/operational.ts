@@ -59,6 +59,7 @@ export function connectBuffer(
     organization_id: string
     instagram_channel_id: string | null
     x_channel_id: string | null
+    linkedin_channel_id: string | null
   },
   token: string,
 ) {

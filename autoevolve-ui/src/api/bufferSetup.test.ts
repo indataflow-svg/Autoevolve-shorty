@@ -36,6 +36,7 @@ describe('guided Buffer setup contract', () => {
       organization_id: 'org_1',
       instagram_channel_id: 'ch_ig',
       x_channel_id: null,
+      linkedin_channel_id: 'ch_li',
     }, 'founder-token')
     expect(fetchMock.mock.calls[0][0]).toBe('/company/setup/buffer/connect')
     const options = fetchMock.mock.calls[0][1] as RequestInit
@@ -45,6 +46,7 @@ describe('guided Buffer setup contract', () => {
       organization_id: 'org_1',
       instagram_channel_id: 'ch_ig',
       x_channel_id: null,
+      linkedin_channel_id: 'ch_li',
     })
     expect(new Headers(options.headers).get('X-Founder-Action-Token')).toBe('founder-token')
   })

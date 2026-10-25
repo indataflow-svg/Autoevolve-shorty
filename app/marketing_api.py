@@ -147,6 +147,7 @@ class BufferAccountInfo(BaseModel):
     organization_id: str | None
     instagram_channel_id: bool
     x_channel_id: bool
+    linkedin_channel_id: bool = False
 
 
 class BufferAccountsView(BaseModel):
@@ -1259,6 +1260,7 @@ def buffer_accounts():
                         "organization_id": row["organization_id"],
                         "instagram_channel_id": bool(row["instagram_channel_id"]),
                         "x_channel_id": bool(row["x_channel_id"]),
+                        "linkedin_channel_id": bool(row["linkedin_channel_id"]) if "linkedin_channel_id" in row.keys() else False,
                     }
                     for row in rows
                 ]
@@ -1267,7 +1269,8 @@ def buffer_accounts():
         pass
     config = MarketingConfig.load()
     fallback = {"accounts": [{"name": "default", "organization_id": None,
-                              "instagram_channel_id": False, "x_channel_id": False}]}
+                              "instagram_channel_id": False, "x_channel_id": False,
+                              "linkedin_channel_id": False}]}
     if not config.g3_bin.is_file():
         return {**fallback, "error": f"G3 command not found: {config.g3_bin}"}
     try:

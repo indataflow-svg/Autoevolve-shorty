@@ -41,6 +41,7 @@ function accountLabel(account: BufferSetupAccount) {
   const channels = [
     account.instagram_channel_id && 'Instagram',
     account.x_channel_id && 'X',
+    account.linkedin_channel_id && 'LinkedIn',
   ].filter(Boolean)
   return `${account.name} · ${channels.length ? channels.join(' + ') : 'no channels bound'}`
 }
@@ -74,7 +75,7 @@ function BufferSetup({ onSaved }: { onSaved: () => Promise<void> }) {
   const [token, setToken] = useState('')
   const [discovery, setDiscovery] = useState<BufferDiscovery | null>(null)
   const [organizationId, setOrganizationId] = useState('')
-  const [channels, setChannels] = useState({ instagram: '', x: '' })
+  const [channels, setChannels] = useState({ instagram: '', x: '', linkedin: '' })
   const [warnings, setWarnings] = useState<string[]>([])
   const [error, setError] = useState('')
   const [feedback, setFeedback] = useState('')
@@ -95,15 +96,15 @@ function BufferSetup({ onSaved }: { onSaved: () => Promise<void> }) {
   function resetDiscovery() {
     setDiscovery(null)
     setOrganizationId('')
-    setChannels({ instagram: '', x: '' })
+    setChannels({ instagram: '', x: '', linkedin: '' })
     setWarnings([])
   }
 
   function chooseOrganization(found: BufferDiscovery, orgId: string) {
     setOrganizationId(orgId)
     const organization = found.organizations.find(item => item.id === orgId)
-    const pick = (platform: 'instagram' | 'x') => organization?.channels.find(channel => channel.platform === platform && channel.usable)?.id || ''
-    setChannels({ instagram: pick('instagram'), x: pick('x') })
+    const pick = (platform: 'instagram' | 'x' | 'linkedin') => organization?.channels.find(channel => channel.platform === platform && channel.usable)?.id || ''
+    setChannels({ instagram: pick('instagram'), x: pick('x'), linkedin: pick('linkedin') })
   }
 
   const discover = useMutation({
@@ -116,6 +117,7 @@ function BufferSetup({ onSaved }: { onSaved: () => Promise<void> }) {
       organization_id: organizationId,
       instagram_channel_id: channels.instagram || null,
       x_channel_id: channels.x || null,
+      linkedin_channel_id: channels.linkedin || null,
     }, token.trim()),
   })
 
@@ -152,7 +154,7 @@ function BufferSetup({ onSaved }: { onSaved: () => Promise<void> }) {
   }
 
   const organization = discovery?.organizations.find(item => item.id === organizationId)
-  const usable = (platform: 'instagram' | 'x') => organization?.channels.filter(channel => channel.platform === platform && channel.usable) || []
+  const usable = (platform: 'instagram' | 'x' | 'linkedin') => organization?.channels.filter(channel => channel.platform === platform && channel.usable) || []
   const unsupported = organization?.channels.filter(channel => !channel.supported) || []
   const unavailable = organization?.channels.filter(channel => channel.supported && !channel.usable) || []
 
@@ -173,6 +175,7 @@ function BufferSetup({ onSaved }: { onSaved: () => Promise<void> }) {
           <div><code>Organization</code><span className="muted-copy break-value">{selected.organization_id || 'not bound'}</span></div>
           <div><code>Instagram channel</code><span className="muted-copy break-value">{selected.instagram_channel_id || 'not bound'}</span></div>
           <div><code>X channel</code><span className="muted-copy break-value">{selected.x_channel_id || 'not bound'}</span></div>
+          <div><code>LinkedIn channel</code><span className="muted-copy break-value">{selected.linkedin_channel_id || 'not bound'}</span></div>
         </div>}
         <label className="operational-label">Buffer API key<input type="password" autoComplete="off" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={selected?.api_key_present ? 'Saved — leave blank to reuse' : 'Paste the Buffer access token'} /></label>
         <p className="field-note">The token is used once to read the organizations and channels this account can reach. It is never returned. One token authorizes every channel in the account.</p>
@@ -190,19 +193,20 @@ function BufferSetup({ onSaved }: { onSaved: () => Promise<void> }) {
         {discovery.organizations.length > 1
           ? <label className="operational-label">Organization<select value={organizationId} onChange={event => chooseOrganization(discovery, event.target.value)}>{discovery.organizations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           : <p className="operational-note">Organization: <strong>{organization?.name}</strong> <code>{organization?.id}</code></p>}
-        {(['instagram', 'x'] as const).map(platform => {
+        {(['instagram', 'x', 'linkedin'] as const).map(platform => {
           const choices = usable(platform)
+          const label = platform === 'instagram' ? 'Instagram' : platform === 'x' ? 'X' : 'LinkedIn'
           return <div className="channel-row" key={platform}>
-            <strong>{platform === 'instagram' ? 'Instagram' : 'X'}</strong>
+            <strong>{label}</strong>
             {choices.length
               ? <div className="channel-choice">
-                <select aria-label={`${platform === 'instagram' ? 'Instagram' : 'X'} channel`} value={channels[platform]} onChange={event => setChannels(current => ({ ...current, [platform]: event.target.value }))}>
+                <select aria-label={`${label} channel`} value={channels[platform]} onChange={event => setChannels(current => ({ ...current, [platform]: event.target.value }))}>
                   <option value="">Do not bind</option>
                   {choices.map(channel => <option key={channel.id} value={channel.id}>{channel.display_name || channel.name} · {channel.descriptor || channel.service}</option>)}
                 </select>
                 {channels[platform] && <small className="muted-copy break-value">Channel ID: {channels[platform]}</small>}
               </div>
-              : <span className="muted-copy">No usable {platform === 'instagram' ? 'Instagram' : 'X'} channel in this organization.</span>}
+              : <span className="muted-copy">No usable {label} channel in this organization.</span>}
           </div>
         })}
         {unsupported.length > 0 && <p className="field-note">Not supported by the G3 handoff, so left unbound: {unsupported.map(channel => `${channel.service} (${channel.display_name || channel.name})`).join(', ')}.</p>}
