@@ -428,6 +428,18 @@ call — no branching code anywhere else.
 with the provider's error preserved, never a silent empty result. Credit spend
 is real money and is bounded only by `claim_service_provider_request`.
 
+**Provider contracts (verified against vendor OpenAPI, 2026-10).** Lusha V3
+takes `{ids, reveal[]}` for enrich and `{pagination, filters, options}` for
+prospecting — `requestId/contactIds/revealEmails`, `searchText`, and string
+`sizes` are not real fields and used to 400 or silently miss. CompanyEnrich
+`location`/`socials` are nested `{name}` objects, `socials.linkedin_url` is
+the LinkedIn source, and there are no specialities/target-market fields.
+Research input stays verbatim: Prospeo runs one exact rung and rejects an
+unrecognised location instead of searching worldwide (`widen=True` restores
+the old ladder explicitly), and `score_lead` carries no industry or geography
+bonuses — ranking reflects deliverability signals (verified email, title,
+phone), never ICP fit or origin.
+
 ### 3.3 Drafting
 
 `POST /company/sales/leads/{id}/draft-preview` (discard) and `/draft` (persist).
