@@ -167,7 +167,7 @@ function BufferSetup({ onSaved }: { onSaved: () => Promise<void> }) {
         </select></label>
         {accounts.isPending && <p className="field-note">Reading saved Buffer accounts…</p>}
         {accounts.isError && <p className="field-note">Saved account state could not be read: {accounts.error.message}. You can still enter a key below.</p>}
-        {creating && <label className="operational-label">Account name<input value={newAccount} onChange={event => { setNewAccount(event.target.value); resetDiscovery() }} placeholder="acme" maxLength={31} autoComplete="off" /></label>}
+        {creating && <><label className="operational-label">Account name<input value={newAccount} onChange={event => { setNewAccount(event.target.value); resetDiscovery() }} placeholder="acme" maxLength={31} autoComplete="off" /></label><p className="field-note">Lowercase letters, digits, - or _ (max 31 characters).</p></>}
         {selected && <div className="key-list">
           <div><code>API key</code><StateBadge tone={selected.api_key_present ? 'green' : 'neutral'}>{selected.api_key_present ? 'Saved' : 'Missing'}</StateBadge></div>
           <div><code>Organization</code><span className="muted-copy break-value">{selected.organization_id || 'not bound'}</span></div>
