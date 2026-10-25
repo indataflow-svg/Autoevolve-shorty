@@ -343,8 +343,6 @@ def score_lead(lead: dict) -> int:
     source = (lead.get("source") or "").lower()
     email = (lead.get("email") or "").lower()
     title = (lead.get("job_title") or "").lower()
-    country = (lead.get("country") or "").lower()
-    message = (lead.get("message") or "").lower()
     if source in {"website", "post_form", "social_form", "referral"}:
         score += 35
     if lead.get("consent"):
@@ -353,10 +351,6 @@ def score_lead(lead: dict) -> int:
         score += 10
     if any(word in title for word in ("director", "manager", "head", "founder", "owner")):
         score += 15
-    if any(word in f"{title} {message}" for word in ("logistics", "freight", "cargo", "customs", "clearing", "operations")):
-        score += 15
-    if any(word in country for word in ("rwanda", "kenya", "uganda", "tanzania", "burundi", "congo")):
-        score += 10
     if lead.get("verification_status") == "valid":
         score += 10
     elif lead.get("verification_status") in {"invalid", "disposable"}:

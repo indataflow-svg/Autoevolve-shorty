@@ -369,18 +369,19 @@ def _prospeo_broad_keywords(industry: str) -> list[str]:
     return words or _prospeo_content_words(industry) or [industry.strip()]
 
 
-def research_prospeo_market_leads(*, industry: str, location: str | None = None, limit: int = 5) -> list[dict]:
-    """Company candidates for an ICP, relaxed rather than failed on first refusal.
+def research_prospeo_market_leads(*, industry: str, location: str | None = None, limit: int = 5, widen: bool = False) -> list[dict]:
+    """Company candidates for exactly the industry (and location) requested.
 
-    Prospeo answers NO_RESULTS instead of widening a query that matches nothing,
-    so the search walks a ladder: the industry phrase with the canonical
-    location, then one selective phrase for the same market, then every content
-    word anywhere. Each rung gives up exactly one constraint, so the market
-    survives as long as it can and the last rung is always permissive enough to
-    converge on an answer the founder can act on. Only the filters that were
-    really used are written into each candidate's research filters, so what was
-    searched stays auditable, and a genuine provider failure (anything but
-    NO_RESULTS) still propagates instead of being laundered into an empty result.
+    Prospeo answers NO_RESULTS instead of widening a query that matches
+    nothing. By default the search runs one exact rung — the industry phrase
+    with the canonical location — and an empty market stays empty instead of
+    being silently replaced by a broader one: a worldwide keyword trawl is a
+    different question than the founder asked. Pass ``widen=True`` only to
+    restore the old ladder (selective phrase, then every content word), in
+    which case each widened candidate records ``widened_from`` so the drift
+    stays auditable. A location Prospeo does not recognise is rejected
+    outright rather than searched as worldwide: guessing the market is not
+    searching it.
     """
     normalized_industry = industry.strip()
     if len(normalized_industry) < 2:
@@ -392,16 +393,24 @@ def research_prospeo_market_leads(*, industry: str, location: str | None = None,
         if normalized_location
         else None
     )
+    if normalized_location and not canonical_location:
+        raise ValueError(
+            f"location {normalized_location!r} is not a Prospeo-recognised location; "
+            "search the industry alone or pick the exact country name"
+        )
 
     rungs: list[tuple[list[str], bool]] = []
-    for include, use_location in (
-        ([normalized_industry], bool(canonical_location)),
-        (_prospeo_selective_keyword(normalized_industry), bool(canonical_location)),
-        (_prospeo_broad_keywords(normalized_industry), False),
-    ):
-        # A short ICP can collapse two rungs into one; never repeat a search.
-        if (include, use_location) not in rungs:
-            rungs.append((include, use_location))
+    if widen:
+        for include, use_location in (
+            ([normalized_industry], bool(canonical_location)),
+            (_prospeo_selective_keyword(normalized_industry), bool(canonical_location)),
+            (_prospeo_broad_keywords(normalized_industry), False),
+        ):
+            # A short ICP can collapse two rungs into one; never repeat a search.
+            if (include, use_location) not in rungs:
+                rungs.append((include, use_location))
+    else:
+        rungs = [([normalized_industry], bool(canonical_location))]
 
     filters: dict[str, Any] = {}
     payload: dict[str, Any] = {}
@@ -538,11 +547,16 @@ def research_lusha_leads(
         limit=limit,
     )
     request_id = str(payload.get("requestId") or "")
-    previews = payload.get("results") if isinstance(payload.get("results"), list) else payload.get("contacts") if isinstance(payload.get("contacts"), list) else []
+    previews = payload.get("results") if isinstance(payload.get("results"), list) else []
     contact_ids = [str(item.get("id")) for item in previews if isinstance(item, dict) and item.get("id")]
-    enriched_payload = client.enrich_contacts(request_id, contact_ids) if request_id and contact_ids else {}
-    enriched_contacts = enriched_payload.get("contacts") if isinstance(enriched_payload.get("contacts"), list) else enriched_payload.get("results") if isinstance(enriched_payload.get("results"), list) else []
-    enriched_by_id = {str(item.get("id") or item.get("contactId") or ""): item for item in enriched_contacts if isinstance(item, dict)}
+    enriched_payload = client.enrich_contacts(contact_ids) if contact_ids else {}
+    enriched_contacts = enriched_payload.get("results") if isinstance(enriched_payload.get("results"), list) else []
+    if isinstance(enriched_payload.get("job"), dict):
+        # A waterfall job means slow providers are still working: the partial
+        # results below are final for Lusha-direct data. Never pretend the
+        # enrich call is complete when a job is still processing.
+        enriched_payload = {**enriched_payload, "waterfall_pending": True}
+    enriched_by_id = {str(item.get("id") or ""): item for item in enriched_contacts if isinstance(item, dict)}
     results = []
     for item in previews[: min(max(limit, 1), 25)]:
         if not isinstance(item, dict):
@@ -550,25 +564,29 @@ def research_lusha_leads(
         matched = enriched_by_id.get(str(item.get("id") or ""), {})
         job = matched.get("jobTitle") if isinstance(matched.get("jobTitle"), dict) else item.get("jobTitle") if isinstance(item.get("jobTitle"), dict) else {}
         company = matched.get("company") if isinstance(matched.get("company"), dict) else item.get("company") if isinstance(item.get("company"), dict) else {}
+        company_location = company.get("location") if isinstance(company.get("location"), dict) else {}
+        socials = matched.get("socialLinks") if isinstance(matched.get("socialLinks"), dict) else item.get("socialLinks") if isinstance(item.get("socialLinks"), dict) else {}
         emails = matched.get("emails") if isinstance(matched.get("emails"), list) else []
         phones = matched.get("phones") if isinstance(matched.get("phones"), list) else []
-        email_value = next((entry.get("value") for entry in emails if isinstance(entry, dict) and entry.get("value")), None)
-        phone_value = next((entry.get("value") for entry in phones if isinstance(entry, dict) and entry.get("value")), None)
+        email_value = next((entry.get("email") for entry in emails if isinstance(entry, dict) and entry.get("email")), None)
+        phone_value = next(
+            (entry.get("number") or entry.get("phone") for entry in phones if isinstance(entry, dict) and (entry.get("number") or entry.get("phone"))),
+            None,
+        )
         lead, created = upsert_lead({
             "email": email_value,
             "full_name": " ".join(filter(None, [matched.get("firstName") or item.get("firstName"), matched.get("lastName") or item.get("lastName")])) or company.get("name"),
-            "job_title": job.get("title") or item.get("headline"),
+            "job_title": job.get("title"),
             "company": company.get("name"),
             "company_domain": company.get("domain"),
-            "country": company.get("location", {}).get("country") if isinstance(company.get("location"), dict) else None,
+            "country": company_location.get("country"),
             "phone": phone_value,
             "source": "lusha",
             "source_detail": "contacts_prospecting",
             "message": "Lead imported from Lusha research search",
             "metadata": {
                 "lusha_contact_id": item.get("id"),
-                "lusha_request_id": request_id or None,
-                "lusha_linkedin_url": matched.get("linkedinUrl") or item.get("linkedinUrl"),
+                "lusha_linkedin_url": socials.get("linkedin"),
                 "research_filters": {
                     "job_title": normalized_title,
                     "service_keywords": [str(x).strip() for x in (service_keywords or []) if str(x).strip()][:5],
@@ -1147,27 +1165,31 @@ def enrich_lead(lead_id: str, provider: str = "hunter") -> dict:
         try:
             metadata = lead.get("metadata") or {}
             contact_id = metadata.get("lusha_contact_id")
-            request_id = metadata.get("lusha_request_id")
-            if not contact_id or not request_id:
-                raise ValueError("lusha enrichment requires stored lusha_contact_id and lusha_request_id")
-            payload = client.enrich_contacts(str(request_id), [str(contact_id)])
+            if not contact_id:
+                raise ValueError("lusha enrichment requires a stored lusha_contact_id")
+            payload = client.enrich_contacts([str(contact_id)])
         except LushaError as exc:
             raise ValueError(str(exc)) from exc
-        contacts = payload.get("contacts") if isinstance(payload.get("contacts"), list) else payload.get("results") if isinstance(payload.get("results"), list) else []
+        contacts = payload.get("results") if isinstance(payload.get("results"), list) else []
         matched = contacts[0] if contacts else {}
         job = matched.get("jobTitle") if isinstance(matched.get("jobTitle"), dict) else {}
         company = matched.get("company") if isinstance(matched.get("company"), dict) else {}
+        company_location = company.get("location") if isinstance(company.get("location"), dict) else {}
+        socials = matched.get("socialLinks") if isinstance(matched.get("socialLinks"), dict) else {}
         emails = matched.get("emails") if isinstance(matched.get("emails"), list) else []
         phones = matched.get("phones") if isinstance(matched.get("phones"), list) else []
-        email_value = next((entry.get("value") for entry in emails if isinstance(entry, dict) and entry.get("value")), None)
-        phone_value = next((entry.get("value") for entry in phones if isinstance(entry, dict) and entry.get("value")), None)
+        email_value = next((entry.get("email") for entry in emails if isinstance(entry, dict) and entry.get("email")), None)
+        phone_value = next(
+            (entry.get("number") or entry.get("phone") for entry in phones if isinstance(entry, dict) and (entry.get("number") or entry.get("phone"))),
+            None,
+        )
         updates = {
             "email": email_value or lead.get("email"),
             "full_name": " ".join(filter(None, [matched.get("firstName"), matched.get("lastName")])) or lead.get("full_name"),
             "job_title": job.get("title") or lead.get("job_title"),
             "company": company.get("name") or lead.get("company"),
             "company_domain": company.get("domain") or lead.get("company_domain"),
-            "country": company.get("location", {}).get("country") if isinstance(company.get("location"), dict) else lead.get("country"),
+            "country": company_location.get("country") or lead.get("country"),
             "phone": phone_value or lead.get("phone"),
             "verification_status": lead.get("verification_status"),
             "hunter_score": lead.get("hunter_score") or 0,

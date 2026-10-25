@@ -82,9 +82,12 @@ class CompanyEnrichClient:
         categories = _normalized_strings(base.get("categories"))
         keywords = _normalized_strings(base.get("keywords"))
         technologies = _normalized_strings(base.get("technologies"))
-        specialties = _normalized_strings(base.get("specialities") or base.get("specialties") or base.get("services") or base.get("products"))
-        target_markets = _normalized_strings(base.get("targetMarkets") or base.get("markets") or base.get("customerIndustries"))
-        social_media = base.get("social_media") if isinstance(base.get("social_media"), dict) else base.get("socialProfiles") if isinstance(base.get("socialProfiles"), dict) else {}
+        # CompanyInfo has no specialities/services/products or target-market
+        # fields: those keys never exist, so specialties/target_markets stay
+        # empty rather than filling from unrelated data.
+        specialties: list[str] = []
+        target_markets: list[str] = []
+        socials = base.get("socials") if isinstance(base.get("socials"), dict) else {}
         domain = _domain_value(base.get("domain") or base.get("website") or payload.get("domain"))
         website = _website_value(base.get("website") or payload.get("website") or domain)
         description = _clean_text(base.get("description") or base.get("shortDescription") or base.get("tagline"))
@@ -107,14 +110,14 @@ class CompanyEnrichClient:
             "industries": industries[:10],
             "categories": categories[:10],
             "keywords": keywords[:12],
-            "employee_count": base.get("employeeCount") or base.get("employees") or base.get("employee_count") or base.get("staff_count"),
-            "employee_range": _clean_text(base.get("employeeRange") or base.get("employee_range") or base.get("size")),
-            "revenue_range": _clean_text(base.get("revenueRange") or base.get("revenue_range")),
-            "linkedin_url": _clean_url(base.get("linkedinUrl") or base.get("linkedin_url") or social_media.get("linkedin")),
+            "employee_count": base.get("employeeCount") or base.get("employee_count") or base.get("staff_count"),
+            "employee_range": _clean_text(base.get("employees") or base.get("employeeRange") or base.get("employee_range") or base.get("size")),
+            "revenue_range": _clean_text(base.get("revenue") or base.get("revenueRange") or base.get("revenue_range")),
+            "linkedin_url": _clean_url(socials.get("linkedin_url") or base.get("linkedinUrl") or base.get("linkedin_url")),
             "location": {
-                "city": _clean_text(location.get("city") or base.get("city")),
-                "state": _clean_text(location.get("state") or location.get("region") or base.get("state")),
-                "country": _clean_text(location.get("country") or base.get("country")),
+                "city": _clean_name(location.get("city") or base.get("city")),
+                "state": _clean_name(location.get("state") or location.get("region") or base.get("state")),
+                "country": _clean_name(location.get("country") or base.get("country")),
             },
             "technologies": technologies[:20],
             "specialties": specialties[:10],
@@ -149,9 +152,9 @@ def company_usage_profile(company_profile: dict[str, Any] | None) -> dict[str, A
         "industry": industry,
         "size": size,
         "location": {
-            "city": _clean_text(location.get("city")),
-            "state": _clean_text(location.get("state")),
-            "country": _clean_text(location.get("country")),
+            "city": _clean_name(location.get("city")),
+            "state": _clean_name(location.get("state")),
+            "country": _clean_name(location.get("country")),
         },
         "description": _clean_text(summary.get("description")),
         "specialties": specialties[:6],
@@ -190,8 +193,21 @@ def _normalized_strings(values: Any) -> list[str]:
 def _clean_text(value: Any) -> str | None:
     if value is None:
         return None
+    if isinstance(value, dict):
+        # Location/social objects land here when a caller forgets the field
+        # is nested (city/state/country are {"name": ...}, not strings).
+        # Stringifying the dict would store garbage like "{'code': 'KE'}".
+        return None
     text = " ".join(str(value).replace("\n", " ").replace("\r", " ").split()).strip()
     return text or None
+
+
+def _clean_name(value: Any) -> str | None:
+    """Display text from a CompanyInfo nested object (location/socials) or a
+    plain string. Anything else is not a name."""
+    if isinstance(value, dict):
+        return _clean_text(value.get("name"))
+    return _clean_text(value)
 
 
 def _clean_url(value: Any) -> str | None:

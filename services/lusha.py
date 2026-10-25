@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 import urllib.parse
 import urllib.error
@@ -17,6 +18,26 @@ class LushaError(RuntimeError):
 
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_size_range(value: str | None) -> dict[str, int] | None:
+    """Turn a free-text headcount label into a V3 {min, max} range.
+
+    Accepts "11-50", "500+", plain headcounts ("200" means up-to). Returns
+    None when the label is not parseable so the caller omits the filter
+    instead of sending a string the API rejects.
+    """
+    text = str(value or "").strip().lower().replace(",", "")
+    match = re.fullmatch(r"(\d+)\s*-\s*(\d+)", text)
+    if match:
+        low, high = int(match.group(1)), int(match.group(2))
+        if 0 < low <= high:
+            return {"min": low, "max": high}
+        return None
+    match = re.fullmatch(r"(\d+)\s*\+", text)
+    if match and int(match.group(1)) > 0:
+        return {"min": int(match.group(1))}
+    return None
 
 
 class LushaClient:
@@ -61,16 +82,19 @@ class LushaClient:
                 try:
                     raw = exc.read().decode("utf-8")
                     parsed = json.loads(raw)
-                    detail = parsed.get("message") or parsed.get("detail") or parsed.get("error") or raw[:500]
+                    # Real envelope: {statusCode, message, errors[]}.
+                    problems = parsed.get("errors") if isinstance(parsed.get("errors"), list) else []
+                    detail = "; ".join([str(parsed.get("message") or "")] + [str(item) for item in problems]).strip("; ") or raw[:500]
                 except Exception:
                     if not raw:
                         raw = detail
                 normalized_detail = str(detail)
                 if exc.code == 403 and "blocked access based on your browser's signature" in raw.lower():
-                    normalized_detail = (
+                    raise LushaError(
                         "Lusha blocked this request upstream based on the connector signature. "
-                        "This is a provider-side access block, not a bad filter selection."
-                    )
+                        "This is a provider-side access block, not a bad filter selection.",
+                        exc.code,
+                    ) from exc
                 logger.warning(
                     "Lusha upstream error method=%s url=%s status=%s attempt=%s body=%s response=%s",
                     request.get_method(),
@@ -80,7 +104,10 @@ class LushaClient:
                     body_preview,
                     raw[:500],
                 )
-                if exc.code in {402, 403, 409, 422, 429, 500, 502, 503, 504} and attempt + 1 < attempts:
+                # 402 (out of credits), 403 (inactive account), 409, 422 and 451
+                # (GDPR block) are final states, not transient failures: retrying
+                # them spends nothing but time and can never succeed.
+                if exc.code in {429, 500, 502, 503, 504} and attempt + 1 < attempts:
                     time.sleep(2 ** attempt)
                     continue
                 raise LushaError(
@@ -122,17 +149,21 @@ class LushaClient:
         company_size: str | None = None,
         limit: int = 5,
     ) -> dict:
+        # Shapes follow the V3 prospecting contract exactly. Unknown criteria
+        # are omitted rather than sent: Lusha 400s the whole call on a bad
+        # filter, so guessing a field name is worse than dropping it.
         contact_include: dict[str, Any] = {}
         company_include: dict[str, Any] = {}
         if job_title:
             contact_include["jobTitles"] = [job_title]
         if location:
             contact_include["locations"] = [{"country": location}]
-        if company_size:
-            company_include["sizes"] = [company_size]
+        size_range = _parse_size_range(company_size) if company_size else None
+        if size_range is not None:
+            company_include["sizes"] = [size_range]
         keywords = [item.strip() for item in (service_keywords or []) if str(item).strip()]
         if keywords:
-            company_include["searchText"] = keywords
+            company_include["keywords"] = keywords
         payload = {
             "pagination": {"page": 0, "size": min(max(limit, 10), 50)},
             "filters": {
@@ -143,11 +174,16 @@ class LushaClient:
         }
         return self._request("POST", "v3/contacts/prospecting", body=payload)
 
-    def enrich_contacts(self, request_id: str, contact_ids: list[str]) -> dict:
-        payload = {
-            "requestId": request_id,
-            "contactIds": contact_ids[:100],
-            "revealEmails": True,
-            "revealPhones": True,
-        }
-        return self._request("POST", "v3/contacts/enrich", body=payload)
+    def enrich_contacts(
+        self, contact_ids: list[str], *, reveal: tuple[str, ...] = ("emails", "phones")
+    ) -> dict:
+        # V3 enrich takes Lusha contact IDs plus an explicit reveal list.
+        # Omitting reveal returns everything (maximum charge), so the caller
+        # must always say which fields it wants.
+        ids = [str(item).strip() for item in contact_ids if str(item or "").strip()][:100]
+        if not ids:
+            raise ValueError("enrich_contacts requires at least one contact id")
+        return self._request(
+            "POST", "v3/contacts/enrich",
+            body={"ids": ids, "reveal": list(reveal)},
+        )

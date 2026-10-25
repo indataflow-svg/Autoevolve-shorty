@@ -183,26 +183,34 @@ class SalesContractsTest(unittest.TestCase):
     def test_company_profile_cleanup_builds_usage_context(self):
         from services.company_enrich import CompanyEnrichClient, company_usage_profile
 
+        # Real CompanyInfo shape: flat top-level object, location/socials as
+        # nested {"name": ...} objects, enums for employees/revenue, and no
+        # specialities/services/target-market keys anywhere in the schema.
         payload = {
-            "company": {
-                "name": "ODW Logistics",
-                "domain": "https://www.odwlogistics.com",
-                "description": "Integrated logistics provider for warehousing, transportation, retail consolidation, and supply chain visibility.",
-                "industry": "Logistics",
-                "employeeRange": "201-500",
-                "location": {"city": "Columbus", "state": "OH", "country": "United States"},
-                "keywords": ["warehousing", "transportation", "retail compliance", "supply chain visibility"],
-                "services": ["Managed Transportation", "Retail Consolidation", "Distribution & Fulfillment"],
-                "social_media": {"linkedin": "https://www.linkedin.com/company/odw-logistics"},
-            }
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "name": "ODW Logistics",
+            "domain": "odwlogistics.com",
+            "website": "https://www.odwlogistics.com",
+            "description": "Integrated logistics provider for warehousing, transportation, retail consolidation, and supply chain visibility.",
+            "industry": "Logistics",
+            "employees": "201-500",
+            "location": {
+                "city": {"id": 1, "name": "Columbus"},
+                "state": {"name": "Ohio", "code": "OH"},
+                "country": {"code": "US", "name": "United States"},
+            },
+            "keywords": ["warehousing", "transportation", "retail compliance", "supply chain visibility"],
+            "socials": {"linkedin_url": "https://www.linkedin.com/company/odw-logistics"},
         }
 
         summary = CompanyEnrichClient("secret").extract_company_profile(payload)
         usage = company_usage_profile(summary)
 
         self.assertEqual(summary["domain"], "odwlogistics.com")
-        self.assertEqual(summary["location"]["country"], "United States")
-        self.assertIn("Managed Transportation", summary["specialties"])
+        self.assertEqual(summary["location"], {"city": "Columbus", "state": "Ohio", "country": "United States"})
+        self.assertEqual(summary["linkedin_url"], "https://www.linkedin.com/company/odw-logistics")
+        self.assertEqual(summary["employee_range"], "201-500")
+        self.assertEqual(summary["specialties"], [])
         self.assertEqual(usage["industry"], "Logistics")
         self.assertIn("supply chain visibility", " ".join(usage["personalization_points"]).lower())
         self.assertTrue(any("document" in item or "visibility" in item for item in usage["suggested_pain_points"]))
@@ -515,6 +523,9 @@ class SalesContractsTest(unittest.TestCase):
 
         with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
             ProspeoClientMock.return_value.search_person.return_value = payload
+            ProspeoClientMock.return_value.search_suggestions.return_value = {
+                "location_suggestions": [{"name": "Rwanda"}],
+            }
             results = research_prospeo_market_leads(industry="Logistics", location="Rwanda", limit=5)
 
         self.assertEqual(len(results), 1)
@@ -543,7 +554,9 @@ class SalesContractsTest(unittest.TestCase):
         }
 
         with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
-            ProspeoClientMock.return_value.search_person.return_value = payload
+            client = ProspeoClientMock.return_value
+            client.search_suggestions.return_value = {"location_suggestions": [{"name": "Rwanda"}]}
+            client.search_person.return_value = payload
             results = research_prospeo_market_leads(industry="Logistics", location="Rwanda", limit=5)
 
         self.assertEqual(len(results), 2)
@@ -565,32 +578,23 @@ class SalesContractsTest(unittest.TestCase):
             ["sales", "marketing", "workflows"],
         )
 
-    def test_prospeo_market_research_drops_a_location_prospeo_never_offered(self):
+    def test_prospeo_market_research_rejects_a_location_prospeo_never_offered(self):
         from services.sales_service import research_prospeo_market_leads
 
-        payload = {"results": [
-            {"person": {"person_id": "person_1"},
-             "company": {"name": "AI Workflow Co", "website": "aiworkflow.test"}},
-        ]}
         with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
             client = ProspeoClientMock.return_value
             client.search_suggestions.return_value = {
                 "location_suggestions": [{"name": "South Africa"}, {"name": "Nigeria"}],
             }
-            client.search_person.return_value = payload
-            results = research_prospeo_market_leads(
-                industry="AI sales and marketing workflows", location="Africa", limit=5,
-            )
+            with self.assertRaisesRegex(ValueError, "not a Prospeo-recognised location"):
+                research_prospeo_market_leads(
+                    industry="AI sales and marketing workflows", location="Africa", limit=5,
+                )
+        # "Africa" was never offered, so searching it would have answered
+        # NO_RESULTS while pretending the market was covered.
+        client.search_person.assert_not_called()
 
-        self.assertEqual(len(results), 1)
-        filters = client.search_person.call_args_list[0].args[0]
-        # "Africa" was never offered, so sending it would have answered NO_RESULTS.
-        self.assertNotIn("company_location_search", filters)
-        self.assertEqual(
-            filters["company_keywords"]["include"], ["AI sales and marketing workflows"],
-        )
-
-    def test_prospeo_market_research_widens_the_keyword_before_the_market(self):
+    def test_prospeo_market_research_widens_only_when_asked(self):
         from services.prospeo import ProspeoError
         from services.sales_service import research_prospeo_market_leads
 
@@ -602,52 +606,34 @@ class SalesContractsTest(unittest.TestCase):
         with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
             client = ProspeoClientMock.return_value
             client.search_suggestions.return_value = {"location_suggestions": [{"name": "Africa"}]}
-            client.search_person.side_effect = [no_results, payload]
-            results = research_prospeo_market_leads(
+            client.search_person.side_effect = [no_results, payload, no_results]
+            widened = research_prospeo_market_leads(
+                industry="AI sales and marketing workflows", location="Africa", limit=5,
+                widen=True,
+            )
+            strict = research_prospeo_market_leads(
                 industry="AI sales and marketing workflows", location="Africa", limit=5,
             )
 
-        self.assertEqual(len(results), 1)
-        self.assertEqual(client.search_person.call_count, 2)
-        first, second = (call.args[0] for call in client.search_person.call_args_list)
+        self.assertEqual(len(widened), 1)
+        self.assertEqual(strict, [])
+        # The widened ladder runs exact first, then the selective phrase;
+        # strict mode asks once and accepts the empty market.
+        self.assertEqual(client.search_person.call_count, 3)
+        first, second, third = (call.args[0] for call in client.search_person.call_args_list)
         self.assertEqual(first["company_keywords"]["include"], ["AI sales and marketing workflows"])
         self.assertEqual(first["company_location_search"], {"include": ["Africa"]})
         # The market survives the widening; only the unmatchable phrase is relaxed.
         self.assertEqual(second["company_keywords"]["include"], ["marketing workflows"])
         self.assertEqual(second["company_location_search"], {"include": ["Africa"]})
+        self.assertEqual(third, first)
         # Whatever actually ran, plus what was originally asked for, is recorded.
         self.assertEqual(
-            results[0]["lead"]["metadata"]["research_filters"]["widened_from"],
+            widened[0]["lead"]["metadata"]["research_filters"]["widened_from"],
             {"industry": "AI sales and marketing workflows", "location": "Africa"},
         )
 
-    def test_prospeo_market_research_drops_the_location_after_no_results(self):
-        from services.prospeo import ProspeoError
-        from services.sales_service import research_prospeo_market_leads
-
-        no_results = ProspeoError("no results", 400, "NO_RESULTS")
-        payload = {"results": [
-            {"person": {"person_id": "person_1"},
-             "company": {"name": "Global Freight", "website": "globalfreight.test"}},
-        ]}
-        with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
-            client = ProspeoClientMock.return_value
-            client.search_suggestions.return_value = {"location_suggestions": [{"name": "Rwanda"}]}
-            client.search_person.side_effect = [no_results, payload]
-            results = research_prospeo_market_leads(industry="Logistics", location="Rwanda", limit=5)
-
-        self.assertEqual(len(results), 1)
-        self.assertEqual(client.search_person.call_count, 2)
-        first, second = (call.args[0] for call in client.search_person.call_args_list)
-        self.assertEqual(first["company_location_search"], {"include": ["Rwanda"]})
-        # Nothing about the keyword can be relaxed, so geography gives way instead.
-        self.assertNotIn("company_location_search", second)
-        self.assertEqual(second["company_keywords"]["include"], ["Logistics"])
-        applied = results[0]["lead"]["metadata"]["research_filters"]
-        self.assertEqual(applied["company_keywords"], second["company_keywords"])
-        self.assertNotIn("company_location_search", applied)
-
-    def test_prospeo_market_research_answers_a_healthy_empty_search_with_no_matches(self):
+    def test_prospeo_market_research_keeps_the_location_when_widening_is_off(self):
         from services.prospeo import ProspeoError
         from services.sales_service import research_prospeo_market_leads
 
@@ -658,10 +644,29 @@ class SalesContractsTest(unittest.TestCase):
             client.search_person.side_effect = [no_results, no_results]
             results = research_prospeo_market_leads(industry="Logistics", location="Rwanda", limit=5)
 
+        # Strict mode asks once with the exact market and accepts the empty
+        # answer instead of quietly searching worldwide.
+        self.assertEqual(results, [])
+        self.assertEqual(client.search_person.call_count, 1)
+        only = client.search_person.call_args_list[0].args[0]
+        self.assertEqual(only["company_location_search"], {"include": ["Rwanda"]})
+        self.assertEqual(only["company_keywords"]["include"], ["Logistics"])
+
+    def test_prospeo_market_research_answers_a_healthy_empty_search_with_no_matches(self):
+        from services.prospeo import ProspeoError
+        from services.sales_service import research_prospeo_market_leads
+
+        no_results = ProspeoError("no results", 400, "NO_RESULTS")
+        with patch("services.sales_service.ProspeoClient") as ProspeoClientMock:
+            client = ProspeoClientMock.return_value
+            client.search_suggestions.return_value = {"location_suggestions": [{"name": "Rwanda"}]}
+            client.search_person.side_effect = no_results
+            results = research_prospeo_market_leads(industry="Logistics", location="Rwanda", limit=5)
+
         # A provider that answered is an empty search the founder can retry,
         # not a failure to report as one.
         self.assertEqual(results, [])
-        self.assertEqual(client.search_person.call_count, 2)
+        self.assertEqual(client.search_person.call_count, 1)
 
     def test_prospeo_market_research_does_not_launder_a_real_provider_failure(self):
         from services.prospeo import ProspeoError
@@ -726,8 +731,8 @@ class SalesContractsTest(unittest.TestCase):
         stored = get_lead(lead["id"])
         self.assertEqual(updated["email"], "aline@example.com")
         self.assertEqual(stored["company_domain"], "example.com")
-        self.assertEqual(stored["stage"], "qualified")
-        self.assertGreaterEqual(stored["lead_score"], 60)
+        self.assertEqual(stored["stage"], "enriched")
+        self.assertEqual(stored["lead_score"], 40)
 
     def test_prospeo_enrich_person_nests_person_id_under_data(self):
         from services.prospeo import ProspeoClient
@@ -940,7 +945,7 @@ class SalesContractsTest(unittest.TestCase):
         self.assertEqual(lead["company"], "Example Logistics")
 
     def test_lusha_market_research_does_not_enrich_contacts(self):
-        from services.sales_service import research_lusha_market_leads
+        from services.sales_service import research_lusha_leads, research_lusha_market_leads
 
         search_payload = {
             "requestId": "req_1",
@@ -964,6 +969,57 @@ class SalesContractsTest(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["lead"]["company_domain"], "example.com")
         client.enrich_contacts.assert_not_called()
+
+    def test_lusha_people_search_reads_v3_contact_shapes(self):
+        from services.sales_service import research_lusha_leads
+
+        search_payload = {
+            "requestId": "req_9",
+            "results": [
+                {
+                    "id": "contact_9",
+                    "firstName": "Aline",
+                    "lastName": "Ops",
+                    "jobTitle": {"title": "Operations Manager"},
+                    "company": {"id": "co_9", "name": "Example Logistics", "domain": "example.com"},
+                    "socialLinks": {"linkedin": "https://www.linkedin.com/in/aline-ops"},
+                },
+            ],
+        }
+        enrich_payload = {
+            "requestId": "req_9",
+            "results": [
+                {
+                    "id": "contact_9",
+                    "emails": [{"email": "aline@example.com", "type": "work"}],
+                    "phones": [{"number": "+250700000000", "type": "mobile"}],
+                },
+            ],
+        }
+
+        with patch("services.sales_service.LushaClient") as LushaClientMock:
+            client = LushaClientMock.return_value
+            client.prospect_contacts.return_value = search_payload
+            client.enrich_contacts.return_value = enrich_payload
+            results = research_lusha_leads(
+                job_title="Operations Manager",
+                service_keywords=["logistics"],
+                location="Rwanda",
+                limit=5,
+            )
+
+        self.assertEqual(len(results), 1)
+        lead = results[0]["lead"]
+        self.assertEqual(lead["email"], "aline@example.com")
+        self.assertEqual(lead["phone"], "+250700000000")
+        self.assertEqual(lead["company_domain"], "example.com")
+        self.assertEqual(lead["metadata"]["lusha_contact_id"], "contact_9")
+        self.assertEqual(
+            lead["metadata"]["lusha_linkedin_url"],
+            "https://www.linkedin.com/in/aline-ops",
+        )
+        # Enrichment needs Lusha IDs only; no provider request ID is required.
+        client.enrich_contacts.assert_called_once_with(["contact_9"])
 
     def test_lusha_403_is_reframed_as_provider_block(self):
         from services.lusha import LushaClient, LushaError
@@ -1020,30 +1076,35 @@ class SalesContractsTest(unittest.TestCase):
         lead, _ = upsert_lead({
             "full_name": "Aline Ops",
             "source": "lusha",
-            "metadata": {"lusha_contact_id": "contact_1", "lusha_request_id": "req_1"},
+            "metadata": {"lusha_contact_id": "contact_1"},
         })
 
         with patch("services.sales_service.LushaClient") as LushaClientMock:
             LushaClientMock.return_value.enrich_contacts.return_value = {
-                "contacts": [
+                "requestId": "req_1",
+                "results": [
                     {
                         "id": "contact_1",
                         "firstName": "Aline",
                         "lastName": "Ops",
                         "jobTitle": {"title": "Operations Manager"},
                         "company": {"name": "Example Logistics", "domain": "example.com", "location": {"country": "Rwanda"}},
-                        "emails": [{"value": "aline@example.com"}],
-                        "phones": [{"value": "+250700000000"}],
+                        "emails": [{"email": "aline@example.com", "type": "work"}],
+                        "phones": [{"number": "+250700000000", "type": "mobile"}],
+                        "socialLinks": {"linkedin": "https://www.linkedin.com/in/aline-ops"},
                     }
-                ]
+                ],
+                "billing": {"creditsCharged": 2, "resultsReturned": 1},
             }
             updated = enrich_lead(lead["id"], provider="lusha")
 
         stored = get_lead(lead["id"])
         self.assertEqual(updated["email"], "aline@example.com")
+        self.assertEqual(updated["phone"], "+250700000000")
         self.assertEqual(stored["company_domain"], "example.com")
         self.assertEqual(stored["stage"], "enriched")
         self.assertGreaterEqual(stored["lead_score"], 1)
+        LushaClientMock.return_value.enrich_contacts.assert_called_once_with(["contact_1"])
 
     def test_preview_draft_falls_back_when_model_is_unavailable(self):
         from core.sales_store import upsert_company_profile, upsert_lead
