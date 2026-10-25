@@ -690,8 +690,8 @@ def _require_r2_media_hosting(post: dict, config: MarketingConfig) -> None:
 def _manual_post_handoff(post: dict) -> tuple[Path, Path]:
     metadata = post.get("metadata") or {}
     platform = str(post.get("platform") or "instagram").strip().lower()
-    if platform not in {"instagram", "x"}:
-        raise HTTPException(409, "manual Buffer drafts currently support Instagram and X only")
+    if platform not in {"instagram", "x", "linkedin"}:
+        raise HTTPException(409, "manual Buffer drafts currently support Instagram, X, and LinkedIn")
     asset_dir = Path(str(post.get("asset_dir") or "")).resolve()
     try:
         asset_dir.relative_to(PROJECTS_ROOT)

@@ -169,11 +169,13 @@ BUFFER_API_KEY=<buffer.com developer token>
 BUFFER_ORGANIZATION_ID=<...>
 BUFFER_INSTAGRAM_CHANNEL_ID=<...>
 BUFFER_X_CHANNEL_ID=<...>
+BUFFER_LINKEDIN_CHANNEL_ID=<...>
 # Extra accounts (dashboard picker + `company-core-g3 --account <name>`):
 BUFFER_ACME_API_KEY=<second buffer user token>
 BUFFER_ACME_ORGANIZATION_ID=<...>
 BUFFER_ACME_INSTAGRAM_CHANNEL_ID=<...>
 BUFFER_ACME_X_CHANNEL_ID=<...>
+BUFFER_ACME_LINKEDIN_CHANNEL_ID=<...>
 R2_ACCOUNT_ID=<cloudflare R2 account id>
 R2_ACCESS_KEY_ID=<...>
 R2_SECRET_ACCESS_KEY=<...>

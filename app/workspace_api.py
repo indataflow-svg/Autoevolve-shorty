@@ -106,6 +106,7 @@ def integrations_view():
                         for platform, key in (
                             ("instagram", "instagram_channel_id"),
                             ("x", "x_channel_id"),
+                            ("linkedin", "linkedin_channel_id"),
                         )
                         if account[key]
                     ],

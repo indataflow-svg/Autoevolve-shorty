@@ -93,7 +93,7 @@ def set_setup_step_route(payload: SetupStepPayload, _: None = Depends(verify_fou
 #
 # The Buffer token is the only secret. Channels are identifiers discovered
 # from that token, so the UI asks for the token once, lists what it can reach,
-# and then binds the Instagram/X channel IDs. No token is ever returned.
+# and then binds the Instagram/X/LinkedIn channel IDs. No token is ever returned.
 
 
 class BufferAccountView(BaseModel):
@@ -102,6 +102,7 @@ class BufferAccountView(BaseModel):
     organization_id: str | None
     instagram_channel_id: str | None
     x_channel_id: str | None
+    linkedin_channel_id: str | None
 
 
 class BufferSetupAccountsView(BaseModel):
@@ -143,6 +144,7 @@ class BufferConnectPayload(BaseModel):
     organization_id: str = Field(min_length=1, max_length=200)
     instagram_channel_id: str | None = Field(default=None, max_length=200)
     x_channel_id: str | None = Field(default=None, max_length=200)
+    linkedin_channel_id: str | None = Field(default=None, max_length=200)
 
 
 class BufferConnectResult(BaseModel):
@@ -151,6 +153,7 @@ class BufferConnectResult(BaseModel):
     organization_id: str
     instagram_channel_id: str | None
     x_channel_id: str | None
+    linkedin_channel_id: str | None
     warnings: list[str]
     saved: list[str]
     backup: str | None
@@ -195,6 +198,7 @@ def connect_buffer_account(
             organization_id=payload.organization_id,
             instagram_channel_id=payload.instagram_channel_id,
             x_channel_id=payload.x_channel_id,
+            linkedin_channel_id=payload.linkedin_channel_id,
         )
     except Exception as exc:
         raise _buffer_failure(exc) from exc

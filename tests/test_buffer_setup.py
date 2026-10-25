@@ -65,8 +65,11 @@ class BufferSetupTests(unittest.TestCase):
         }
         self.patch_env = patch.dict(os.environ, self.env, clear=False)
         self.patch_env.start()
-        for key in ("BUFFER_API_KEY", "BUFFER_ACME_API_KEY", "BUFFER_ACME_ORGANIZATION_ID",
-                    "BUFFER_ACME_INSTAGRAM_CHANNEL_ID", "BUFFER_ACME_X_CHANNEL_ID"):
+        for key in ("BUFFER_API_KEY", "BUFFER_ORGANIZATION_ID", "BUFFER_INSTAGRAM_CHANNEL_ID",
+                    "BUFFER_X_CHANNEL_ID", "BUFFER_LINKEDIN_CHANNEL_ID",
+                    "BUFFER_ACME_API_KEY", "BUFFER_ACME_ORGANIZATION_ID",
+                    "BUFFER_ACME_INSTAGRAM_CHANNEL_ID", "BUFFER_ACME_X_CHANNEL_ID",
+                    "BUFFER_ACME_LINKEDIN_CHANNEL_ID"):
             os.environ.pop(key, None)
 
     def tearDown(self):
@@ -87,7 +90,9 @@ class BufferSetupTests(unittest.TestCase):
         self.assertTrue(channels["ch_ig"]["supported"])
         self.assertTrue(channels["ch_ig"]["usable"])
         self.assertEqual(channels["ch_x"]["platform"], "x")
-        self.assertFalse(channels["ch_li"]["supported"])
+        self.assertEqual(channels["ch_li"]["platform"], "linkedin")
+        self.assertTrue(channels["ch_li"]["supported"])
+        self.assertTrue(channels["ch_li"]["usable"])
         self.assertFalse(channels["ch_locked"]["usable"])
         self.assertNotIn("saved-token-123", json.dumps(result))
 
@@ -113,6 +118,7 @@ class BufferSetupTests(unittest.TestCase):
             organization_id="org_1",
             instagram_channel_id="ch_ig",
             x_channel_id=None,
+            linkedin_channel_id="ch_li",
             client_factory=self._factory,
         )
         self.assertTrue(result["ok"])
@@ -122,15 +128,33 @@ class BufferSetupTests(unittest.TestCase):
         self.assertEqual(values["BUFFER_ACME_ORGANIZATION_ID"], "org_1")
         self.assertEqual(values["BUFFER_ACME_INSTAGRAM_CHANNEL_ID"], "ch_ig")
         self.assertEqual(values["BUFFER_ACME_X_CHANNEL_ID"], "")
+        self.assertEqual(values["BUFFER_ACME_LINKEDIN_CHANNEL_ID"], "ch_li")
         self.assertEqual(os.environ["BUFFER_ACME_INSTAGRAM_CHANNEL_ID"], "ch_ig")
-        self.assertIn("linkedin", " ".join(result["warnings"]).lower())
+        self.assertEqual(os.environ["BUFFER_ACME_LINKEDIN_CHANNEL_ID"], "ch_li")
+        self.assertNotIn("Unsupported services", " ".join(result["warnings"]))
         self.assertNotIn("token-12345678", json.dumps(result))
+
+    def test_bind_with_no_channels_warns_that_scheduling_is_impossible(self):
+        result = buffer_setup.bind(
+            "acme",
+            api_key="token-12345678",
+            organization_id="org_1",
+            client_factory=self._factory,
+        )
+        self.assertTrue(result["ok"])
+        self.assertIn("LinkedIn", " ".join(result["warnings"]))
 
     def test_bind_rejects_a_channel_from_the_wrong_platform(self):
         with self.assertRaisesRegex(ValueError, "not x"):
             buffer_setup.bind(
                 "acme", api_key="token-12345678", organization_id="org_1",
                 instagram_channel_id=None, x_channel_id="ch_ig",
+                client_factory=self._factory,
+            )
+        with self.assertRaisesRegex(ValueError, "not linkedin"):
+            buffer_setup.bind(
+                "acme", api_key="token-12345678", organization_id="org_1",
+                linkedin_channel_id="ch_x",
                 client_factory=self._factory,
             )
 

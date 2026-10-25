@@ -103,6 +103,7 @@ PROVIDER_GROUPS: dict[str, dict] = {
             "BUFFER_ORGANIZATION_ID",
             "BUFFER_INSTAGRAM_CHANNEL_ID",
             "BUFFER_X_CHANNEL_ID",
+            "BUFFER_LINKEDIN_CHANNEL_ID",
         ],
     },
     "media_hosting": {

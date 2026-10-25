@@ -2,8 +2,8 @@
 
 One Buffer token is enough to read every organization and channel it can
 publish to. The setup flow is therefore: pick (or name) an account, supply the
-token once, discover the channels, then bind the Instagram/X channel IDs. The
-per-channel values are identifiers, not extra secrets.
+token once, discover the channels, then bind the Instagram/X/LinkedIn channel
+IDs. The per-channel values are identifiers, not extra secrets.
 
 Nothing here returns the token. Writes go through ``core.setup_keys.write_values``
 so they are backed up and rolled back on failure.
@@ -25,8 +25,9 @@ SERVICE_TO_PLATFORM = {
     "instagram": "instagram",
     "twitter": "x",
     "x": "x",
+    "linkedin": "linkedin",
 }
-PLATFORMS = ("instagram", "x")
+PLATFORMS = ("instagram", "x", "linkedin")
 
 ClientFactory = Callable[[str], Any]
 
@@ -46,6 +47,7 @@ def account_keys(name: str) -> dict[str, str]:
         "organization_id": f"{prefix}ORGANIZATION_ID",
         "instagram_channel_id": f"{prefix}INSTAGRAM_CHANNEL_ID",
         "x_channel_id": f"{prefix}X_CHANNEL_ID",
+        "linkedin_channel_id": f"{prefix}LINKEDIN_CHANNEL_ID",
     }
 
 
@@ -84,6 +86,7 @@ def list_accounts() -> list[dict]:
                 "organization_id": values.get(keys["organization_id"], "").strip() or None,
                 "instagram_channel_id": values.get(keys["instagram_channel_id"], "").strip() or None,
                 "x_channel_id": values.get(keys["x_channel_id"], "").strip() or None,
+                "linkedin_channel_id": values.get(keys["linkedin_channel_id"], "").strip() or None,
             }
         )
     return accounts
@@ -178,6 +181,7 @@ def bind(
     organization_id: str,
     instagram_channel_id: str | None = None,
     x_channel_id: str | None = None,
+    linkedin_channel_id: str | None = None,
     client_factory: ClientFactory | None = None,
 ) -> dict:
     """Verify the chosen channel IDs against Buffer, then persist the account."""
@@ -204,6 +208,7 @@ def bind(
     requested = {
         "instagram": (instagram_channel_id or "").strip(),
         "x": (x_channel_id or "").strip(),
+        "linkedin": (linkedin_channel_id or "").strip(),
     }
     chosen: dict[str, str] = {}
     for platform, channel_id in requested.items():
@@ -219,7 +224,7 @@ def bind(
 
     warnings = []
     if not any(chosen.values()):
-        warnings.append("No Instagram or X channel was bound; this account cannot schedule yet.")
+        warnings.append("No Instagram, X, or LinkedIn channel was bound; this account cannot schedule yet.")
     unsupported = sorted(
         {
             channel["service"]
@@ -238,6 +243,7 @@ def bind(
         keys["organization_id"]: org_id,
         keys["instagram_channel_id"]: chosen["instagram"],
         keys["x_channel_id"]: chosen["x"],
+        keys["linkedin_channel_id"]: chosen["linkedin"],
     }
     written = write_values(g3_env_file(), values)
     if not written.get("ok"):
@@ -254,6 +260,7 @@ def bind(
         "organization_id": org_id,
         "instagram_channel_id": chosen["instagram"] or None,
         "x_channel_id": chosen["x"] or None,
+        "linkedin_channel_id": chosen["linkedin"] or None,
         "warnings": warnings,
         "saved": written["saved"],
         "backup": written.get("backup"),

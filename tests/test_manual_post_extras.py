@@ -87,6 +87,16 @@ class ManualPostExtrasTests(unittest.TestCase):
         (self.asset_root / "slide1.png").write_bytes(_png())
         return marketing_store.create_manual_post(**values)
 
+    def test_linkedin_post_builds_a_handoff_entry(self):
+        from app.marketing_api import _manual_post_handoff
+
+        post = self._post(platform="linkedin", post_id="li_post_1")
+        handoff_path, asset_root = _manual_post_handoff(post)
+        payload = json.loads(handoff_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["drafts"][0]["platform"], "linkedin")
+        self.assertEqual(len(payload["drafts"][0]["media"]), 1)
+        self.assertEqual(asset_root, self.asset_root.resolve())
+
     def test_orgs_list_and_reassign(self):
         response = self.client.get("/company/marketing/orgs", auth=self.auth)
         self.assertEqual(response.status_code, 200, response.text)
