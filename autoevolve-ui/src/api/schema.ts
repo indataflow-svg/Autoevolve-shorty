@@ -3420,6 +3420,8 @@ export interface components {
             instagram_channel_id: string | null;
             /** X Channel Id */
             x_channel_id: string | null;
+            /** Linkedin Channel Id */
+            linkedin_channel_id: string | null;
         };
         /** BufferAccountsView */
         BufferAccountsView: {
@@ -3464,6 +3466,8 @@ export interface components {
             instagram_channel_id?: string | null;
             /** X Channel Id */
             x_channel_id?: string | null;
+            /** Linkedin Channel Id */
+            linkedin_channel_id?: string | null;
         };
         /** BufferConnectResult */
         BufferConnectResult: {
@@ -3477,6 +3481,8 @@ export interface components {
             instagram_channel_id: string | null;
             /** X Channel Id */
             x_channel_id: string | null;
+            /** Linkedin Channel Id */
+            linkedin_channel_id: string | null;
             /** Warnings */
             warnings: string[];
             /** Saved */

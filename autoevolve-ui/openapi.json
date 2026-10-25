@@ -11788,6 +11788,17 @@
               }
             ],
             "title": "X Channel Id"
+          },
+          "linkedin_channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkedin Channel Id"
           }
         },
         "type": "object",
@@ -11796,7 +11807,8 @@
           "api_key_present",
           "organization_id",
           "instagram_channel_id",
-          "x_channel_id"
+          "x_channel_id",
+          "linkedin_channel_id"
         ],
         "title": "BufferAccountView"
       },
@@ -11937,6 +11949,18 @@
               }
             ],
             "title": "X Channel Id"
+          },
+          "linkedin_channel_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkedin Channel Id"
           }
         },
         "type": "object",
@@ -11981,6 +12005,17 @@
             ],
             "title": "X Channel Id"
           },
+          "linkedin_channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkedin Channel Id"
+          },
           "warnings": {
             "items": {
               "type": "string"
@@ -12018,6 +12053,7 @@
           "organization_id",
           "instagram_channel_id",
           "x_channel_id",
+          "linkedin_channel_id",
           "warnings",
           "saved",
           "backup",
