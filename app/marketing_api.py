@@ -78,6 +78,7 @@ class ManualPostSessionRequest(BaseModel):
     destination_url: str | None = Field(default=None, max_length=500)
     link_label: str | None = Field(default=None, max_length=80)
     org_id: int | None = Field(default=None, ge=1)
+    buffer_account: str | None = Field(default=None, max_length=40)
 
     @field_validator("platform", "post_type", mode="before")
     @classmethod
@@ -898,6 +899,7 @@ def _public_manual_post(post: dict) -> dict:
         tracked_url=value.get("tracked_url"),
     )
     value["utm_campaign"] = metadata.get("utm_campaign")
+    value["preferred_buffer_account"] = metadata.get("preferred_buffer_account")
     value["workflow_status"] = _manual_post_status(post)
     value["buffer_status"] = _manual_post_buffer_status(post)
     value["buffer_ready"] = value["workflow_status"] in {"ready", "buffer_draft", "scheduled", "published"}
@@ -1086,6 +1088,11 @@ def create_manual_post_session(payload: ManualPostSessionRequest):
     post_type = payload.post_type.strip().lower()
     if post_type not in {"carousel", "video"}:
         raise HTTPException(422, "post_type must be carousel or video")
+    try:
+        from services.buffer_setup import normalize_account_name
+        preferred_buffer_account = normalize_account_name(payload.buffer_account or "default")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     clean_post_id = _generated_post_id(clean_platform, post_type)
     generated_campaign_id = _generated_campaign_id(clean_platform, post_type)
     generated_source_detail = _generated_source_detail(clean_platform, post_type)
@@ -1129,6 +1136,7 @@ def create_manual_post_session(payload: ManualPostSessionRequest):
                 "link_label": link_label,
                 "workflow_status": "uploading",
                 "buffer_status": "not_started",
+                "preferred_buffer_account": preferred_buffer_account,
             },
         )
     except Exception as exc:
@@ -1225,6 +1233,7 @@ async def create_manual_post_from_ui(
     destination_url: str | None = Form(default=None),
     link_label: str | None = Form(default=None),
     org_id: int | None = Form(default=None),
+    buffer_account: str | None = Form(default=None),
     assets: list[UploadFile] = File(default=[]),
 ):
     session = create_manual_post_session(ManualPostSessionRequest(
@@ -1233,6 +1242,7 @@ async def create_manual_post_from_ui(
         destination_url=destination_url,
         link_label=link_label,
         org_id=org_id,
+        buffer_account=buffer_account,
     ))
     post = session["post"]
     for upload in assets:

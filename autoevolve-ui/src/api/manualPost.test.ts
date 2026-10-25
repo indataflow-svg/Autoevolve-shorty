@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { previewManualPost } from './workflows'
+import { createManualPost, previewManualPost } from './workflows'
 
 const credentials = { username: 'founder', password: 'secret' }
 afterEach(() => vi.unstubAllGlobals())
@@ -45,5 +45,26 @@ describe('manual post preview contract', () => {
       link_label: null,
       filenames: [],
     })
+  })
+})
+
+describe('manual post create contract', () => {
+  it('sends the selected buffer account with the form fields', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+    vi.stubGlobal('fetch', fetchMock)
+    await createManualPost(credentials, {
+      platform: 'linkedin',
+      postType: 'carousel',
+      destinationUrl: '',
+      linkLabel: '',
+      assets: [],
+      bufferAccount: 'acme',
+    })
+    expect(fetchMock.mock.calls[0][0]).toBe('/company/marketing/manual-posts')
+    const options = fetchMock.mock.calls[0][1] as RequestInit
+    expect(options.body).toBeInstanceOf(FormData)
+    const body = options.body as FormData
+    expect(body.get('platform')).toBe('linkedin')
+    expect(body.get('buffer_account')).toBe('acme')
   })
 })

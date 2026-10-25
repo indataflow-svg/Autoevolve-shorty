@@ -97,6 +97,17 @@ class ManualPostExtrasTests(unittest.TestCase):
         self.assertEqual(len(payload["drafts"][0]["media"]), 1)
         self.assertEqual(asset_root, self.asset_root.resolve())
 
+    def test_session_stores_the_preferred_buffer_account(self):
+        response = self.client.post("/company/marketing/manual-posts/session", auth=self.auth, json={
+            "platform": "linkedin", "post_type": "carousel", "buffer_account": "acme"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["post"]["preferred_buffer_account"], "acme")
+
+    def test_session_rejects_an_invalid_buffer_account_name(self):
+        response = self.client.post("/company/marketing/manual-posts/session", auth=self.auth, json={
+            "platform": "x", "post_type": "carousel", "buffer_account": "BAD NAME!"})
+        self.assertEqual(response.status_code, 422, response.text)
+
     def test_orgs_list_and_reassign(self):
         response = self.client.get("/company/marketing/orgs", auth=self.auth)
         self.assertEqual(response.status_code, 200, response.text)

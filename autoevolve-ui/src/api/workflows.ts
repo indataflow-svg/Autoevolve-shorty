@@ -49,12 +49,13 @@ export const retryCampaign = (credentials: Credentials, id: string, token: strin
 export const contentView = (credentials: Credentials) => api<ContentView>('/company/ui/content', credentials)
 export const assetBlob = (credentials: Credentials, path: string) => apiBlob(path, credentials)
 export const createAssetPack = (credentials: Credentials, input: components['schemas']['AssetPackRequest']) => api<components['schemas']['AssetPackCreateResult']>('/company/marketing/asset-packs', credentials, { method: 'POST', body: JSON.stringify(input) })
-export function createManualPost(credentials: Credentials, input: { platform: 'instagram' | 'x' | 'linkedin'; postType: 'carousel' | 'video'; destinationUrl: string; linkLabel: string; assets: File[] }) {
+export function createManualPost(credentials: Credentials, input: { platform: 'instagram' | 'x' | 'linkedin'; postType: 'carousel' | 'video'; destinationUrl: string; linkLabel: string; assets: File[]; bufferAccount: string }) {
   const body = new FormData()
   body.set('platform', input.platform)
   body.set('post_type', input.postType)
   if (input.destinationUrl) body.set('destination_url', input.destinationUrl)
   if (input.linkLabel) body.set('link_label', input.linkLabel)
+  if (input.bufferAccount) body.set('buffer_account', input.bufferAccount)
   input.assets.forEach(asset => body.append('assets', asset))
   return api<components['schemas']['ManualPostCreateResult']>('/company/marketing/manual-posts', credentials, { method: 'POST', body })
 }

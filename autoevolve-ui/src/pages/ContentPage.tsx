@@ -40,7 +40,9 @@ function ContentDrawer({ item, close }: { item: ContentItem; close: () => void }
   const [pending, setPending] = useState(false)
   const maySchedule = item.kind === 'manual_post' && ['ready', 'buffer_draft'].includes(item.stage) && !['queued', 'running', 'scheduled'].includes(item.buffer_status || '')
   const accounts = useQuery({ queryKey: ['buffer-accounts'], queryFn: () => bufferAccounts(credentials), enabled: maySchedule, staleTime: 60_000 })
-  const selectedAccount = account || accounts.data?.accounts[0]?.name || 'default'
+  const accountNames = (accounts.data?.accounts || []).map(item => item.name)
+  const preferredAccount = item.kind === 'manual_post' && item.preferred_buffer_account && accountNames.includes(item.preferred_buffer_account) ? item.preferred_buffer_account : ''
+  const selectedAccount = account || preferredAccount || accounts.data?.accounts[0]?.name || 'default'
   const selectedPostId = postId || item.buffer_post_ids[0] || ''
   const insights = useQuery({ queryKey: ['buffer-insights', item.id, selectedPostId], queryFn: () => bufferInsights(credentials, item.id, selectedPostId), enabled: item.kind === 'manual_post' && !!selectedPostId, retry: false, staleTime: 60_000 })
   async function schedule(event: FormEvent<HTMLFormElement>) {
@@ -108,6 +110,10 @@ function ManualPostCreate({ close, created }: { close: () => void; created: () =
   }, [platform, postType, destinationUrl, linkLabel])
   const filenames = assets.map(asset => asset.name)
   const accounts = useQuery({ queryKey: ['buffer-accounts'], queryFn: () => bufferAccounts(credentials), staleTime: 60_000, retry: false })
+  const availableAccounts = accounts.data?.accounts || []
+  const [bufferAccount, setBufferAccount] = useState('')
+  const effectiveAccount = bufferAccount || availableAccounts[0]?.name || 'default'
+  const selectedAccount = availableAccounts.find(item => item.name === effectiveAccount)
   const preview = useQuery({
     queryKey: ['manual-post-preview', previewInput.platform, previewInput.postType, previewInput.destinationUrl, previewInput.linkLabel, filenames.join('|')],
     queryFn: () => previewManualPost(credentials, { platform: previewInput.platform, postType: previewInput.postType, destinationUrl: previewInput.destinationUrl, linkLabel: previewInput.linkLabel, filenames }),
@@ -115,13 +121,13 @@ function ManualPostCreate({ close, created }: { close: () => void; created: () =
     staleTime: 30_000,
   })
   // Buffer capability decides whether scheduling can work; saving a local record never depends on it.
+  // The indicator reflects the selected account only: one org can hold several
+  // Buffer accounts and a channel may be bound on one but not another.
   const bufferUnknown = accounts.isError || Boolean(accounts.data?.error)
   const connected = new Set<string>()
-  for (const account of accounts.data?.accounts || []) {
-    if (account.instagram_channel_id) connected.add('instagram')
-    if (account.x_channel_id) connected.add('x')
-    if (account.linkedin_channel_id) connected.add('linkedin')
-  }
+  if (selectedAccount?.instagram_channel_id) connected.add('instagram')
+  if (selectedAccount?.x_channel_id) connected.add('x')
+  if (selectedAccount?.linkedin_channel_id) connected.add('linkedin')
   const channelState = accounts.isPending || bufferUnknown ? 'unknown' : connected.has(platform) ? 'connected' : 'missing'
   const label = linkLabel.trim() || 'ops audit'
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -130,7 +136,7 @@ function ManualPostCreate({ close, created }: { close: () => void; created: () =
     if (postType === 'video' && assets.length !== 1) { setError('Video posts require exactly one MP4 file.'); return }
     setPending(true)
     try {
-      const result = await createManualPost(credentials, { platform, postType, destinationUrl, linkLabel, assets })
+      const result = await createManualPost(credentials, { platform, postType, destinationUrl, linkLabel, assets, bufferAccount: effectiveAccount })
       if (!result.ok || result.post.workflow_status !== 'ready') throw new Error('The backend did not confirm a ready manual post.')
       await created(); close()
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Manual post could not be saved.') }
@@ -138,7 +144,9 @@ function ManualPostCreate({ close, created }: { close: () => void; created: () =
   }
   return <div className="modal-backdrop" role="presentation"><div className="modal" role="dialog" aria-modal="true" aria-label="New manual post"><button className="modal-close icon-button" onClick={close} aria-label="Close new manual post">×</button><h2>New manual post</h2><p>Save media and the backend-generated caption. Nothing is published here; Buffer scheduling is a separate, founder-authorized step.</p><form onSubmit={submit}>
     <label>Platform<select value={platform} onChange={event => setPlatform(event.target.value as typeof platform)}><option value="instagram">Instagram</option><option value="x">X</option><option value="linkedin">LinkedIn</option></select></label>
-    <p className="field-note">{channelState === 'unknown' ? 'Buffer channel status is unavailable. You can save this post; scheduling may need a connection first.' : channelState === 'connected' ? 'A Buffer channel is connected for this platform.' : `No Buffer channel is connected for ${platform === 'instagram' ? 'Instagram' : platform === 'x' ? 'X' : 'LinkedIn'}. You can save now and connect before scheduling.`}</p>
+    <p className="field-note">{channelState === 'unknown' ? 'Buffer channel status is unavailable. You can save this post; scheduling may need a connection first.' : channelState === 'connected' ? `A Buffer channel is connected for this platform on ${effectiveAccount}.` : `No Buffer channel is connected for ${platform === 'instagram' ? 'Instagram' : platform === 'x' ? 'X' : 'LinkedIn'} on ${effectiveAccount}. You can save now and connect before scheduling.`}</p>
+    <label>Buffer account<select aria-label="Buffer account" value={effectiveAccount} onChange={event => setBufferAccount(event.target.value)}>{availableAccounts.length ? availableAccounts.map(item => <option key={item.name} value={item.name}>{item.name}</option>) : <option value="default">default</option>}</select></label>
+    <p className="field-note">One org can hold several Buffer accounts. The channel check above and the later scheduling step both use this account.</p>
     <label>Format<select value={postType} onChange={event => { setPostType(event.target.value as typeof postType); setAssets([]) }}><option value="carousel">Carousel · PNG</option><option value="video">Video · MP4</option></select></label>
     <p className="field-note">{postType === 'video' ? 'Exactly one MP4. Its file name seeds the caption.' : 'PNG images only, one or more. File names seed the caption.'}</p>
     <label>Media<input type="file" accept={postType === 'video' ? '.mp4,video/mp4' : '.png,image/png'} multiple={postType === 'carousel'} onChange={event => setAssets(Array.from(event.target.files || []))} required /></label>
