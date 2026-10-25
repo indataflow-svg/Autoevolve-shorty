@@ -5691,6 +5691,10 @@ export interface components {
             lead: components["schemas"]["SalesLeadRecord"];
             /** Created */
             created: boolean;
+            /** Match */
+            match?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * ProviderAccountSummary

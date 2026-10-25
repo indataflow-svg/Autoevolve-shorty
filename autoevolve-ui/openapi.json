@@ -18839,6 +18839,18 @@
           "created": {
             "type": "boolean",
             "title": "Created"
+          },
+          "match": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match"
           }
         },
         "type": "object",
