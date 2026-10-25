@@ -479,7 +479,12 @@ pretend otherwise:
 
 `ingest_resend_event` (delivery, bounce, open, reply) → `_resolve_inbound_lead`
 matching on `in_reply_to`/`references` → `mark_replied`. Bounces, replies, and
-meetings all **stop the follow-up sequence**.
+meetings all **stop the follow-up sequence**. The `email.received` branch
+shares `_ingest_received_email` with the `POST /company/sales/inbox/sync`
+mirror: when the Resend webhook was down or unconfigured, the Replies page's
+"Sync inbox now" pulls recent received mail (Resend stores it regardless)
+through the identical ingest path, so re-syncs are no-op duplicates and
+senders that match no lead are reported as unmatched instead of dropped.
 
 `POST /leads/{id}/schedule-meeting` records a manual marker.
 `POST /leads/{id}/suppress` (`reason='founder_request'`) suppresses permanently.

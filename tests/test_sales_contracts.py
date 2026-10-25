@@ -1371,6 +1371,65 @@ class SalesContractsTest(unittest.TestCase):
         self.assertEqual(stored["interactions"][0]["provider_message_id"], "<reply-3@example.com>")
         self.assertEqual(stored["interactions"][0]["metadata"]["source"], "resend")
 
+    def test_sync_mirrors_inbox_reports_unmatched_and_skips_other_recipients(self):
+        from core.sales_store import get_lead, upsert_lead
+        from services.sales_service import sync_received_emails
+
+        lead, _ = upsert_lead({"email": "ops@example.com", "source": "website"})
+
+        class _Body:
+            def __init__(self, payload: bytes):
+                self.payload = payload
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self):
+                return self.payload
+
+        def received(email_id, sender, to, subject, message_id):
+            return (
+                b'{"id":"%s","from":"%s","to":["%s"],"subject":"%s",'
+                b'"text":"Hello from sync.","headers":{},"message_id":"%s",'
+                b'"created_at":"2026-08-31T10:05:00Z"}'
+            ) % (email_id.encode(), sender.encode(), to.encode(), subject.encode(), message_id.encode())
+
+        def fake_open(request, timeout):
+            url = request.full_url
+            if url.startswith("https://api.resend.com/emails/receiving?"):
+                return _Body(b'{"object":"list","has_more":false,"data":['
+                             b'{"id":"rx_1","to":["sales@example.com"],"from":"ops@example.com",'
+                             b'"subject":"Re: records","message_id":"<sync-1@example.com>",'
+                             b'"created_at":"2026-08-31T10:05:00Z"},'
+                             b'{"id":"rx_2","to":["sales@example.com"],"from":"stranger@example.com",'
+                             b'"subject":"Cold hello","message_id":"<sync-2@example.com>",'
+                             b'"created_at":"2026-08-31T10:06:00Z"},'
+                             b'{"id":"rx_3","to":["other@example.com"],"from":"ops@example.com",'
+                             b'"subject":"Elsewhere","message_id":"<sync-3@example.com>",'
+                             b'"created_at":"2026-08-31T10:07:00Z"}]}')
+            if url == "https://api.resend.com/emails/receiving/rx_1":
+                return _Body(received("rx_1", "ops@example.com", "sales@example.com", "Re: records", "<sync-1@example.com>"))
+            if url == "https://api.resend.com/emails/receiving/rx_2":
+                return _Body(received("rx_2", "stranger@example.com", "sales@example.com", "Cold hello", "<sync-2@example.com>"))
+            raise AssertionError(url)
+
+        with patch.dict(os.environ, {"SALES_RESEND_API_KEY": "re_test"}, clear=False):
+            with patch("urllib.request.urlopen", fake_open):
+                report = sync_received_emails(limit=25, to="sales@example.com")
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["checked"], 3)
+        self.assertEqual([(item["email_id"], item["lead_id"]) for item in report["ingested"]],
+                         [("rx_1", lead["id"])])
+        self.assertEqual(report["skipped"], ["rx_3"])
+        self.assertEqual([item["email_id"] for item in report["unmatched"]], ["rx_2"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(get_lead(lead["id"])["stage"], "replied")
+
+        with patch.dict(os.environ, {"SALES_RESEND_API_KEY": "re_test"}, clear=False):
+            with patch("urllib.request.urlopen", fake_open):
+                rerun = sync_received_emails(limit=25, to="sales@example.com")
+        self.assertTrue(rerun["ingested"][0]["duplicate"])
+
     def test_resend_send_failure_releases_send_claim(self):
         from core.sales_store import approve_draft, create_draft, get_draft, upsert_lead
         from services.sales_service import send_approved

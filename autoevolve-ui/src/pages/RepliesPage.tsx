@@ -3,7 +3,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { createColumnHelper } from '@tanstack/react-table'
 import { ArrowRight, ChevronLeft, ChevronRight, Inbox, Mail, MessageCircle, ShieldAlert } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { createReplyDraft, repliesPage, replyDetail, type ReplyItem } from '../api/workflows'
+import { createReplyDraft, repliesPage, replyDetail, syncResendInbox, type InboxSyncResult, type ReplyItem } from '../api/workflows'
 import { useCredentials } from '../app/Auth'
 import { AppShell } from '../components/Shell'
 import { DataState, LoadingRows, RightDrawer, StateBadge } from '../components/Primitives'
@@ -16,6 +16,40 @@ const views = [
   { label: 'Latest inbound', value: 'latest', count: 'latest' },
   { label: 'Suppressed contacts', value: 'suppressed', count: 'suppressed' },
 ] as const
+
+function InboxSyncControl({ done }: { done: () => void }) {
+  const credentials = useCredentials()
+  const [token, setToken] = useState('')
+  const [to, setTo] = useState('sales@hello.indataflow.com')
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+  const [result, setResult] = useState<InboxSyncResult | null>(null)
+
+  async function run() {
+    setError('')
+    if (!token.trim()) { setError('Enter the founder action token.'); return }
+    setPending(true)
+    try {
+      const response = await syncResendInbox(credentials, { limit: 25, to: to.trim() || null }, token.trim())
+      setResult(response)
+      setToken('')
+      done()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Inbox sync failed.') }
+    finally { setPending(false) }
+  }
+
+  const duplicates = result?.ingested.filter(item => item.duplicate).length || 0
+  return <section className="detail-card"><h3>Mirror Resend inbox</h3>
+    <p className="operational-note">Pulls recently received emails into inbound replies through the same path as the webhook — re-syncs are no-op duplicates. Senders that match no lead are reported below, not dropped silently.</p>
+    <label className="operational-label">Only this recipient<input value={to} onChange={event => setTo(event.target.value)} placeholder="sales@hello.indataflow.com — blank checks every recipient" maxLength={320} /></label>
+    <label className="operational-label">Founder action token<input type="password" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} /></label>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {result && <><p className="success-message" role="status">Checked {result.checked}: {result.ingested.length} ingested ({duplicates} already stored){result.unmatched.length ? `, ${result.unmatched.length} unmatched` : ''}{result.errors.length ? `, ${result.errors.length} failed` : ''}.</p>
+      {result.unmatched.length > 0 && <div className="key-list">{result.unmatched.map(item => <div key={item.email_id || item.subject}><code>{item.from || 'unknown sender'}</code><span className="muted-copy break-value">{item.subject || '(no subject)'}</span></div>)}</div>}
+      {result.errors.length > 0 && <div className="key-list">{result.errors.map(item => <div key={item.email_id || item.error}><code>{item.email_id || 'unknown email'}</code><span className="muted-copy break-value">{item.error}</span></div>)}</div>}</>}
+    <div className="operational-actions"><button className="button secondary" type="button" onClick={() => void run()} disabled={pending}>{pending ? 'Syncing…' : 'Sync inbox now'}</button></div>
+  </section>
+}
 
 function ReplyDrawer({ id, close }: { id: number; close: () => void }) {
   const credentials = useCredentials()
@@ -92,6 +126,7 @@ export function RepliesPage() {
     <div className="page-heading"><div><h1>Replies</h1><p>Review original inbound email and create gated reply drafts.</p></div><div className="heading-actions"><Link to="/outreach" className="button secondary">Open Outreach <ArrowRight size={16} /></Link></div></div>
     <WorkflowMetrics items={[{ label: 'Inbound replies', value: result?.counts.total, icon: <Inbox /> }, { label: 'Latest inbound', value: result?.counts.latest, icon: <MessageCircle /> }, { label: 'With thread ID', value: result?.counts.threaded, icon: <Mail /> }, { label: 'Suppressed contacts', value: result?.counts.suppressed, icon: <ShieldAlert /> }]} />
     <div className="reply-summary"><button onClick={() => update({ view: 'latest', page: '1', reply: null })}><MessageCircle size={22} /><span><strong>Latest inbound on a contact</strong><small>{result?.counts.latest ?? '—'} saved replies are the most recent interaction on their contact.</small></span><ChevronRight size={17} /></button><Link to="/outreach"><Mail size={22} /><span><strong>Reply drafts live in Outreach</strong><small>Draft, approval, and send remain separate backend stages.</small></span><ArrowRight size={17} /></Link></div>
+    <InboxSyncControl done={() => { void query.refetch() }} />
     <div className="table-toolbar"><div className="view-tabs">{views.map(item => <button key={item.value} className={view === item.value ? 'active' : ''} onClick={() => update({ view: item.value, page: '1', reply: null })}>{item.label} ({result?.counts[item.count] ?? 0})</button>)}</div><label className="sort-control">Sort <select aria-label="Sort replies" value={sort} onChange={event => update({ sort: event.target.value, page: '1' })}><option value="recent">Last received</option><option value="oldest">Oldest received</option><option value="company">Company A–Z</option></select></label></div>
     {query.isError && result && <div className="operational-error" role="alert">Refresh failed: {query.error.message} <button onClick={() => query.refetch()}>Retry</button></div>}
     <div className="table-panel">{query.isPending ? <LoadingRows label="Loading replies" /> : query.isError && !result ? <DataState title="Replies could not be loaded" detail={query.error.message} retry={() => query.refetch()} /> : result?.items.length ? <WorkflowTable items={result.items.map(item => ({ ...item, id: String(item.id) }))} columns={columns} selected={selected} onSelect={id => update({ reply: id })} /> : <DataState title="No replies found" detail={q || view !== 'all' ? 'Try another search or view.' : 'Inbound email replies will appear here after the backend records them.'} />}</div>

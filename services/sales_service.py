@@ -1782,6 +1782,72 @@ def _record_resend_email_event(event_type: str, payload: dict[str, Any], *, lead
     add_event(lead_id, f"resend.{event_type}", payload)
 
 
+def _ingest_received_email(*, email_id: str | None, data: dict, created_at: str | None = None) -> dict:
+    """Fetch one received email from Resend and ingest it as an inbound reply.
+
+    Shared by the ``email.received`` webhook and the inbox mirror sync so the
+    two paths can never disagree about matching, storage, or dedupe. Raises
+    ``ValueError`` when no lead matches (the sync caller quarantines those
+    instead of dropping them silently like the webhook path must).
+    """
+    details: dict = {}
+    warning = None
+    if email_id:
+        try:
+            details = _resend_get_received_email(email_id)
+        except Exception as exc:
+            warning = str(exc)
+    headers = details.get("headers") if isinstance(details.get("headers"), dict) else {}
+    in_reply_to = _header_value(headers, "in-reply-to")
+    references = _header_value(headers, "references")
+    from_email = str(details.get("from") or data.get("from") or "").strip()
+    resolved_lead = _resolve_inbound_lead(
+        sender_email=parseaddr(from_email)[1].lower(),
+        in_reply_to=in_reply_to,
+        references=references,
+    )
+    inbound_payload = {
+        "from_email": from_email,
+        "to_email": _recipient_first(details.get("to") or data.get("to")),
+        "subject": str(details.get("subject") or data.get("subject") or "Reply").strip(),
+        "text": details.get("text") or "",
+        "html": details.get("html") or "",
+        "message_id": str(details.get("message_id") or data.get("message_id") or "").strip() or None,
+        "in_reply_to": in_reply_to,
+        "references": _normalize_references(references),
+        "received_at": str(details.get("created_at") or data.get("created_at") or created_at or "").strip() or None,
+        "headers": headers,
+        "source": "resend",
+    }
+    if resolved_lead is None and parseaddr(from_email)[1]:
+        resolved_lead = get_lead_by_email(parseaddr(from_email)[1].lower())
+    if not resolved_lead:
+        raise ValueError("no lead matches resend inbound sender or thread")
+    result = ingest_inbound_email({**inbound_payload, "lead_id": resolved_lead["id"]})
+    _record_resend_email_event(
+        "email.received",
+        {
+            "provider": "resend",
+            "email_id": email_id,
+            "message_id": inbound_payload["message_id"],
+            "from_email": parseaddr(from_email)[1].lower() or from_email,
+            "to_email": inbound_payload["to_email"],
+            "subject": inbound_payload["subject"],
+            "fetched_full_email": bool(details),
+            "warning": warning,
+        },
+        lead_id=result.get("lead_id"),
+    )
+    return {
+        "ok": True,
+        "event": "email.received",
+        "lead_id": result.get("lead_id"),
+        "duplicate": result.get("duplicate", False),
+        "fetched_full_email": bool(details),
+        "warning": warning,
+    }
+
+
 def ingest_resend_event(payload: dict) -> dict:
     event_type = str(payload.get("type") or "").strip()
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
@@ -1798,62 +1864,9 @@ def ingest_resend_event(payload: dict) -> dict:
             draft_id = draft_id or draft.get("id")
             lead_id = lead_id or draft.get("lead_id")
     if event_type == "email.received":
-        details = {}
-        warning = None
-        if email_id:
-            try:
-                details = _resend_get_received_email(email_id)
-            except Exception as exc:
-                warning = str(exc)
-        headers = details.get("headers") if isinstance(details.get("headers"), dict) else {}
-        in_reply_to = _header_value(headers, "in-reply-to")
-        references = _header_value(headers, "references")
-        from_email = str(details.get("from") or data.get("from") or "").strip()
-        resolved_lead = _resolve_inbound_lead(
-            sender_email=parseaddr(from_email)[1].lower(),
-            in_reply_to=in_reply_to,
-            references=references,
+        return _ingest_received_email(
+            email_id=email_id, data=data, created_at=str(payload.get("created_at") or ""),
         )
-        inbound_payload = {
-            "from_email": from_email,
-            "to_email": _recipient_first(details.get("to") or data.get("to")),
-            "subject": str(details.get("subject") or data.get("subject") or "Reply"),
-            "text": details.get("text") or "",
-            "html": details.get("html") or "",
-            "message_id": str(details.get("message_id") or data.get("message_id") or "").strip() or None,
-            "in_reply_to": in_reply_to,
-            "references": _normalize_references(references),
-            "received_at": str(details.get("created_at") or data.get("created_at") or payload.get("created_at") or "").strip() or None,
-            "headers": headers,
-            "source": "resend",
-        }
-        if resolved_lead is None and parseaddr(from_email)[1]:
-            resolved_lead = get_lead_by_email(parseaddr(from_email)[1].lower())
-        if not resolved_lead:
-            raise ValueError("no lead matches resend inbound sender or thread")
-        result = ingest_inbound_email({**inbound_payload, "lead_id": resolved_lead["id"]})
-        _record_resend_email_event(
-            event_type,
-            {
-                "provider": "resend",
-                "email_id": email_id,
-                "message_id": inbound_payload["message_id"],
-                "from_email": parseaddr(from_email)[1].lower() or from_email,
-                "to_email": inbound_payload["to_email"],
-                "subject": inbound_payload["subject"],
-                "fetched_full_email": bool(details),
-                "warning": warning,
-            },
-            lead_id=result.get("lead_id"),
-        )
-        return {
-            "ok": True,
-            "event": event_type,
-            "lead_id": result.get("lead_id"),
-            "duplicate": result.get("duplicate", False),
-            "fetched_full_email": bool(details),
-            "warning": warning,
-        }
     event_payload = {
         "provider": "resend",
         "email_id": email_id,
@@ -1874,6 +1887,104 @@ def ingest_resend_event(payload: dict) -> dict:
         "lead_id": lead_id,
         "draft_id": draft_id,
         "matched": bool(lead_id or draft_id),
+    }
+
+
+def _resend_list_received_emails(limit: int) -> list[dict]:
+    """List recently received emails from Resend (read-only mirror source).
+
+    Resend stores inbound mail even when our webhook was down, so this is the
+    backfill for everything the ``email.received`` webhook missed. Requires an
+    API key with receiving permission — a sending-only key gets a 403 here,
+    which is surfaced as such instead of a generic provider failure.
+    """
+    try:
+        clamped = max(1, min(int(limit or 25), 100))
+    except (TypeError, ValueError):
+        clamped = 25
+    request = urllib.request.Request(
+        f"{RESEND_RECEIVING_URL}?limit={clamped}",
+        headers=_resend_headers(),
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403:
+            raise ValueError(
+                "Resend API key lacks receiving permission (use a full-access key, not sending-only)"
+            ) from exc
+        raise RuntimeError(f"Resend received-email list failed: HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Resend received-email list failed: {exc}") from exc
+    items = payload.get("data") if isinstance(payload, dict) else []
+    return [item for item in items or [] if isinstance(item, dict)]
+
+
+def _recipients_of(entry: dict) -> set[str]:
+    found: set[str] = set()
+    for key in ("to", "cc", "bcc"):
+        value = entry.get(key)
+        candidates = value if isinstance(value, list) else [value]
+        for candidate in candidates:
+            text = str(candidate or "").strip().lower()
+            if text:
+                found.add(text)
+    return found
+
+
+def sync_received_emails(*, limit: int = 25, to: str | None = None) -> dict:
+    """Mirror a Resend receiving inbox into inbound replies.
+
+    Read-only against the provider; writes only through the same ingest path
+    the webhook uses, so matching, storage, and dedupe are identical (a
+    re-sync of an already-stored message is a no-op ``duplicate``, never a
+    second reply). Emails that match no lead are reported as ``unmatched``
+    instead of raising — the webhook path must reject those with a 409, but a
+    mirror that silently drops them would defeat its purpose.
+    """
+    entries = _resend_list_received_emails(limit)
+    wanted = (to or "").strip().lower()
+    ingested: list[dict] = []
+    skipped: list[str | None] = []
+    unmatched: list[dict] = []
+    errors: list[dict] = []
+    for entry in entries:
+        email_id = str(entry.get("id") or "").strip() or None
+        if wanted and wanted not in _recipients_of(entry):
+            skipped.append(email_id)
+            continue
+        try:
+            result = _ingest_received_email(email_id=email_id, data=entry)
+        except ValueError as exc:
+            message = str(exc)
+            if "no lead matches" in message:
+                unmatched.append({
+                    "email_id": email_id,
+                    "from": str(entry.get("from") or ""),
+                    "subject": str(entry.get("subject") or ""),
+                    "received_at": str(entry.get("created_at") or ""),
+                    "reason": message,
+                })
+                continue
+            errors.append({"email_id": email_id, "error": message})
+            continue
+        except Exception as exc:
+            errors.append({"email_id": email_id, "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        ingested.append({
+            "email_id": email_id,
+            "lead_id": result.get("lead_id"),
+            "duplicate": result.get("duplicate", False),
+        })
+    return {
+        "ok": True,
+        "checked": len(entries),
+        "ingested": ingested,
+        "skipped": skipped,
+        "unmatched": unmatched,
+        "errors": errors,
     }
 
 

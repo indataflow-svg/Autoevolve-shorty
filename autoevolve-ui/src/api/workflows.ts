@@ -109,6 +109,16 @@ export function repliesPage(credentials: Credentials, input: { page: number; q: 
   return api<RepliesPage>(`/company/ui/replies?${params}`, credentials)
 }
 export const replyDetail = (credentials: Credentials, id: number) => api<ReplyItem>(`/company/ui/replies/${id}`, credentials)
+export interface InboxSyncResult {
+  ok: boolean
+  checked: number
+  ingested: { email_id: string | null; lead_id: string | null; duplicate: boolean }[]
+  skipped: (string | null)[]
+  unmatched: { email_id: string | null; from: string; subject: string; received_at: string; reason: string }[]
+  errors: { email_id: string | null; error: string }[]
+}
+export const syncResendInbox = (credentials: Credentials, input: { limit: number; to: string | null }, token: string) =>
+  api<InboxSyncResult>('/company/sales/inbox/sync', credentials, { method: 'POST', body: JSON.stringify({ limit: input.limit, to: input.to }) }, token)
 export const createReplyDraft = draftOutreach
 
 export function meetingsPage(credentials: Credentials, input: { page: number; q: string; view: string; sort: string }) {

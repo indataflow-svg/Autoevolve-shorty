@@ -135,6 +135,22 @@ class SalesApiTests(unittest.TestCase):
         self.assertEqual(response.json()["lead_id"], "lead_1")
         ingest.assert_called_once_with(json.loads(payload))
 
+    def test_inbox_sync_route_requires_founder_token_and_dispatches(self):
+        denied = self.client.post("/company/sales/inbox/sync", auth=self.auth, json={"limit": 25})
+        self.assertEqual(denied.status_code, 403, denied.text)
+        report = {"ok": True, "checked": 2, "ingested": [], "skipped": [],
+                  "unmatched": [], "errors": []}
+        with patch.dict(os.environ, {"SALES_ACTION_TOKEN": "action-secret"}, clear=False), \
+                patch("services.sales_service.sync_received_emails", return_value=report) as sync:
+            response = self.client.post(
+                "/company/sales/inbox/sync", auth=self.auth,
+                headers={"X-Founder-Action-Token": "action-secret"},
+                json={"limit": 25, "to": "sales@hello.indataflow.com"},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["checked"], 2)
+        sync.assert_called_once_with(limit=25, to="sales@hello.indataflow.com")
+
     def test_send_unknown_reconciliation_routes(self):
         with patch.dict(os.environ, {"SALES_ACTION_TOKEN": "action-secret"}, clear=False):
             lead, _ = sales_store.upsert_lead({"email": "ops@example.com", "source": "website"})

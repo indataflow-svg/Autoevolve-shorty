@@ -709,6 +709,37 @@ def suppress(lead_id: str, reason: str = "founder_request"):
     return {"ok": True, "lead_id": lead_id, "stage": "suppressed"}
 
 
+class InboxSyncPayload(BaseModel):
+    limit: int = Field(default=25, ge=1, le=100)
+    to: str | None = Field(default=None, max_length=320)
+
+    @field_validator("to", mode="before")
+    @classmethod
+    def _clean_to(cls, value: object) -> object:
+        text = str(value or "").strip().lower()
+        return text or None
+
+
+@action_router.post("/inbox/sync", dependencies=[Depends(verify_founder_action)])
+def sync_inbox(payload: InboxSyncPayload):
+    """Founder action: mirror recent Resend received emails into inbound replies.
+
+    Covers everything the ``email.received`` webhook missed while it was
+    unconfigured or down — Resend stores inbound mail regardless. Writes go
+    through the exact ingest path the webhook uses, so a re-sync is a no-op
+    duplicate rather than a second reply; senders that match no lead are
+    reported as unmatched instead of being silently dropped.
+    """
+    from services.sales_service import sync_received_emails
+
+    try:
+        return sync_received_emails(limit=payload.limit, to=payload.to)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
 
 @router.get("/hunter/account")
 def hunter_account():
