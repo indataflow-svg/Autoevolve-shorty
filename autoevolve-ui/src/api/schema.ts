@@ -268,6 +268,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/company/marketing/manual-posts/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Manual Post
+         * @description Preview the caption and tracking link a manual post will receive.
+         *
+         *     Read-only: nothing is persisted and no provider is called. It reuses the
+         *     exact helpers the create path uses, so the operator sees the real caption
+         *     instead of a client-side approximation that could drift.
+         */
+        post: operations["preview_manual_post_company_marketing_manual_posts_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/company/marketing/manual-posts/session": {
         parameters: {
             query?: never;
@@ -794,8 +818,85 @@ export interface paths {
         /**
          * Create Workflows Validation Plan
          * @description Canonical automation name for plan creation. Same behavior as /plan above.
+         *
+         *     Accepts an optional founder hint (method/channel) recorded in provenance.
+         *     Hints are requests Hermes may decline with reasons; ungovernable methods
+         *     and unsupported channels are refused here with a 422 instead.
          */
         post: operations["create_workflows_validation_plan_company_automation_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/automation/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Evidence
+         * @description Everything the business has told or shown us, in one place.
+         *
+         *     Read-only and transparent: this is exactly what the account, workflow,
+         *     and campaign suggesters see, so a recommendation can always be traced
+         *     back to the evidence behind it. Unknown slots stay unknown.
+         */
+        get: operations["read_evidence_company_automation_evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/automation/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Next Runs
+         * @description Rank the next governed runs from evidence. Advisory only.
+         *
+         *     Deterministic: the same evidence always yields the same ranking. Nothing
+         *     is generated, governed, approved, or run here — each recommendation names
+         *     the method to plan with, when it is due, how long to give it, and the
+         *     expected range with its basis.
+         */
+        post: operations["suggest_next_runs_company_automation_suggest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/automation/suggest-campaign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Campaign Move
+         * @description Propose the marketing move from evidence. Advisory only.
+         *
+         *     Video lines carry their source fields, missing slots are listed with the
+         *     exact field to fill, and the campaign path and provider follow recorded
+         *     results. Nothing is created or queued.
+         */
+        post: operations["suggest_campaign_move_company_automation_suggest_campaign_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -862,8 +963,10 @@ export interface paths {
          * Run Workflows Governance
          * @description Run the approved workflow through the existing runner.
          *
-         *     The only authorized action is ``simulate_outreach``: it returns a simulated
-         *     result and performs no external side effect.
+         *     Governance may authorize ``simulate_outreach`` (rehearses, touches nothing)
+         *     or ``draft_outreach`` (writes local drafts the founder sends by hand).
+         *     Neither reaches an external system, and the approved limits are re-checked
+         *     here — a cap tightened after approval still governs this run.
          */
         post: operations["run_workflows_governance_company_automation_governance_run_post"];
         delete?: never;
@@ -979,6 +1082,509 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Offers */
+        get: operations["list_offers_company_commercial_offers_get"];
+        put?: never;
+        /** Create Offer */
+        post: operations["create_offer_company_commercial_offers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/offers/{rid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Offer */
+        patch: operations["update_offer_company_commercial_offers__rid__patch"];
+        trace?: never;
+    };
+    "/company/commercial/icp-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Icp Templates */
+        get: operations["icp_templates_company_commercial_icp_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/icps/{rid}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Icp */
+        post: operations["archive_icp_company_commercial_icps__rid__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/icps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Icps */
+        get: operations["list_icps_company_commercial_icps_get"];
+        put?: never;
+        /** Create Icp */
+        post: operations["create_icp_company_commercial_icps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/icps/suggest-criteria": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggest Criteria
+         * @description Propose ICP criteria mined from the founder's own records.
+         *
+         *     Read-only and deterministic: the best accounts (customers, else engaged,
+         *     else everything) contribute their most common industry/size/region with
+         *     support counts, and every candidate field reports its fill rate across
+         *     all accounts — so a rule that would score `unknown` everywhere is visible
+         *     before it is saved. Thin evidence warns instead of pretending.
+         */
+        get: operations["suggest_criteria_company_commercial_icps_suggest_criteria_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/icps/{rid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Icp */
+        get: operations["get_icp_company_commercial_icps__rid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Icp */
+        patch: operations["update_icp_company_commercial_icps__rid__patch"];
+        trace?: never;
+    };
+    "/company/commercial/icps/{rid}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evaluate Icp */
+        post: operations["evaluate_icp_company_commercial_icps__rid__evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Accounts */
+        get: operations["list_accounts_company_commercial_accounts_get"];
+        put?: never;
+        /** Create Account */
+        post: operations["create_account_company_commercial_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/accounts/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest New Accounts
+         * @description Propose accounts from evidence nobody has claimed yet.
+         *
+         *     Unclaimed lead domains and research candidates, each with its reasons.
+         *     Nothing is created here: confirming a suggestion is the existing
+         *     POST /accounts, so every account still passes the same validation and
+         *     domain-dedupe as a hand-entered one.
+         */
+        post: operations["suggest_new_accounts_company_commercial_accounts_suggest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/accounts/{rid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Account */
+        get: operations["get_account_company_commercial_accounts__rid__get"];
+        put?: never;
+        post?: never;
+        /** Delete Account */
+        delete: operations["delete_account_company_commercial_accounts__rid__delete"];
+        options?: never;
+        head?: never;
+        /** Update Account */
+        patch: operations["update_account_company_commercial_accounts__rid__patch"];
+        trace?: never;
+    };
+    "/company/commercial/pipelines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Pipelines */
+        get: operations["list_pipelines_company_commercial_pipelines_get"];
+        put?: never;
+        /** Create Pipeline */
+        post: operations["create_pipeline_company_commercial_pipelines_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/opportunities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Opportunities */
+        get: operations["list_opportunities_company_commercial_opportunities_get"];
+        put?: never;
+        /** Create Opportunity */
+        post: operations["create_opportunity_company_commercial_opportunities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/opportunities/{rid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Opportunity */
+        get: operations["get_opportunity_company_commercial_opportunities__rid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/pipelines/{rid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Pipeline */
+        patch: operations["update_pipeline_company_commercial_pipelines__rid__patch"];
+        trace?: never;
+    };
+    "/company/commercial/opportunities/{rid}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move Opportunity */
+        post: operations["move_opportunity_company_commercial_opportunities__rid__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rules */
+        get: operations["list_rules_company_commercial_rules_get"];
+        put?: never;
+        /** Create Rule */
+        post: operations["create_rule_company_commercial_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/accounts/{rid}/qualify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Qualify Account */
+        post: operations["qualify_account_company_commercial_accounts__rid__qualify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log Activity */
+        post: operations["log_activity_company_commercial_activities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Imports */
+        get: operations["list_imports_company_commercial_imports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/imports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Import */
+        post: operations["preview_import_company_commercial_imports_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/imports/{rid}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Commit Import */
+        post: operations["commit_import_company_commercial_imports__rid__commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Integration Catalog */
+        get: operations["integration_catalog_company_commercial_integrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/integrations/{provider}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect Provider */
+        post: operations["connect_provider_company_commercial_integrations__provider__connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/integrations/{provider}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect Provider */
+        post: operations["disconnect_provider_company_commercial_integrations__provider__disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/integrations/{provider}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Provider */
+        post: operations["sync_provider_company_commercial_integrations__provider__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/onboarding-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sessions */
+        get: operations["list_sessions_company_commercial_onboarding_sessions_get"];
+        put?: never;
+        /** Create Session */
+        post: operations["create_session_company_commercial_onboarding_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/onboarding-sessions/{rid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Session */
+        patch: operations["update_session_company_commercial_onboarding_sessions__rid__patch"];
         trace?: never;
     };
     "/company/sales/contacts": {
@@ -1665,6 +2271,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/company/sales/leads/{lead_id}/meeting-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Meeting
+         * @description Founder action: offer slots to the contact by email. The request is
+         *     always recorded; the email is attempted after and its failure is reported
+         *     honestly without losing the record (same pattern as enrichment).
+         */
+        post: operations["request_meeting_company_sales_leads__lead_id__meeting_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/company/sales/leads/{lead_id}/suppress": {
         parameters: {
             query?: never;
@@ -1680,6 +2308,66 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/forms/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Intake Config
+         * @description Everything an external form tool needs, on one screen.
+         *
+         *     The endpoint URL is built from COMPANY_PUBLIC_URL (the address the tool
+         *     must reach), not the browser origin: the founder may be viewing the
+         *     dashboard on a LAN address the outside world cannot use. The secret is
+         *     only ever read from the environment — there is no other copy of it.
+         */
+        get: operations["intake_config_company_commercial_forms_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/forms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Forms */
+        get: operations["list_forms_company_commercial_forms_get"];
+        put?: never;
+        /** Create Form */
+        post: operations["create_form_company_commercial_forms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/commercial/forms/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Form */
+        patch: operations["update_form_company_commercial_forms__slug__patch"];
         trace?: never;
     };
     "/company/setup/providers": {
@@ -1745,6 +2433,57 @@ export interface paths {
         put?: never;
         /** Set Setup Step Route */
         post: operations["set_setup_step_route_company_setup_step_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/setup/buffer/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Buffer Setup Accounts */
+        get: operations["buffer_setup_accounts_company_setup_buffer_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/setup/buffer/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discover Buffer Channels */
+        post: operations["discover_buffer_channels_company_setup_buffer_discover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/company/setup/buffer/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect Buffer Account */
+        post: operations["connect_buffer_account_company_setup_buffer_connect_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2364,10 +3103,162 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/leads/form": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * External Form Intake
+         * @description Shared submission endpoint for external form tools.
+         *
+         *     Accepts JSON ({"form": "contact", "answers": {...}}, a flat object of
+         *     answers, or a flat object with a "form" key) or form-encoded bodies.
+         *     Known keys map onto the lead record; everything else is kept as clean
+         *     answers on the inbound interaction.
+         */
+        post: operations["external_form_intake_integrations_leads_form_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/f/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Hosted Form */
+        get: operations["hosted_form_f__slug__get"];
+        put?: never;
+        /** Hosted Form Submit */
+        post: operations["hosted_form_submit_f__slug__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/book/{lead_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Booking Page */
+        get: operations["booking_page_book__lead_id__get"];
+        put?: never;
+        /** Booking Confirm */
+        post: operations["booking_confirm_book__lead_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountIn */
+        AccountIn: {
+            /** Company Name */
+            company_name: string;
+            /**
+             * Domain
+             * @default
+             */
+            domain: string;
+            /**
+             * Industry
+             * @default
+             */
+            industry: string;
+            /**
+             * Company Size
+             * @default
+             */
+            company_size: string;
+            /**
+             * Region
+             * @default
+             */
+            region: string;
+            /**
+             * Source
+             * @default manual
+             */
+            source: string;
+            /**
+             * Source Ref
+             * @default
+             */
+            source_ref: string;
+            /** Icp Id */
+            icp_id?: string | null;
+            /**
+             * Verification Status
+             * @default unverified
+             */
+            verification_status: string;
+            /**
+             * Lifecycle Status
+             * @default target
+             */
+            lifecycle_status: string;
+            /**
+             * Owner
+             * @default
+             */
+            owner: string;
+            /**
+             * Next Action
+             * @default
+             */
+            next_action: string;
+            /** Attributes */
+            attributes?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ActivityIn */
+        ActivityIn: {
+            /** Type */
+            type: string;
+            /**
+             * Outcome
+             * @default
+             */
+            outcome: string;
+            /**
+             * Owner
+             * @default
+             */
+            owner: string;
+            /** Account Id */
+            account_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Lead Id */
+            lead_id?: string | null;
+            /** Opportunity Id */
+            opportunity_id?: string | null;
+            /** Campaign Id */
+            campaign_id?: string | null;
+            /**
+             * Source
+             * @default manual
+             */
+            source: string;
+        };
         /** ApprovalPayload */
         ApprovalPayload: {
             /**
@@ -2491,6 +3382,11 @@ export interface components {
             /** Pack */
             pack: string;
         };
+        /** Body_preview_import_company_commercial_imports_preview_post */
+        Body_preview_import_company_commercial_imports_preview_post: {
+            /** File */
+            file: string;
+        };
         /** Body_upload_campaign_voice_recording_company_marketing_campaigns__campaign_id__voice_recording_post */
         Body_upload_campaign_voice_recording_company_marketing_campaigns__campaign_id__voice_recording_post: {
             /** Recording */
@@ -2512,12 +3408,102 @@ export interface components {
             /** X Channel Id */
             x_channel_id: boolean;
         };
+        /** BufferAccountView */
+        BufferAccountView: {
+            /** Name */
+            name: string;
+            /** Api Key Present */
+            api_key_present: boolean;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Instagram Channel Id */
+            instagram_channel_id: string | null;
+            /** X Channel Id */
+            x_channel_id: string | null;
+        };
         /** BufferAccountsView */
         BufferAccountsView: {
             /** Accounts */
             accounts: components["schemas"]["BufferAccountInfo"][];
             /** Error */
             error?: string | null;
+        };
+        /** BufferChannelView */
+        BufferChannelView: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Descriptor */
+            descriptor: string;
+            /** Service */
+            service: string;
+            /** Type */
+            type: string;
+            /** Platform */
+            platform: string | null;
+            /** Supported */
+            supported: boolean;
+            /** Usable */
+            usable: boolean;
+        };
+        /** BufferConnectPayload */
+        BufferConnectPayload: {
+            /**
+             * Account
+             * @default default
+             */
+            account: string;
+            /** Api Key */
+            api_key?: string | null;
+            /** Organization Id */
+            organization_id: string;
+            /** Instagram Channel Id */
+            instagram_channel_id?: string | null;
+            /** X Channel Id */
+            x_channel_id?: string | null;
+        };
+        /** BufferConnectResult */
+        BufferConnectResult: {
+            /** Ok */
+            ok: boolean;
+            /** Account */
+            account: string;
+            /** Organization Id */
+            organization_id: string;
+            /** Instagram Channel Id */
+            instagram_channel_id: string | null;
+            /** X Channel Id */
+            x_channel_id: string | null;
+            /** Warnings */
+            warnings: string[];
+            /** Saved */
+            saved: string[];
+            /** Backup */
+            backup: string | null;
+            /** Restart Required */
+            restart_required: boolean;
+        };
+        /** BufferDiscoverPayload */
+        BufferDiscoverPayload: {
+            /**
+             * Account
+             * @default default
+             */
+            account: string;
+            /** Api Key */
+            api_key?: string | null;
+        };
+        /** BufferDiscoveryView */
+        BufferDiscoveryView: {
+            /** Account */
+            account: string;
+            /** Account Id */
+            account_id: string;
+            /** Organizations */
+            organizations: components["schemas"]["BufferOrganizationView"][];
         };
         /** BufferInsightsView */
         BufferInsightsView: {
@@ -2552,6 +3538,15 @@ export interface components {
             /** Unit */
             unit: string;
         };
+        /** BufferOrganizationView */
+        BufferOrganizationView: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Channels */
+            channels: components["schemas"]["BufferChannelView"][];
+        };
         /** BufferScheduleRequest */
         BufferScheduleRequest: {
             /**
@@ -2573,6 +3568,11 @@ export interface components {
             };
             /** Message */
             message: string;
+        };
+        /** BufferSetupAccountsView */
+        BufferSetupAccountsView: {
+            /** Accounts */
+            accounts: components["schemas"]["BufferAccountView"][];
         };
         /** BuyerRequest */
         BuyerRequest: {
@@ -3184,6 +4184,32 @@ export interface components {
             /** Has Profile */
             has_profile: boolean;
         };
+        /** ConnectIn */
+        ConnectIn: {
+            /**
+             * External Account Ref
+             * @default
+             */
+            external_account_ref: string;
+            /** Scopes */
+            scopes?: string[];
+        };
+        /**
+         * ConnectionSummary
+         * @description A canonical connection row, sans secrets. The registry owns state;
+         *     this endpoint only projects it next to key presence so the two views
+         *     cannot disagree about whether an organization is connected.
+         */
+        ConnectionSummary: {
+            /** Provider */
+            provider: string;
+            /** Status */
+            status: string;
+            /** Sync Status */
+            sync_status: string;
+            /** Last Sync At */
+            last_sync_at?: string | null;
+        };
         /**
          * ConstraintFacts
          * @description Limits a future workflow must respect.
@@ -3498,6 +4524,47 @@ export interface components {
             /** Lead Id */
             lead_id: string;
         };
+        /** FormCreatePayload */
+        FormCreatePayload: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Fields */
+            fields: components["schemas"]["FormFieldPayload"][];
+        };
+        /** FormFieldPayload */
+        FormFieldPayload: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Type
+             * @default text
+             */
+            type: string;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /** Options */
+            options?: string[] | null;
+        };
+        /** FormUpdatePayload */
+        FormUpdatePayload: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Fields */
+            fields?: components["schemas"]["FormFieldPayload"][] | null;
+            /** Active */
+            active?: boolean | null;
+        };
         /**
          * GovernanceLimits
          * @description Caps the operator has agreed to. Defaults refuse anything costly.
@@ -3631,6 +4698,52 @@ export interface components {
             /** Onboarding Status */
             onboarding_status: string;
         };
+        /** ICPIn */
+        ICPIn: {
+            /** Name */
+            name: string;
+            /**
+             * Segment
+             * @default
+             */
+            segment: string;
+            /** Offer Id */
+            offer_id?: string | null;
+            /** Criteria */
+            criteria?: {
+                [key: string]: unknown;
+            }[];
+            /** Exclusions */
+            exclusions?: {
+                [key: string]: unknown;
+            }[];
+            /** Weights */
+            weights?: {
+                [key: string]: unknown;
+            };
+            /** Thresholds */
+            thresholds?: {
+                [key: string]: unknown;
+            };
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Evidence Sources */
+            evidence_sources?: string[];
+            /** Assumptions */
+            assumptions?: string[];
+            /**
+             * Confidence
+             * @default provisional
+             */
+            confidence: string;
+            /**
+             * Status
+             * @default provisional
+             */
+            status: string;
+        };
         /** Icp */
         Icp: {
             /** Industry */
@@ -3639,6 +4752,24 @@ export interface components {
             description: string;
             /** Company Sizes */
             company_sizes?: string[];
+        };
+        /** ImportCommit */
+        ImportCommit: {
+            /** Mapping */
+            mapping: {
+                [key: string]: unknown;
+            };
+            /** Resolutions */
+            resolutions?: {
+                [key: string]: unknown;
+            };
+            /** Skip Rows */
+            skip_rows?: number[];
+            /**
+             * Mode
+             * @default create_only
+             */
+            mode: string;
         };
         /** InboundEmailPayload */
         InboundEmailPayload: {
@@ -3704,6 +4835,11 @@ export interface components {
             fully_configured_groups: number;
             /** Configured Keys */
             configured_keys: number;
+            /**
+             * Connected Providers
+             * @default 0
+             */
+            connected_providers: number;
         };
         /** InteractionSummary */
         InteractionSummary: {
@@ -3841,6 +4977,46 @@ export interface components {
             /** Org Id */
             org_id: number;
         };
+        /** ManualPostPreviewRequest */
+        ManualPostPreviewRequest: {
+            /** Platform */
+            platform: string;
+            /**
+             * Post Type
+             * @default carousel
+             */
+            post_type: string;
+            /** Destination Url */
+            destination_url?: string | null;
+            /** Link Label */
+            link_label?: string | null;
+            /** Filenames */
+            filenames?: string[];
+        };
+        /**
+         * ManualPostPreviewView
+         * @description What a manual post will look like before anything is persisted.
+         */
+        ManualPostPreviewView: {
+            /** Platform */
+            platform: string;
+            /** Post Type */
+            post_type: string;
+            /** Destination Url */
+            destination_url: string;
+            /** Default Destination Url */
+            default_destination_url: string;
+            /** Link Label */
+            link_label: string;
+            /** Tracked Url */
+            tracked_url: string;
+            /** Caption */
+            caption: string;
+            /** Cta */
+            cta: string;
+            /** Title */
+            title: string;
+        };
         /** ManualPostSessionRequest */
         ManualPostSessionRequest: {
             /** Platform */
@@ -3975,6 +5151,8 @@ export interface components {
             status: string;
             /** Scheduled For */
             scheduled_for: string | null;
+            /** Slots */
+            slots: string[] | null;
             /** Note */
             note: string | null;
             /** Recorded At */
@@ -3990,6 +5168,30 @@ export interface components {
             scheduled_for?: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /** MeetingRequestPayload */
+        MeetingRequestPayload: {
+            /** Slots */
+            slots: string[];
+            /** Note */
+            note?: string | null;
+        };
+        /** MeetingRequestResult */
+        MeetingRequestResult: {
+            /** Ok */
+            ok: boolean;
+            /** Lead Id */
+            lead_id: string;
+            /** Status */
+            status: string;
+            /** Email Sent */
+            email_sent: boolean;
+            /** Booking Url */
+            booking_url: string | null;
+            /** Message */
+            message: string;
+            /** Warning */
+            warning?: string | null;
         };
         /** MeetingScheduledPayload */
         MeetingScheduledPayload: {
@@ -4035,6 +5237,53 @@ export interface components {
             /** Business Model */
             business_model?: string | null;
         };
+        /** OfferIn */
+        OfferIn: {
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Category
+             * @default
+             */
+            category: string;
+            /**
+             * Target Market
+             * @default
+             */
+            target_market: string;
+            /**
+             * Pricing Model
+             * @default
+             */
+            pricing_model: string;
+            /**
+             * Price Info
+             * @default
+             */
+            price_info: string;
+            /**
+             * Value Prop
+             * @default
+             */
+            value_prop: string;
+            /** Differentiators */
+            differentiators?: string[];
+            /**
+             * Limitations
+             * @default
+             */
+            limitations: string;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+        };
         /**
          * OnboardingView
          * @description The onboarding projection plus the initial route from the saved context.
@@ -4065,6 +5314,31 @@ export interface components {
              * @default false
              */
             onboarding_complete: boolean;
+        };
+        /** OpportunityIn */
+        OpportunityIn: {
+            /** Account Id */
+            account_id: string;
+            /** Contact Ids */
+            contact_ids?: string[];
+            /** Offer Id */
+            offer_id?: string | null;
+            /** Pipeline Id */
+            pipeline_id?: string | null;
+            /** Value */
+            value?: number | null;
+            /**
+             * Currency
+             * @default USD
+             */
+            currency: string;
+            /** Expected Close */
+            expected_close?: string | null;
+            /**
+             * Next Action
+             * @default
+             */
+            next_action: string;
         };
         /** OrgCapabilitiesRequest */
         OrgCapabilitiesRequest: {
@@ -4141,10 +5415,36 @@ export interface components {
             /** Filename */
             filename: string;
         };
+        /** PipelineIn */
+        PipelineIn: {
+            /** Name */
+            name: string;
+            /** Stages */
+            stages: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+        };
         /** PlanCreate */
         PlanCreate: {
             /** Spec Id */
             spec_id: string;
+        };
+        /**
+         * PlanHint
+         * @description Founder-requested direction for plan generation. A request Hermes may
+         *     decline with reasons, never an override: the generated plan still passes
+         *     grounding and governance unchanged.
+         */
+        PlanHint: {
+            /** Method Hint */
+            method_hint?: string | null;
+            /** Channel Hint */
+            channel_hint?: string | null;
         };
         /**
          * PlanLimits
@@ -4194,6 +5494,10 @@ export interface components {
             model_name: string;
             /** Model Provider */
             model_provider: string;
+            /** Method Hint */
+            method_hint?: string | null;
+            /** Channel Hint */
+            channel_hint?: string | null;
         };
         /**
          * ProductFacts
@@ -4286,6 +5590,23 @@ export interface components {
             /** Created */
             created: boolean;
         };
+        /**
+         * ProviderAccountSummary
+         * @description One named Buffer account, masked. Channels are the bound platforms.
+         */
+        ProviderAccountSummary: {
+            /** Name */
+            name: string;
+            /** Api Key Present */
+            api_key_present: boolean;
+            /** Organization Id */
+            organization_id?: string | null;
+            /**
+             * Channels
+             * @default []
+             */
+            channels: string[];
+        };
         /** ProviderGroup */
         ProviderGroup: {
             /** Id */
@@ -4304,6 +5625,16 @@ export interface components {
             configured_count: number;
             /** Total Keys */
             total_keys: number;
+            /**
+             * Connections
+             * @default []
+             */
+            connections: components["schemas"]["ConnectionSummary"][];
+            /**
+             * Accounts
+             * @default []
+             */
+            accounts: components["schemas"]["ProviderAccountSummary"][];
         };
         /** ProviderLimits */
         ProviderLimits: {
@@ -4403,10 +5734,20 @@ export interface components {
             email: string | null;
             /** Lead Stage */
             lead_stage: string;
+            /** Channel */
+            channel: string;
+            /** Kind */
+            kind: string;
             /** Subject */
             subject: string | null;
             /** Body */
             body: string | null;
+            /** Answers */
+            answers: {
+                [key: string]: unknown;
+            } | null;
+            /** Form Slug */
+            form_slug: string | null;
             /** Provider Message Id */
             provider_message_id: string | null;
             /** Received At */
@@ -4468,6 +5809,36 @@ export interface components {
             team?: string[];
             /** Budget */
             budget?: string | null;
+        };
+        /** RuleIn */
+        RuleIn: {
+            /** Name */
+            name: string;
+            /** Icp Id */
+            icp_id?: string | null;
+            /** Pipeline Id */
+            pipeline_id?: string | null;
+            /** Criterion */
+            criterion: string;
+            /**
+             * Rule Type
+             * @default fit
+             */
+            rule_type: string;
+            /**
+             * Weight
+             * @default 1
+             */
+            weight: number;
+            /** Threshold */
+            threshold?: number | null;
+            /**
+             * Hard Disqualify
+             * @default false
+             */
+            hard_disqualify: boolean;
+            /** Evidence Required */
+            evidence_required?: string[];
         };
         /** SalesDraftRecord */
         SalesDraftRecord: {
@@ -4640,6 +6011,19 @@ export interface components {
             /** Desired Contacts */
             desired_contacts: number;
         };
+        /** SessionIn */
+        SessionIn: {
+            /**
+             * Path
+             * @default A
+             */
+            path: string;
+            /**
+             * Current Step
+             * @default company
+             */
+            current_step: string;
+        };
         /** SessionStatus */
         SessionStatus: {
             /** Authenticated */
@@ -4692,7 +6076,8 @@ export interface components {
         };
         /**
          * SimulationRun
-         * @description Simulation-only execution request. `targets` are identifiers, never people.
+         * @description Execution request. `targets` are identifiers the founder chose at run
+         *     time: lead ids for research and drafting, draft ids for sends.
          */
         SimulationRun: {
             /** Targets */
@@ -4721,6 +6106,23 @@ export interface components {
              * @default script
              */
             source_name: string;
+            /**
+             * Style
+             * @default noir
+             */
+            style: string;
+        };
+        /** StageMove */
+        StageMove: {
+            /** Stage */
+            stage: string;
+            /**
+             * Lost Reason
+             * @default
+             */
+            lost_reason: string;
+            /** Outcome */
+            outcome?: string | null;
         };
         /**
          * StepExecution
@@ -5519,6 +6921,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_manual_post_company_marketing_manual_posts_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualPostPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualPostPreviewView"];
                 };
             };
             /** @description Validation Error */
@@ -6640,7 +8075,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PlanHint"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -6658,6 +8097,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_evidence_company_automation_evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    suggest_next_runs_company_automation_suggest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    suggest_campaign_move_company_automation_suggest_campaign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -6976,6 +8481,1268 @@ export interface operations {
             };
         };
     };
+    list_offers_company_commercial_offers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    create_offer_company_commercial_offers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfferIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_offer_company_commercial_offers__rid__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    icp_templates_company_commercial_icp_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    archive_icp_company_commercial_icps__rid__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_icps_company_commercial_icps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    create_icp_company_commercial_icps_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ICPIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_criteria_company_commercial_icps_suggest_criteria_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_icp_company_commercial_icps__rid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_icp_company_commercial_icps__rid__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_icp_company_commercial_icps__rid__evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_accounts_company_commercial_accounts_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                lifecycle_status?: string;
+                sort?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_account_company_commercial_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_new_accounts_company_commercial_accounts_suggest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_account_company_commercial_accounts__rid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_account_company_commercial_accounts__rid__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_account_company_commercial_accounts__rid__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pipelines_company_commercial_pipelines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    create_pipeline_company_commercial_pipelines_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PipelineIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_opportunities_company_commercial_opportunities_get: {
+        parameters: {
+            query?: {
+                stage?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_opportunity_company_commercial_opportunities_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpportunityIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_opportunity_company_commercial_opportunities__rid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_pipeline_company_commercial_pipelines__rid__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_opportunity_company_commercial_opportunities__rid__move_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StageMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rules_company_commercial_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    create_rule_company_commercial_rules_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    qualify_account_company_commercial_accounts__rid__qualify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_activity_company_commercial_activities_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivityIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_imports_company_commercial_imports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    preview_import_company_commercial_imports_preview_post: {
+        parameters: {
+            query?: {
+                entity_type?: string;
+            };
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_preview_import_company_commercial_imports_preview_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    commit_import_company_commercial_imports__rid__commit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportCommit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    integration_catalog_company_commercial_integrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    connect_provider_company_commercial_integrations__provider__connect_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_provider_company_commercial_integrations__provider__disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_provider_company_commercial_integrations__provider__sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sessions_company_commercial_onboarding_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    create_session_company_commercial_onboarding_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_session_company_commercial_onboarding_sessions__rid__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     contacts_company_sales_contacts_get: {
         parameters: {
             query?: {
@@ -7176,7 +9943,7 @@ export interface operations {
                 page?: number;
                 page_size?: number;
                 q?: string;
-                view?: "all" | "latest" | "suppressed";
+                view?: "all" | "latest" | "submissions" | "suppressed";
                 sort?: "recent" | "oldest" | "company";
             };
             header?: never;
@@ -7242,7 +10009,7 @@ export interface operations {
                 page?: number;
                 page_size?: number;
                 q?: string;
-                view?: "all" | "dated" | "undated";
+                view?: "all" | "dated" | "undated" | "awaiting";
                 sort?: "recent" | "oldest" | "company";
             };
             header?: never;
@@ -7510,7 +10277,9 @@ export interface operations {
     create_workflow_company_workflows_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7574,7 +10343,9 @@ export interface operations {
     run_company_workflows__workflow_id__run_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
             path: {
                 workflow_id: string;
             };
@@ -7609,7 +10380,9 @@ export interface operations {
     pause_company_workflows__workflow_id__pause_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
             path: {
                 workflow_id: string;
             };
@@ -8269,6 +11042,43 @@ export interface operations {
             };
         };
     };
+    request_meeting_company_sales_leads__lead_id__meeting_request_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                lead_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingRequestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     suppress_company_sales_leads__lead_id__suppress_post: {
         parameters: {
             query?: {
@@ -8283,6 +11093,120 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    intake_config_company_commercial_forms_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_forms_company_commercial_forms_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    create_form_company_commercial_forms_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FormCreatePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_form_company_commercial_forms__slug__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FormUpdatePayload"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -8436,6 +11360,96 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    buffer_setup_accounts_company_setup_buffer_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BufferSetupAccountsView"];
+                };
+            };
+        };
+    };
+    discover_buffer_channels_company_setup_buffer_discover_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BufferDiscoverPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BufferDiscoveryView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_buffer_account_company_setup_buffer_connect_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-founder-action-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BufferConnectPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BufferConnectResult"];
                 };
             };
             /** @description Validation Error */
@@ -9687,6 +12701,163 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    external_form_intake_integrations_leads_form_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Company-Core-Lead-Secret"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hosted_form_f__slug__get: {
+        parameters: {
+            query?: {
+                sent?: number;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hosted_form_submit_f__slug__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    booking_page_book__lead_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lead_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    booking_confirm_book__lead_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lead_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

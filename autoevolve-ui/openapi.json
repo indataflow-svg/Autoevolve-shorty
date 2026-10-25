@@ -756,6 +756,53 @@
         }
       }
     },
+    "/company/marketing/manual-posts/preview": {
+      "post": {
+        "tags": [
+          "marketing"
+        ],
+        "summary": "Preview Manual Post",
+        "description": "Preview the caption and tracking link a manual post will receive.\n\nRead-only: nothing is persisted and no provider is called. It reuses the\nexact helpers the create path uses, so the operator sees the real caption\ninstead of a client-side approximation that could drift.",
+        "operationId": "preview_manual_post_company_marketing_manual_posts_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualPostPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualPostPreviewView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/company/marketing/manual-posts/session": {
       "post": {
         "tags": [
@@ -2549,7 +2596,7 @@
           "automation"
         ],
         "summary": "Create Workflows Validation Plan",
-        "description": "Canonical automation name for plan creation. Same behavior as /plan above.",
+        "description": "Canonical automation name for plan creation. Same behavior as /plan above.\n\nAccepts an optional founder hint (method/channel) recorded in provenance.\nHints are requests Hermes may decline with reasons; ungovernable methods\nand unsupported channels are refused here with a 422 instead.",
         "operationId": "create_workflows_validation_plan_company_automation_plan_post",
         "security": [
           {
@@ -2574,6 +2621,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PlanHint"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Hints"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2621,6 +2685,93 @@
             }
           }
         }
+      }
+    },
+    "/company/automation/evidence": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Read Evidence",
+        "description": "Everything the business has told or shown us, in one place.\n\nRead-only and transparent: this is exactly what the account, workflow,\nand campaign suggesters see, so a recommendation can always be traced\nback to the evidence behind it. Unknown slots stay unknown.",
+        "operationId": "read_evidence_company_automation_evidence_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Read Evidence Company Automation Evidence Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/automation/suggest": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Suggest Next Runs",
+        "description": "Rank the next governed runs from evidence. Advisory only.\n\nDeterministic: the same evidence always yields the same ranking. Nothing\nis generated, governed, approved, or run here \u2014 each recommendation names\nthe method to plan with, when it is due, how long to give it, and the\nexpected range with its basis.",
+        "operationId": "suggest_next_runs_company_automation_suggest_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Suggest Next Runs Company Automation Suggest Post"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/automation/suggest-campaign": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Suggest Campaign Move",
+        "description": "Propose the marketing move from evidence. Advisory only.\n\nVideo lines carry their source fields, missing slots are listed with the\nexact field to fill, and the campaign path and provider follow recorded\nresults. Nothing is created or queued.",
+        "operationId": "suggest_campaign_move_company_automation_suggest_campaign_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Suggest Campaign Move Company Automation Suggest Campaign Post"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
       }
     },
     "/company/automation/governance": {
@@ -2798,7 +2949,7 @@
           "automation"
         ],
         "summary": "Run Workflows Governance",
-        "description": "Run the approved workflow through the existing runner.\n\nThe only authorized action is ``simulate_outreach``: it returns a simulated\nresult and performs no external side effect.",
+        "description": "Run the approved workflow through the existing runner.\n\nGovernance may authorize ``simulate_outreach`` (rehearses, touches nothing)\nor ``draft_outreach`` (writes local drafts the founder sends by hand).\nNeither reaches an external system, and the approved limits are re-checked\nhere \u2014 a cap tightened after approval still governs this run.",
         "operationId": "run_workflows_governance_company_automation_governance_run_post",
         "security": [
           {
@@ -3157,6 +3308,2199 @@
             "HTTPBasic": []
           }
         ]
+      }
+    },
+    "/company/commercial/offers": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "List Offers",
+        "operationId": "list_offers_company_commercial_offers_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Offers Company Commercial Offers Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Create Offer",
+        "operationId": "create_offer_company_commercial_offers_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfferIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Offer Company Commercial Offers Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/offers/{rid}": {
+      "patch": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Update Offer",
+        "operationId": "update_offer_company_commercial_offers__rid__patch",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Offer Company Commercial Offers  Rid  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/icp-templates": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Icp Templates",
+        "operationId": "icp_templates_company_commercial_icp_templates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Icp Templates Company Commercial Icp Templates Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/commercial/icps/{rid}/archive": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Archive Icp",
+        "operationId": "archive_icp_company_commercial_icps__rid__archive_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Archive Icp Company Commercial Icps  Rid  Archive Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/icps": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "List Icps",
+        "operationId": "list_icps_company_commercial_icps_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Icps Company Commercial Icps Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Create Icp",
+        "operationId": "create_icp_company_commercial_icps_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ICPIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Icp Company Commercial Icps Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/icps/suggest-criteria": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Suggest Criteria",
+        "description": "Propose ICP criteria mined from the founder's own records.\n\nRead-only and deterministic: the best accounts (customers, else engaged,\nelse everything) contribute their most common industry/size/region with\nsupport counts, and every candidate field reports its fill rate across\nall accounts \u2014 so a rule that would score `unknown` everywhere is visible\nbefore it is saved. Thin evidence warns instead of pretending.",
+        "operationId": "suggest_criteria_company_commercial_icps_suggest_criteria_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Suggest Criteria Company Commercial Icps Suggest Criteria Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/commercial/icps/{rid}": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Get Icp",
+        "operationId": "get_icp_company_commercial_icps__rid__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Icp Company Commercial Icps  Rid  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Update Icp",
+        "operationId": "update_icp_company_commercial_icps__rid__patch",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Icp Company Commercial Icps  Rid  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/icps/{rid}/evaluate": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Evaluate Icp",
+        "operationId": "evaluate_icp_company_commercial_icps__rid__evaluate_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Account"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Evaluate Icp Company Commercial Icps  Rid  Evaluate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/accounts": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "List Accounts",
+        "operationId": "list_accounts_company_commercial_accounts_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "lifecycle_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Lifecycle Status"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "updated",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Accounts Company Commercial Accounts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Create Account",
+        "operationId": "create_account_company_commercial_accounts_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Account Company Commercial Accounts Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/accounts/suggest": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Suggest New Accounts",
+        "description": "Propose accounts from evidence nobody has claimed yet.\n\nUnclaimed lead domains and research candidates, each with its reasons.\nNothing is created here: confirming a suggestion is the existing\nPOST /accounts, so every account still passes the same validation and\ndomain-dedupe as a hand-entered one.",
+        "operationId": "suggest_new_accounts_company_commercial_accounts_suggest_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Suggest New Accounts Company Commercial Accounts Suggest Post"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/commercial/accounts/{rid}": {
+      "patch": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Update Account",
+        "operationId": "update_account_company_commercial_accounts__rid__patch",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Account Company Commercial Accounts  Rid  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Delete Account",
+        "operationId": "delete_account_company_commercial_accounts__rid__delete",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Account Company Commercial Accounts  Rid  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Get Account",
+        "operationId": "get_account_company_commercial_accounts__rid__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Account Company Commercial Accounts  Rid  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/pipelines": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "List Pipelines",
+        "operationId": "list_pipelines_company_commercial_pipelines_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Pipelines Company Commercial Pipelines Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Create Pipeline",
+        "operationId": "create_pipeline_company_commercial_pipelines_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelineIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Pipeline Company Commercial Pipelines Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/opportunities": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "List Opportunities",
+        "operationId": "list_opportunities_company_commercial_opportunities_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Stage"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Opportunities Company Commercial Opportunities Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Create Opportunity",
+        "operationId": "create_opportunity_company_commercial_opportunities_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpportunityIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Opportunity Company Commercial Opportunities Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/opportunities/{rid}": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Get Opportunity",
+        "operationId": "get_opportunity_company_commercial_opportunities__rid__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Opportunity Company Commercial Opportunities  Rid  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/pipelines/{rid}": {
+      "patch": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Update Pipeline",
+        "operationId": "update_pipeline_company_commercial_pipelines__rid__patch",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Pipeline Company Commercial Pipelines  Rid  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/opportunities/{rid}/move": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Move Opportunity",
+        "operationId": "move_opportunity_company_commercial_opportunities__rid__move_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StageMove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Move Opportunity Company Commercial Opportunities  Rid  Move Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/rules": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "List Rules",
+        "operationId": "list_rules_company_commercial_rules_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Rules Company Commercial Rules Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Create Rule",
+        "operationId": "create_rule_company_commercial_rules_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Rule Company Commercial Rules Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/accounts/{rid}/qualify": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Qualify Account",
+        "operationId": "qualify_account_company_commercial_accounts__rid__qualify_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Qualify Account Company Commercial Accounts  Rid  Qualify Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/activities": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Log Activity",
+        "operationId": "log_activity_company_commercial_activities_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivityIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Log Activity Company Commercial Activities Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/imports": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "List Imports",
+        "operationId": "list_imports_company_commercial_imports_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List Imports Company Commercial Imports Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/commercial/imports/preview": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Preview Import",
+        "operationId": "preview_import_company_commercial_imports_preview_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "account",
+              "title": "Entity Type"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_import_company_commercial_imports_preview_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Preview Import Company Commercial Imports Preview Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/imports/{rid}/commit": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Commit Import",
+        "operationId": "commit_import_company_commercial_imports__rid__commit_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportCommit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Commit Import Company Commercial Imports  Rid  Commit Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/integrations": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Integration Catalog",
+        "operationId": "integration_catalog_company_commercial_integrations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Integration Catalog Company Commercial Integrations Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/commercial/integrations/{provider}/connect": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Connect Provider",
+        "operationId": "connect_provider_company_commercial_integrations__provider__connect_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Connect Provider Company Commercial Integrations  Provider  Connect Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/integrations/{provider}/disconnect": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Disconnect Provider",
+        "operationId": "disconnect_provider_company_commercial_integrations__provider__disconnect_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Disconnect Provider Company Commercial Integrations  Provider  Disconnect Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/integrations/{provider}/sync": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Sync Provider",
+        "operationId": "sync_provider_company_commercial_integrations__provider__sync_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Sync Provider Company Commercial Integrations  Provider  Sync Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/onboarding-sessions": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "List Sessions",
+        "operationId": "list_sessions_company_commercial_onboarding_sessions_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Sessions Company Commercial Onboarding Sessions Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Create Session",
+        "operationId": "create_session_company_commercial_onboarding_sessions_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Session Company Commercial Onboarding Sessions Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/onboarding-sessions/{rid}": {
+      "patch": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Update Session",
+        "operationId": "update_session_company_commercial_onboarding_sessions__rid__patch",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Session Company Commercial Onboarding Sessions  Rid  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/company/sales/contacts": {
@@ -3630,6 +5974,7 @@
               "enum": [
                 "all",
                 "latest",
+                "submissions",
                 "suppressed"
               ],
               "type": "string",
@@ -3779,7 +6124,8 @@
               "enum": [
                 "all",
                 "dated",
-                "undated"
+                "undated",
+                "awaiting"
               ],
               "type": "string",
               "default": "all",
@@ -4244,6 +6590,24 @@
             "HTTPBasic": []
           }
         ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -4414,6 +6778,22 @@
               "type": "string",
               "title": "Workflow Id"
             }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
           }
         ],
         "requestBody": {
@@ -4477,6 +6857,22 @@
             "schema": {
               "type": "string",
               "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
             }
           }
         ],
@@ -5718,6 +8114,80 @@
         }
       }
     },
+    "/company/sales/leads/{lead_id}/meeting-request": {
+      "post": {
+        "tags": [
+          "sales-actions"
+        ],
+        "summary": "Request Meeting",
+        "description": "Founder action: offer slots to the contact by email. The request is\nalways recorded; the email is attempted after and its failure is reported\nhonestly without losing the record (same pattern as enrichment).",
+        "operationId": "request_meeting_company_sales_leads__lead_id__meeting_request_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lead_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lead Id"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeetingRequestPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingRequestResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/company/sales/leads/{lead_id}/suppress": {
       "post": {
         "tags": [
@@ -5767,6 +8237,190 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/forms/config": {
+      "get": {
+        "tags": [
+          "forms"
+        ],
+        "summary": "Intake Config",
+        "description": "Everything an external form tool needs, on one screen.\n\nThe endpoint URL is built from COMPANY_PUBLIC_URL (the address the tool\nmust reach), not the browser origin: the founder may be viewing the\ndashboard on a LAN address the outside world cannot use. The secret is\nonly ever read from the environment \u2014 there is no other copy of it.",
+        "operationId": "intake_config_company_commercial_forms_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Intake Config Company Commercial Forms Config Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/commercial/forms": {
+      "get": {
+        "tags": [
+          "forms"
+        ],
+        "summary": "List Forms",
+        "operationId": "list_forms_company_commercial_forms_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "forms"
+        ],
+        "summary": "Create Form",
+        "operationId": "create_form_company_commercial_forms_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormCreatePayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/forms/{slug}": {
+      "patch": {
+        "tags": [
+          "forms"
+        ],
+        "summary": "Update Form",
+        "operationId": "update_form_company_commercial_forms__slug__patch",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormUpdatePayload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6009,6 +8663,160 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/setup/buffer/accounts": {
+      "get": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "Buffer Setup Accounts",
+        "operationId": "buffer_setup_accounts_company_setup_buffer_accounts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BufferSetupAccountsView"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/setup/buffer/discover": {
+      "post": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "Discover Buffer Channels",
+        "operationId": "discover_buffer_channels_company_setup_buffer_discover_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BufferDiscoverPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BufferDiscoveryView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/setup/buffer/connect": {
+      "post": {
+        "tags": [
+          "setup"
+        ],
+        "summary": "Connect Buffer Account",
+        "operationId": "connect_buffer_account_company_setup_buffer_connect_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BufferConnectPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BufferConnectResult"
+                }
               }
             }
           },
@@ -8206,10 +11014,398 @@
           }
         }
       }
+    },
+    "/integrations/leads/form": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "External Form Intake",
+        "description": "Shared submission endpoint for external form tools.\n\nAccepts JSON ({\"form\": \"contact\", \"answers\": {...}}, a flat object of\nanswers, or a flat object with a \"form\" key) or form-encoded bodies.\nKnown keys map onto the lead record; everything else is kept as clean\nanswers on the inbound interaction.",
+        "operationId": "external_form_intake_integrations_leads_form_post",
+        "parameters": [
+          {
+            "name": "X-Company-Core-Lead-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Company-Core-Lead-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/f/{slug}": {
+      "get": {
+        "tags": [
+          "forms-public"
+        ],
+        "summary": "Hosted Form",
+        "operationId": "hosted_form_f__slug__get",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "sent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Sent"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "forms-public"
+        ],
+        "summary": "Hosted Form Submit",
+        "operationId": "hosted_form_submit_f__slug__post",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/book/{lead_id}": {
+      "get": {
+        "tags": [
+          "forms-public"
+        ],
+        "summary": "Booking Page",
+        "operationId": "booking_page_book__lead_id__get",
+        "parameters": [
+          {
+            "name": "lead_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lead Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "forms-public"
+        ],
+        "summary": "Booking Confirm",
+        "operationId": "booking_confirm_book__lead_id__post",
+        "parameters": [
+          {
+            "name": "lead_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lead Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AccountIn": {
+        "properties": {
+          "company_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Company Name"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain",
+            "default": ""
+          },
+          "industry": {
+            "type": "string",
+            "title": "Industry",
+            "default": ""
+          },
+          "company_size": {
+            "type": "string",
+            "title": "Company Size",
+            "default": ""
+          },
+          "region": {
+            "type": "string",
+            "title": "Region",
+            "default": ""
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "manual"
+          },
+          "source_ref": {
+            "type": "string",
+            "title": "Source Ref",
+            "default": ""
+          },
+          "icp_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icp Id"
+          },
+          "verification_status": {
+            "type": "string",
+            "title": "Verification Status",
+            "default": "unverified"
+          },
+          "lifecycle_status": {
+            "type": "string",
+            "title": "Lifecycle Status",
+            "default": "target"
+          },
+          "owner": {
+            "type": "string",
+            "title": "Owner",
+            "default": ""
+          },
+          "next_action": {
+            "type": "string",
+            "title": "Next Action",
+            "default": ""
+          },
+          "attributes": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attributes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "company_name"
+        ],
+        "title": "AccountIn"
+      },
+      "ActivityIn": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 2,
+            "title": "Type"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome",
+            "default": ""
+          },
+          "owner": {
+            "type": "string",
+            "title": "Owner",
+            "default": ""
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "lead_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Id"
+          },
+          "opportunity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opportunity Id"
+          },
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "manual"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "ActivityIn"
+      },
       "ApprovalPayload": {
         "properties": {
           "approved": {
@@ -8473,6 +11669,20 @@
         ],
         "title": "Body_ingest_pack_company_video_ingest_pack_post"
       },
+      "Body_preview_import_company_commercial_imports_preview_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_preview_import_company_commercial_imports_preview_post"
+      },
       "Body_upload_campaign_voice_recording_company_marketing_campaigns__campaign_id__voice_recording_post": {
         "properties": {
           "recording": {
@@ -8536,6 +11746,60 @@
         ],
         "title": "BufferAccountInfo"
       },
+      "BufferAccountView": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "api_key_present": {
+            "type": "boolean",
+            "title": "Api Key Present"
+          },
+          "organization_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Id"
+          },
+          "instagram_channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instagram Channel Id"
+          },
+          "x_channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X Channel Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "api_key_present",
+          "organization_id",
+          "instagram_channel_id",
+          "x_channel_id"
+        ],
+        "title": "BufferAccountView"
+      },
       "BufferAccountsView": {
         "properties": {
           "accounts": {
@@ -8562,6 +11826,255 @@
           "accounts"
         ],
         "title": "BufferAccountsView"
+      },
+      "BufferChannelView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "descriptor": {
+            "type": "string",
+            "title": "Descriptor"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "supported": {
+            "type": "boolean",
+            "title": "Supported"
+          },
+          "usable": {
+            "type": "boolean",
+            "title": "Usable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "display_name",
+          "descriptor",
+          "service",
+          "type",
+          "platform",
+          "supported",
+          "usable"
+        ],
+        "title": "BufferChannelView"
+      },
+      "BufferConnectPayload": {
+        "properties": {
+          "account": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Account",
+            "default": "default"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "organization_id": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Organization Id"
+          },
+          "instagram_channel_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instagram Channel Id"
+          },
+          "x_channel_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X Channel Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "organization_id"
+        ],
+        "title": "BufferConnectPayload"
+      },
+      "BufferConnectResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "account": {
+            "type": "string",
+            "title": "Account"
+          },
+          "organization_id": {
+            "type": "string",
+            "title": "Organization Id"
+          },
+          "instagram_channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instagram Channel Id"
+          },
+          "x_channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X Channel Id"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "saved": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Saved"
+          },
+          "backup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup"
+          },
+          "restart_required": {
+            "type": "boolean",
+            "title": "Restart Required"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "account",
+          "organization_id",
+          "instagram_channel_id",
+          "x_channel_id",
+          "warnings",
+          "saved",
+          "backup",
+          "restart_required"
+        ],
+        "title": "BufferConnectResult"
+      },
+      "BufferDiscoverPayload": {
+        "properties": {
+          "account": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Account",
+            "default": "default"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          }
+        },
+        "type": "object",
+        "title": "BufferDiscoverPayload"
+      },
+      "BufferDiscoveryView": {
+        "properties": {
+          "account": {
+            "type": "string",
+            "title": "Account"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "organizations": {
+            "items": {
+              "$ref": "#/components/schemas/BufferOrganizationView"
+            },
+            "type": "array",
+            "title": "Organizations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account",
+          "account_id",
+          "organizations"
+        ],
+        "title": "BufferDiscoveryView"
       },
       "BufferInsightsView": {
         "properties": {
@@ -8670,6 +12183,32 @@
         ],
         "title": "BufferMetric"
       },
+      "BufferOrganizationView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/BufferChannelView"
+            },
+            "type": "array",
+            "title": "Channels"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "channels"
+        ],
+        "title": "BufferOrganizationView"
+      },
       "BufferScheduleRequest": {
         "properties": {
           "mode": {
@@ -8722,6 +12261,22 @@
           "message"
         ],
         "title": "BufferScheduleResult"
+      },
+      "BufferSetupAccountsView": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/BufferAccountView"
+            },
+            "type": "array",
+            "title": "Accounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accounts"
+        ],
+        "title": "BufferSetupAccountsView"
       },
       "BuyerRequest": {
         "properties": {
@@ -10722,6 +14277,59 @@
         ],
         "title": "CompanySummary"
       },
+      "ConnectIn": {
+        "properties": {
+          "external_account_ref": {
+            "type": "string",
+            "title": "External Account Ref",
+            "default": ""
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "title": "ConnectIn"
+      },
+      "ConnectionSummary": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "sync_status": {
+            "type": "string",
+            "title": "Sync Status"
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "status",
+          "sync_status"
+        ],
+        "title": "ConnectionSummary",
+        "description": "A canonical connection row, sans secrets. The registry owns state;\nthis endpoint only projects it next to key presence so the two views\ncannot disagree about whether an organization is connected."
+      },
       "ConstraintFacts": {
         "properties": {
           "geographic": {
@@ -11834,6 +15442,138 @@
         ],
         "title": "FeedbackEntry"
       },
+      "FormCreatePayload": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FormFieldPayload"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "fields"
+        ],
+        "title": "FormCreatePayload"
+      },
+      "FormFieldPayload": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "text"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": false
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "FormFieldPayload"
+      },
+      "FormUpdatePayload": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FormFieldPayload"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          },
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          }
+        },
+        "type": "object",
+        "title": "FormUpdatePayload"
+      },
       "GovernanceLimits": {
         "properties": {
           "max_spend_usd": {
@@ -12168,6 +15908,92 @@
         ],
         "title": "HomeView"
       },
+      "ICPIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "segment": {
+            "type": "string",
+            "title": "Segment",
+            "default": ""
+          },
+          "offer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Id"
+          },
+          "criteria": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Criteria"
+          },
+          "exclusions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Exclusions"
+          },
+          "weights": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Weights"
+          },
+          "thresholds": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Thresholds"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Provenance"
+          },
+          "evidence_sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Sources"
+          },
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "confidence": {
+            "type": "string",
+            "title": "Confidence",
+            "default": "provisional"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "provisional"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ICPIn"
+      },
       "Icp": {
         "properties": {
           "industry": {
@@ -12197,6 +16023,37 @@
           "description"
         ],
         "title": "Icp"
+      },
+      "ImportCommit": {
+        "properties": {
+          "mapping": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Mapping"
+          },
+          "resolutions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Resolutions"
+          },
+          "skip_rows": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Skip Rows"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "create_only"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mapping"
+        ],
+        "title": "ImportCommit"
       },
       "InboundEmailPayload": {
         "properties": {
@@ -12408,6 +16265,11 @@
           "configured_keys": {
             "type": "integer",
             "title": "Configured Keys"
+          },
+          "connected_providers": {
+            "type": "integer",
+            "title": "Connected Providers",
+            "default": 0
           }
         },
         "type": "object",
@@ -12832,6 +16694,113 @@
           "org_id"
         ],
         "title": "ManualPostOrgRequest"
+      },
+      "ManualPostPreviewRequest": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Platform"
+          },
+          "post_type": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 3,
+            "title": "Post Type",
+            "default": "carousel"
+          },
+          "destination_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Url"
+          },
+          "link_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Label"
+          },
+          "filenames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Filenames"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform"
+        ],
+        "title": "ManualPostPreviewRequest"
+      },
+      "ManualPostPreviewView": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "post_type": {
+            "type": "string",
+            "title": "Post Type"
+          },
+          "destination_url": {
+            "type": "string",
+            "title": "Destination Url"
+          },
+          "default_destination_url": {
+            "type": "string",
+            "title": "Default Destination Url"
+          },
+          "link_label": {
+            "type": "string",
+            "title": "Link Label"
+          },
+          "tracked_url": {
+            "type": "string",
+            "title": "Tracked Url"
+          },
+          "caption": {
+            "type": "string",
+            "title": "Caption"
+          },
+          "cta": {
+            "type": "string",
+            "title": "Cta"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform",
+          "post_type",
+          "destination_url",
+          "default_destination_url",
+          "link_label",
+          "tracked_url",
+          "caption",
+          "cta",
+          "title"
+        ],
+        "title": "ManualPostPreviewView",
+        "description": "What a manual post will look like before anything is persisted."
       },
       "ManualPostSessionRequest": {
         "properties": {
@@ -13264,6 +17233,20 @@
             ],
             "title": "Scheduled For"
           },
+          "slots": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slots"
+          },
           "note": {
             "anyOf": [
               {
@@ -13309,6 +17292,7 @@
           "email",
           "status",
           "scheduled_for",
+          "slots",
           "note",
           "recorded_at",
           "source"
@@ -13343,6 +17327,92 @@
         "additionalProperties": true,
         "type": "object",
         "title": "MeetingMetadata"
+      },
+      "MeetingRequestPayload": {
+        "properties": {
+          "slots": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Slots"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 600
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slots"
+        ],
+        "title": "MeetingRequestPayload"
+      },
+      "MeetingRequestResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "lead_id": {
+            "type": "string",
+            "title": "Lead Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "email_sent": {
+            "type": "boolean",
+            "title": "Email Sent"
+          },
+          "booking_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Url"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "lead_id",
+          "status",
+          "email_sent",
+          "booking_url",
+          "message"
+        ],
+        "title": "MeetingRequestResult"
       },
       "MeetingScheduledPayload": {
         "properties": {
@@ -13487,6 +17557,68 @@
         "title": "OfferFacts",
         "description": "The commercial offer."
       },
+      "OfferIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "default": ""
+          },
+          "target_market": {
+            "type": "string",
+            "title": "Target Market",
+            "default": ""
+          },
+          "pricing_model": {
+            "type": "string",
+            "title": "Pricing Model",
+            "default": ""
+          },
+          "price_info": {
+            "type": "string",
+            "title": "Price Info",
+            "default": ""
+          },
+          "value_prop": {
+            "type": "string",
+            "title": "Value Prop",
+            "default": ""
+          },
+          "differentiators": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Differentiators"
+          },
+          "limitations": {
+            "type": "string",
+            "title": "Limitations",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "OfferIn"
+      },
       "OnboardingView": {
         "properties": {
           "marketing_stage": {
@@ -13586,6 +17718,80 @@
         ],
         "title": "OnboardingView",
         "description": "The onboarding projection plus the initial route from the saved context."
+      },
+      "OpportunityIn": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "contact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Contact Ids"
+          },
+          "offer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Id"
+          },
+          "pipeline_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Id"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "USD"
+          },
+          "expected_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Close"
+          },
+          "next_action": {
+            "type": "string",
+            "title": "Next Action",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id"
+        ],
+        "title": "OpportunityIn"
       },
       "OrgCapabilitiesRequest": {
         "properties": {
@@ -13834,6 +18040,36 @@
         ],
         "title": "PackUpload"
       },
+      "PipelineIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "stages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "minItems": 2,
+            "title": "Stages"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "stages"
+        ],
+        "title": "PipelineIn"
+      },
       "PlanCreate": {
         "properties": {
           "spec_id": {
@@ -13848,6 +18084,35 @@
           "spec_id"
         ],
         "title": "PlanCreate"
+      },
+      "PlanHint": {
+        "properties": {
+          "method_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method Hint"
+          },
+          "channel_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Hint"
+          }
+        },
+        "type": "object",
+        "title": "PlanHint",
+        "description": "Founder-requested direction for plan generation. A request Hermes may\ndecline with reasons, never an override: the generated plan still passes\ngrounding and governance unchanged."
       },
       "PlanLimits": {
         "properties": {
@@ -13963,6 +18228,28 @@
           "model_provider": {
             "type": "string",
             "title": "Model Provider"
+          },
+          "method_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method Hint"
+          },
+          "channel_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Hint"
           }
         },
         "type": "object",
@@ -14272,6 +18559,44 @@
         ],
         "title": "ProspectResult"
       },
+      "ProviderAccountSummary": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "api_key_present": {
+            "type": "boolean",
+            "title": "Api Key Present"
+          },
+          "organization_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Id"
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Channels",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "api_key_present"
+        ],
+        "title": "ProviderAccountSummary",
+        "description": "One named Buffer account, masked. Channels are the bound platforms."
+      },
       "ProviderGroup": {
         "properties": {
           "id": {
@@ -14314,6 +18639,22 @@
           "total_keys": {
             "type": "integer",
             "title": "Total Keys"
+          },
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionSummary"
+            },
+            "type": "array",
+            "title": "Connections",
+            "default": []
+          },
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderAccountSummary"
+            },
+            "type": "array",
+            "title": "Accounts",
+            "default": []
           }
         },
         "type": "object",
@@ -14589,6 +18930,14 @@
             "type": "string",
             "title": "Lead Stage"
           },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
           "subject": {
             "anyOf": [
               {
@@ -14610,6 +18959,29 @@
               }
             ],
             "title": "Body"
+          },
+          "answers": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answers"
+          },
+          "form_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form Slug"
           },
           "provider_message_id": {
             "anyOf": [
@@ -14645,8 +19017,12 @@
           "contact_role",
           "email",
           "lead_stage",
+          "channel",
+          "kind",
           "subject",
           "body",
+          "answers",
+          "form_slug",
           "provider_message_id",
           "received_at",
           "is_latest_interaction",
@@ -14783,6 +19159,83 @@
         "type": "object",
         "title": "ResourceFacts",
         "description": "What is already available to market with."
+      },
+      "RuleIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "icp_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icp Id"
+          },
+          "pipeline_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Id"
+          },
+          "criterion": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 2,
+            "title": "Criterion"
+          },
+          "rule_type": {
+            "type": "string",
+            "title": "Rule Type",
+            "default": "fit"
+          },
+          "weight": {
+            "type": "number",
+            "title": "Weight",
+            "default": 1.0
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "hard_disqualify": {
+            "type": "boolean",
+            "title": "Hard Disqualify",
+            "default": false
+          },
+          "evidence_required": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Required"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "criterion"
+        ],
+        "title": "RuleIn"
       },
       "SalesDraftRecord": {
         "properties": {
@@ -15342,6 +19795,22 @@
         ],
         "title": "ServiceTargetEdit"
       },
+      "SessionIn": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "default": "A"
+          },
+          "current_step": {
+            "type": "string",
+            "title": "Current Step",
+            "default": "company"
+          }
+        },
+        "type": "object",
+        "title": "SessionIn"
+      },
       "SessionStatus": {
         "properties": {
           "authenticated": {
@@ -15513,7 +19982,7 @@
         },
         "type": "object",
         "title": "SimulationRun",
-        "description": "Simulation-only execution request. `targets` are identifiers, never people."
+        "description": "Execution request. `targets` are identifiers the founder chose at run\ntime: lead ids for research and drafting, draft ids for sends."
       },
       "SpecCreate": {
         "properties": {
@@ -15559,6 +20028,12 @@
             "maxLength": 160,
             "title": "Source Name",
             "default": "script"
+          },
+          "style": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Style",
+            "default": "noir"
           }
         },
         "type": "object",
@@ -15567,6 +20042,35 @@
           "project_id"
         ],
         "title": "SpecCreate"
+      },
+      "StageMove": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "lost_reason": {
+            "type": "string",
+            "title": "Lost Reason",
+            "default": ""
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage"
+        ],
+        "title": "StageMove"
       },
       "StepExecution": {
         "properties": {
