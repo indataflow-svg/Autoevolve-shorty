@@ -158,10 +158,12 @@ def submit_schedule(client: BufferClient, uploader: Uploader | None, ledger: Led
         for part in entry.values:
             if dry_run:
                 urls.append([f"https://dry.invalid/{media.sha256}/{media.path.name}" for media in part["media"]])
-            else:
+            elif part["media"]:
                 if uploader is None:
                     raise G3Error("media uploader is required")
                 urls.append([uploader.upload(handoff.campaign_id, media) for media in part["media"]])
+            else:
+                urls.append([])
         post_input = build_schedule_input(entry, resolved_id, urls, mode=mode, due_at=normalized_due_at)
         if dry_run:
             report["results"].append(
@@ -201,10 +203,12 @@ def submit_handoff(client: BufferClient, uploader: Uploader | None, ledger: Ledg
         for part in entry.values:
             if dry_run:
                 urls.append([f"https://dry.invalid/{media.sha256}/{media.path.name}" for media in part["media"]])
-            else:
+            elif part["media"]:
                 if uploader is None:
                     raise G3Error("media uploader is required")
                 urls.append([uploader.upload(handoff.campaign_id, media) for media in part["media"]])
+            else:
+                urls.append([])
         post_input = build_input(entry, resolved_id, urls)
         if post_input.get("saveToDraft") is not True or "dueAt" in post_input:
             raise G3Error("internal draft-only invariant failed")

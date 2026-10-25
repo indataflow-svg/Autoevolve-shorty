@@ -116,7 +116,10 @@ def main(argv: list[str] | None = None) -> int:
             account = load_account(args.account)
             handoff = load_handoff(args.handoff, args.asset_root)
             client = BufferClient("DRY_RUN") if args.dry_run else client_from_env(args.account)
-            uploader = None if args.dry_run else R2Uploader()
+            # R2 is only needed when media actually has to be hosted: text-only
+            # X posts carry no media, so the uploader is built lazily.
+            needs_media = any(part["media"] for entry in handoff.entries for part in entry.values)
+            uploader = None if (args.dry_run or not needs_media) else R2Uploader()
             if args.command == "schedule":
                 result = submit_schedule(client, uploader, Ledger(args.ledger), handoff,
                                          args.mode, args.due_at, args.dry_run, account)

@@ -120,6 +120,16 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(client.created[0]["saveToDraft"])
         self.assertEqual(uploader.uploads, [("camp_1", "slide.png")])
 
+    def test_text_only_x_needs_no_uploader(self):
+        value = self.base()
+        value["drafts"] = [{"platform": "x", "channel_id": "x1", "thread": [
+            {"content": "one", "media": []}, {"content": "two", "media": []}]}]
+        handoff = load_handoff(self.write(value))
+        client = FakeClient()
+        report = submit_handoff(client, None, Ledger(self.root / "ledger.db"), handoff)
+        self.assertEqual(report["results"][0]["status"], "draft_confirmed")
+        self.assertEqual(client.created[0]["assets"], [])
+
     def test_idempotency_skips_duplicate(self):
         handoff = load_handoff(self.write(self.base()))
         client, uploader = FakeClient(), FakeUploader()
