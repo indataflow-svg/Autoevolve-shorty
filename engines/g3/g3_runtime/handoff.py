@@ -11,8 +11,12 @@ from typing import Any
 from .errors import G3Error
 
 SCHEMA = "company-core.g3-handoff.v1"
-PLATFORMS = {"instagram", "instagram-standalone", "x"}
+PLATFORMS = {"instagram", "instagram-standalone", "x", "linkedin"}
 MEDIA_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "video/mp4"}
+# Buffer's documented LinkedIn set: JPG/PNG/GIF/WebP images (up to 20) and a
+# single video. AVIF never reaches LinkedIn, so it is rejected up front
+# instead of failing inside Buffer.
+LINKEDIN_MEDIA_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4"}
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -135,6 +139,17 @@ def load_handoff(path: str | Path, asset_root: str | Path | None = None) -> Hand
                 raise G3Error("G3 v1 does not mix video into an Instagram carousel")
             if platform == "x" and len(parsed_media) > 4:
                 raise G3Error("X content items are limited to 4 media files")
+            if platform == "linkedin":
+                for media in parsed_media:
+                    mime = mimetypes.guess_type(media.path.name)[0]
+                    if mime not in LINKEDIN_MEDIA_TYPES:
+                        raise G3Error(f"unsupported LinkedIn media type for {media.path.name}: {mime}")
+                if len(parsed_media) > 20:
+                    raise G3Error("LinkedIn media is limited to 20 items")
+                if len(parsed_media) > 1 and any(
+                    media.path.suffix.lower() == ".mp4" for media in parsed_media
+                ):
+                    raise G3Error("G3 v1 posts a single LinkedIn video without mixing images")
             values.append({"content": content, "media": parsed_media})
         entries.append(Entry(platform, channel_id, values))
     source_sha = _text(data.get("source_package_sha256"), "source_package_sha256").lower()

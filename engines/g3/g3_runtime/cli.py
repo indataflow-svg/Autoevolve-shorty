@@ -36,7 +36,7 @@ def parser() -> argparse.ArgumentParser:
     insights = commands.add_parser("insights", help="read one Buffer post and its available metrics (personal API key only)")
     insights.add_argument("post_id")
     doctor = commands.add_parser("doctor", help="verify Buffer, R2 configuration, and channel IDs")
-    doctor.add_argument("--require", action="append", choices=["x", "instagram"], default=[])
+    doctor.add_argument("--require", action="append", choices=["x", "instagram", "linkedin"], default=[])
     validate = commands.add_parser("validate", help="validate a G2-to-G3 handoff without network access")
     validate.add_argument("handoff")
     validate.add_argument("--asset-root")
@@ -97,11 +97,12 @@ def main(argv: list[str] | None = None) -> int:
             channels = client.channels(organization_id)
             usable = [item for item in channels if not item.get("isDisconnected") and not item.get("isLocked")]
             by_service = {str(item.get("service")): item for item in usable}
-            requested_service = {"x": "twitter", "instagram": "instagram"}
+            requested_service = {"x": "twitter", "instagram": "instagram", "linkedin": "linkedin"}
             missing = [service for service in args.require if requested_service[service] not in by_service]
             configured = {
                 "x": bool(account.x_channel_id),
                 "instagram": bool(account.instagram_channel_id),
+                "linkedin": bool(account.linkedin_channel_id),
             }
             R2Uploader()
             result = {"ok": not missing, "account": profile.get("email"),

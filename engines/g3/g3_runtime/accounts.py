@@ -18,10 +18,13 @@ class BufferAccount:
     organization_id: str
     instagram_channel_id: str
     x_channel_id: str
+    linkedin_channel_id: str
 
     def channel_for(self, platform: str) -> str:
         if platform == "x":
             value = self.x_channel_id
+        elif platform == "linkedin":
+            value = self.linkedin_channel_id
         else:
             value = self.instagram_channel_id
         if not value:
@@ -34,6 +37,7 @@ class BufferAccount:
             "organization_id": self.organization_id or None,
             "instagram_channel_id": bool(self.instagram_channel_id),
             "x_channel_id": bool(self.x_channel_id),
+            "linkedin_channel_id": bool(self.linkedin_channel_id),
         }
 
 
@@ -56,7 +60,8 @@ def load_account(name: str | None = None) -> BufferAccount:
     The default account uses the unprefixed variables (BUFFER_API_KEY, ...).
     Extra accounts use prefixed variables, e.g. BUFFER_ACME_API_KEY,
     BUFFER_ACME_ORGANIZATION_ID, BUFFER_ACME_INSTAGRAM_CHANNEL_ID,
-    BUFFER_ACME_X_CHANNEL_ID. Keys live in engines/g3/config/g3.env.
+    BUFFER_ACME_X_CHANNEL_ID, BUFFER_ACME_LINKEDIN_CHANNEL_ID.
+    Keys live in engines/g3/config/g3.env.
     """
     resolved = normalize_account_name(name)
     prefix = _prefix(resolved)
@@ -74,6 +79,7 @@ def load_account(name: str | None = None) -> BufferAccount:
         organization_id=get("ORGANIZATION_ID"),
         instagram_channel_id=get("INSTAGRAM_CHANNEL_ID"),
         x_channel_id=get("X_CHANNEL_ID"),
+        linkedin_channel_id=get("LINKEDIN_CHANNEL_ID"),
     )
 
 
@@ -95,5 +101,6 @@ def list_accounts() -> list[dict]:
             described.append(load_account(name).describe())
         except G3Error:
             described.append({"name": name, "organization_id": None,
-                              "instagram_channel_id": False, "x_channel_id": False})
+                              "instagram_channel_id": False, "x_channel_id": False,
+                              "linkedin_channel_id": False})
     return described

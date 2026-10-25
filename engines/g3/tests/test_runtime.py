@@ -130,6 +130,58 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(report["results"][0]["status"], "draft_confirmed")
         self.assertEqual(client.created[0]["assets"], [])
 
+    def _linkedin(self, media):
+        value = self.base()
+        value["drafts"] = [{"platform": "linkedin", "channel_id": "li1",
+                            "content": "Hiring update", "media": media}]
+        return value
+
+    def test_linkedin_text_only_passes(self):
+        handoff = load_handoff(self.write(self._linkedin([])))
+        self.assertEqual(handoff.entries[0].platform, "linkedin")
+
+    def test_linkedin_multi_image_passes(self):
+        second = self.root / "second.png"
+        second.write_bytes(b"png-placeholder")
+        media = [{"path": "slide.png", "sha256": self.sha},
+                 {"path": "second.png", "sha256": hashlib.sha256(b"png-placeholder").hexdigest()}]
+        handoff = load_handoff(self.write(self._linkedin(media)))
+        client = FakeClient()
+        report = submit_handoff(client, FakeUploader(), Ledger(self.root / "ledger.db"), handoff)
+        self.assertEqual(report["results"][0]["status"], "draft_confirmed")
+        self.assertEqual(len(client.created[0]["assets"]), 2)
+
+    def test_linkedin_rejects_avif(self):
+        media = self.root / "photo.avif"
+        media.write_bytes(b"avif-placeholder")
+        with self.assertRaises(G3Error):
+            load_handoff(self.write(self._linkedin(
+                [{"path": "photo.avif", "sha256": hashlib.sha256(b"avif-placeholder").hexdigest()}])))
+
+    def test_linkedin_limits_media_to_twenty(self):
+        media = [{"path": "slide.png", "sha256": self.sha}] * 21
+        with self.assertRaises(G3Error):
+            load_handoff(self.write(self._linkedin(media)))
+
+    def test_linkedin_rejects_mixed_video_and_images(self):
+        clip = self.root / "clip.mp4"
+        clip.write_bytes(b"mp4-placeholder")
+        with self.assertRaises(G3Error):
+            load_handoff(self.write(self._linkedin([
+                {"path": "slide.png", "sha256": self.sha},
+                {"path": "clip.mp4", "sha256": hashlib.sha256(b"mp4-placeholder").hexdigest()},
+            ])))
+
+    def test_channel_for_linkedin(self):
+        from g3_runtime.accounts import BufferAccount
+        account = BufferAccount(name="default", api_key="key", organization_id="org",
+                                instagram_channel_id="ig", x_channel_id="x", linkedin_channel_id="li")
+        self.assertEqual(account.channel_for("linkedin"), "li")
+        missing = BufferAccount(name="default", api_key="key", organization_id="org",
+                                instagram_channel_id="ig", x_channel_id="x", linkedin_channel_id="")
+        with self.assertRaises(G3Error):
+            missing.channel_for("linkedin")
+
     def test_idempotency_skips_duplicate(self):
         handoff = load_handoff(self.write(self.base()))
         client, uploader = FakeClient(), FakeUploader()

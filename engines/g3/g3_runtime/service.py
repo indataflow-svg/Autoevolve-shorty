@@ -30,7 +30,8 @@ def channel_id(entry: Entry, account: BufferAccount | None = None) -> str:
         return entry.channel_id
     if account is not None:
         return account.channel_for(entry.platform)
-    key = "BUFFER_X_CHANNEL_ID" if entry.platform == "x" else "BUFFER_INSTAGRAM_CHANNEL_ID"
+    key = {"x": "BUFFER_X_CHANNEL_ID", "linkedin": "BUFFER_LINKEDIN_CHANNEL_ID"}.get(
+        entry.platform, "BUFFER_INSTAGRAM_CHANNEL_ID")
     value = os.environ.get(key, "").strip()
     if not value:
         raise G3Error(f"missing {key} and no integration_id in handoff")
