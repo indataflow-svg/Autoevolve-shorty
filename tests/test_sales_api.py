@@ -145,11 +145,11 @@ class SalesApiTests(unittest.TestCase):
             response = self.client.post(
                 "/company/sales/inbox/sync", auth=self.auth,
                 headers={"X-Founder-Action-Token": "action-secret"},
-                json={"limit": 25, "to": "sales@hello.indataflow.com"},
+                json={"limit": 25, "to": "sales@autoevolve.site"},
             )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["checked"], 2)
-        sync.assert_called_once_with(limit=25, to="sales@hello.indataflow.com")
+        sync.assert_called_once_with(limit=25, to="sales@autoevolve.site")
 
     def test_send_unknown_reconciliation_routes(self):
         with patch.dict(os.environ, {"SALES_ACTION_TOKEN": "action-secret"}, clear=False):
@@ -346,6 +346,7 @@ class SalesApiTests(unittest.TestCase):
             industry="Logistics and Supply Chain",
             location="United States",
             limit_per_provider=5,
+            org_id=research.call_args.kwargs["org_id"],
         )
 
     def test_research_suggestions_uses_prospeo_catalog(self):

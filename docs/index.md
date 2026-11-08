@@ -5,14 +5,14 @@ AutoEvolve's React UI uses the Company Core FastAPI backend. Existing
 
 ## Start here
 
-- [Functionality Reference](FUNCTIONALITY.md): **every capability in the product** — onboarding, sales, marketing, video, engineering, research, platform — with routes, tables, and honest limits.
+- [Functionality Reference](FUNCTIONALITY.md): **every capability in the product** — onboarding, sales, manual marketing, engineering, research, platform — with routes, tables, and honest limits.
 - [API Reference](API-REFERENCE.md): every public function, class, route, and table, generated from source.
-- [Video Model Survey](video-model-survey.md): local open models for the MI300X worker, and why deterministic vector rendering beats a diffusion model for icon animation.
 
 ## Start and operate
 
 - [README](../README.md): requirements, installation, frontend build, first boot.
 - [Frontend Guide](../autoevolve-ui/README.md): development, sign-in, generated API contract, browser tests.
+- [Website authentication](authentication.md): signup, email verification, session cookies, free-org isolation, and the Basic operator path.
 - [Product Tour](product-tour.md): current React pages and supported actions.
 - [V2 Closure](v2-closure.md): resumable onboarding, real-record orchestration, legacy route disposition.
 - [API Keys](keys.md), [Configuration](configuration.md), and [Provider Setup](providers.md): required versus optional integrations.
@@ -32,8 +32,9 @@ AutoEvolve's React UI uses the Company Core FastAPI backend. Existing
 
 ## Tutorials and troubleshooting
 
-- [First Sales Outreach](first-outreach.md) and [First Marketing Campaign](first-campaign.md).
-- [Motion Designer Workflow](motion-design-workflow.md): source-grounded story, GPT skill, Higgsfield shots, and G2 review handoff.
+- [First Sales Outreach](first-outreach.md).
+- [Publishers: Buffer + webhook schedulers](publishers.md): the publisher port, signed webhook contract, and media links.
+- [Publisher UI handoff](publisher-ui-handoff.md): current UI state, remaining settings work, and a local webhook receiver.
 - [Model Routing](model-routing.md), [Lead Intake](lead-intake.md), and [Troubleshooting](troubleshooting.md).
 
 ## Historical and planning material

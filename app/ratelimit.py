@@ -48,6 +48,13 @@ def _env_int(name: str, default: int) -> int:
 
 def client_ip(request: Request) -> str:
     if os.getenv("RATE_LIMIT_TRUST_PROXY", "false").strip().lower() in {"1", "true", "yes"}:
+        # Cloudflare/Worker paths set this to the original visitor. The origin
+        # is reachable only through the Tunnel, so it is not client-supplied.
+        client = request.headers.get("x-autoevolve-client-ip") or request.headers.get(
+            "cf-connecting-ip"
+        )
+        if client:
+            return client.split(",")[0].strip()
         forwarded = request.headers.get("x-forwarded-for", "")
         if forwarded:
             return forwarded.split(",")[0].strip()
@@ -92,6 +99,15 @@ def rate_limit_intake(request: Request) -> None:
         _enforce("webhook", request, _env_int("RATE_LIMIT_WEBHOOK_PER_MINUTE", 120))
     else:
         _enforce("intake", request, _env_int("RATE_LIMIT_INTAKE_PER_MINUTE", 30))
+
+
+def rate_limit_auth(request: Request) -> None:
+    """Coarse per-IP budget for public signup, login, verify, and resend.
+
+    The failed-Basic-auth bucket stays separate so a burst of website auth
+    attempts cannot lock the operator out of the paid dashboard.
+    """
+    _enforce("auth_public", request, _env_int("RATE_LIMIT_PUBLIC_AUTH_PER_MINUTE", 20))
 
 
 def check_auth_failure(request: Request) -> None:

@@ -64,8 +64,8 @@ class OperationsUiTests(unittest.TestCase):
         for old, modern in (
             ("/operations", "/home"),
             ("/operations/sales/email", "/outreach"),
-            ("/operations/marketing", "/campaigns"),
-            ("/operations/marketing/campaigns", "/campaigns"),
+            ("/operations/marketing", "/content"),
+            ("/operations/marketing/campaigns", "/content"),
             ("/operations/marketing/assets", "/content"),
         ):
             response = self.client.get(old, follow_redirects=False)
@@ -78,8 +78,8 @@ class OperationsUiTests(unittest.TestCase):
             ("/operations/sales", "/research"),
             ("/operations/sales/discovery", "/research"),
             ("/legacy/operations/sales/email", "/outreach"),
-            ("/legacy/operations/marketing", "/campaigns"),
-            ("/legacy/operations/marketing/campaigns", "/campaigns"),
+            ("/legacy/operations/marketing", "/content"),
+            ("/legacy/operations/marketing/campaigns", "/content"),
             ("/legacy/operations/marketing/assets", "/content"),
             ("/operations/marketing/publishing", "/content"),
         ):
@@ -124,17 +124,6 @@ class OperationsUiTests(unittest.TestCase):
         self.assertIn('id="root"', response.text)
 
     def test_operations_overview_returns_unified_history(self):
-        task = state.create_task(org_id=self.project["id"], agent="growth", task_type="campaign", input_text="Create campaign")
-        campaign = marketing_store.create_campaign(
-            org_id=self.project["id"],
-            task_id=task["id"],
-            request="Create campaign",
-            objective="awareness",
-            buyer="ops_manager",
-            topic="document handoffs",
-            social_platforms=["instagram", "x"],
-            video_platform="shorts",
-        )
         lead, _ = sales_store.upsert_lead({"email": "ops@example.com", "company": "Example Logistics", "source": "website", "consent": True})
         sales_store.add_event(lead["id"], "lead.reviewed", {"status": "qualified"})
         sales_store.mark_replied(lead["id"], "Re: Walkthrough", "Interested", "<reply-1@example.com>")
@@ -145,33 +134,11 @@ class OperationsUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["active_org"]["slug"], "company-core")
-        self.assertEqual(len(body["marketing_campaigns"]), 1)
+        self.assertNotIn("marketing_campaigns", body)
+        self.assertNotIn("asset_packs", body)
         self.assertEqual(len(body["sales_leads"]), 1)
         domains = {item["domain"] for item in body["history"]}
-        self.assertIn("marketing", domains)
         self.assertIn("sales", domains)
-
-    def test_direct_campaign_launcher_creates_and_spawns_campaign(self):
-        payload = {
-            "objective": "awareness",
-            "brief": "Freight teams keep working from outdated shipping document versions across handoffs.",
-            "social_platforms": ["instagram", "x"],
-            "video_platform": "shorts",
-            "voice_mode": "tts",
-            "voice_transcript": "",
-        }
-        with patch.dict(os.environ, {"DASHBOARD_PASSWORD": "dashboard-secret"}, clear=False):
-            with patch("app.marketing_api.spawn") as spawn:
-                response = self.client.post("/company/marketing/campaigns", auth=self.auth, json=payload)
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertTrue(body["ok"])
-        self.assertEqual(body["campaign"]["topic"], payload["brief"])
-        self.assertEqual(body["campaign"]["voice_mode"], "tts")
-        self.assertEqual(body["campaign"]["buyer"], "logistics operators")
-        spawn.assert_called_once()
-        campaigns = marketing_store.list_campaigns(limit=5, org_id=self.project["id"])
-        self.assertEqual(len(campaigns), 1)
 
     def test_manual_carousel_post_creation_and_attribution(self):
         with patch.dict(os.environ, {

@@ -9,7 +9,30 @@ from pydantic import BaseModel, Field
 
 from app.sales_api import verify_founder_action
 
-router = APIRouter(prefix="/company/setup", tags=["setup"])
+def _require_operator() -> None:
+    """Provider keys, setup steps, and Buffer accounts are deployment-level.
+
+    A free website session must not overwrite the operator's global credentials;
+    Basic-auth operator requests have no scoped org and pass through.
+    """
+    from core.auth_context import current_org_id
+    from core.state import get_org
+
+    scoped = current_org_id.get()
+    if scoped and (get_org(int(scoped)) or {}).get("plan") == "free":
+        raise HTTPException(403, "provider setup is not available on the free plan")
+
+
+router = APIRouter(prefix="/company/setup", tags=["setup"], dependencies=[Depends(_require_operator)])
+
+
+def _block_free_buffer() -> None:
+    from core.auth_context import current_org_id
+    from core.state import get_org
+
+    scoped = current_org_id.get()
+    if scoped and (get_org(int(scoped)) or {}).get("plan") == "free":
+        raise HTTPException(403, "free workspaces use their own publisher webhook")
 
 
 @router.get("/providers")
@@ -170,6 +193,7 @@ def _buffer_failure(exc: Exception) -> HTTPException:
 def buffer_setup_accounts():
     from services.buffer_setup import list_accounts
 
+    _block_free_buffer()
     return {"accounts": list_accounts()}
 
 
@@ -179,6 +203,7 @@ def discover_buffer_channels(
 ):
     from services.buffer_setup import discover
 
+    _block_free_buffer()
     try:
         return discover(payload.account, payload.api_key)
     except Exception as exc:
@@ -191,6 +216,7 @@ def connect_buffer_account(
 ):
     from services.buffer_setup import bind
 
+    _block_free_buffer()
     try:
         return bind(
             payload.account,

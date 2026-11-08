@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from core.sales_store import (
-    approve_draft, get_lead, list_leads, list_send_unknown_drafts, mark_meeting_scheduled, resolve_send_unknown,
-    summary, suppress_lead, update_draft, upsert_lead,
+    approve_draft, get_lead, list_leads, list_send_unknown_drafts, mark_meeting_requested, mark_meeting_scheduled,
+    resolve_send_unknown, summary, suppress_lead, update_draft, upsert_lead,
 )
 from services.company_enrich import CompanyEnrichError
 from services.hunter import HunterClient
@@ -22,7 +22,8 @@ from services.sales_service import (
     build_draft, build_linkedin_draft, enrich_lead, import_domain, ingest_inbound_email, ingest_resend_event, maybe_auto_contact_lead,
     preview_linkedin_draft,
     research_lusha_suggestions,
-    research_market_leads, research_prospeo_suggestions, resolve_company_profile, resolve_contact, preview_draft, send_approved, verify_resend_webhook,
+    research_market_leads, research_prospeo_suggestions, resolve_company_profile, resolve_contact, preview_draft, send_approved,
+    send_booking_request, verify_resend_webhook,
 )
 
 
@@ -377,6 +378,12 @@ def _lead_intake_from_tally(payload: TallyWebhookPayload) -> LeadIntake:
 
 
 def verify_founder_action(x_founder_action_token: str | None = Header(default=None)) -> None:
+    # A website session is a per-user founder identity for its own org. The
+    # shared operator token remains required for legacy Basic-auth sessions.
+    from core.auth_context import current_user_id
+
+    if current_user_id.get():
+        return
     _check_secret(
         x_founder_action_token,
         "SALES_ACTION_TOKEN",
@@ -483,12 +490,19 @@ def doctor():
 
 @router.get("/leads")
 def leads(limit: int = 50, stage: str | None = None):
-    return {"summary": summary(), "leads": list_leads(limit, stage)}
+    from core.state import get_active_org
+
+    active = get_active_org()
+    org_id = int(active["id"]) if active else 0
+    return {"summary": summary(org_id), "leads": list_leads(limit, stage, org_id=org_id)}
 
 
 @router.get("/leads/{lead_id}")
 def lead(lead_id: str):
-    value = get_lead(lead_id)
+    from core.state import get_active_org
+
+    active = get_active_org()
+    value = get_lead(lead_id, org_id=int(active["id"]) if active else 0)
     if not value:
         raise HTTPException(404, "lead not found")
     return value
@@ -502,8 +516,15 @@ def manual_lead(payload: LeadIntake):
 
 @action_router.post("/prospect/domain", response_model=ProspectActionResult, dependencies=[Depends(verify_founder_action)])
 def prospect_domain(payload: ProspectRequest):
+    from core.quotas import claim_provider
+    from core.state import get_active_org
+
+    active = get_active_org()
+    org_id = int(active["id"]) if active else 0
     try:
         provider = payload.provider.lower().strip()
+        if not claim_provider(org_id, provider, "prospect_domain"):
+            raise HTTPException(429, f"{provider} provider quota reached or free plan")
         return {
             "ok": True,
             "provider": provider,
@@ -520,6 +541,13 @@ def research_suggestions(payload: LeadResearchSuggestionsRequest):
     query = payload.query.strip()
     kind = payload.kind.strip().lower()
     provider = payload.provider.strip().lower()
+    from core.quotas import claim_provider
+    from core.state import get_active_org
+
+    active = get_active_org()
+    org_id = int(active["id"]) if active else 0
+    if not claim_provider(org_id, provider, "research_suggestions"):
+        raise HTTPException(429, f"{provider} provider quota reached or free plan")
     try:
         if provider == "lusha":
             suggestions = research_lusha_suggestions(kind=kind, query=query)
@@ -539,10 +567,14 @@ def research_suggestions(payload: LeadResearchSuggestionsRequest):
 @action_router.post("/research/leads", response_model=ResearchActionResult, dependencies=[Depends(verify_founder_action)])
 def research_leads(payload: LeadResearchRequest):
     try:
+        from core.state import get_active_org
+
+        active = get_active_org()
         summary = research_market_leads(
             industry=payload.industry,
             location=payload.location,
             limit_per_provider=payload.limit_per_provider,
+            org_id=int(active["id"]) if active else 0,
         )
         return {
             "ok": True,
@@ -658,6 +690,8 @@ def approve(draft_id: str):
 def send(draft_id: str):
     try:
         return send_approved(draft_id)
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     except Exception as exc:
@@ -700,6 +734,76 @@ def schedule_meeting(lead_id: str, payload: MeetingScheduledPayload):
     when = lead.get("metadata", {}).get("meeting", {}).get("scheduled_for")
     message = f"Meeting marked as scheduled for {when}." if when else "Meeting marked as scheduled."
     return {"ok": True, "lead_id": lead_id, "stage": lead["stage"], "lead": lead, "message": message}
+
+
+class MeetingRequestPayload(BaseModel):
+    slots: list[str] = Field(min_length=1, max_length=5)
+    note: str | None = Field(default=None, max_length=600)
+
+    @field_validator("slots", mode="before")
+    @classmethod
+    def _clean_slots(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        return [str(slot).strip() for slot in value if str(slot or "").strip()]
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _clean_note(cls, value: object) -> object:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class MeetingRequestResult(BaseModel):
+    ok: bool
+    lead_id: str
+    status: str
+    email_sent: bool
+    booking_url: str | None
+    message: str
+    warning: str | None = None
+
+
+@action_router.post("/leads/{lead_id}/meeting-request", response_model=MeetingRequestResult, dependencies=[Depends(verify_founder_action)])
+def request_meeting(lead_id: str, payload: MeetingRequestPayload):
+    """Founder action: offer slots to the contact by email. The request is
+    always recorded; the email is attempted after and its failure is reported
+    honestly without losing the record (same pattern as enrichment)."""
+    lead = get_lead(lead_id)
+    if not lead:
+        raise HTTPException(404, "lead not found")
+    if not payload.slots:
+        raise HTTPException(422, "at least one slot is required")
+    try:
+        lead = mark_meeting_requested(lead_id, slots=payload.slots, note=payload.note)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    warning: str | None = None
+    booking_url: str | None = None
+    email_sent = False
+    try:
+        outcome = send_booking_request(lead_id, payload.slots, note=payload.note)
+        email_sent = True
+        booking_url = outcome.get("booking_url")
+    except ValueError as exc:
+        warning = f"Meeting request saved, but the booking email was not sent: {exc}"
+    except Exception as exc:  # noqa: BLE001 - provider failure must not erase the request
+        warning = f"Meeting request saved, but the booking email failed: {exc}"
+    if email_sent:
+        message = f"Booking request emailed to {lead.get('email')} with {len(payload.slots)} offered time(s)."
+    else:
+        message = "Meeting request saved; no booking email went out."
+    return {
+        "ok": True,
+        "lead_id": lead_id,
+        "status": lead.get("metadata", {}).get("meeting", {}).get("status", "awaiting_booking"),
+        "email_sent": email_sent,
+        "booking_url": booking_url,
+        "message": message,
+        "warning": warning,
+    }
 
 
 @action_router.post("/leads/{lead_id}/suppress", dependencies=[Depends(verify_founder_action)])

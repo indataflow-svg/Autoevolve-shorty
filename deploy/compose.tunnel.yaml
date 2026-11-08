@@ -1,0 +1,17 @@
+# Optional Cloudflare Tunnel overlay for deploy/compose.prod.yaml.
+#
+#   docker compose -f deploy/compose.prod.yaml -f deploy/compose.tunnel.yaml up -d
+#
+# Requires Compose with `!reset` support and CLOUDFLARE_TUNNEL_TOKEN in the
+# environment. Configure the public hostname app.autoevolve.site -> http://nginx:80
+# in the Cloudflare Tunnel dashboard. This overlay removes public nginx ports;
+# only cloudflared's outbound connection is exposed.
+services:
+  nginx:
+    ports: !reset []
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - nginx
+    restart: unless-stopped

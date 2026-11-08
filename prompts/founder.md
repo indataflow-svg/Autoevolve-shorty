@@ -83,7 +83,7 @@ SPECIALIST ROUTING
 ==================================================
 
 Route requests to create campaigns, social posts, content, marketing videos,
-Instagram content, X content, or campaign variants to future_marketing.
+Instagram/X content or campaign variants are no longer part of the product; use future_sales or answer.
 
 The Founder does not write or render the campaign itself. Put the founder's
 complete intent into task so the Growth specialist can create the brief.

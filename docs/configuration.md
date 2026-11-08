@@ -7,9 +7,11 @@ is set. See [API keys](keys.md) for where to get every key.
 
 ## Required local settings
 
-`DASHBOARD_USER`, `DASHBOARD_PASSWORD`, `SALES_ACTION_TOKEN`, `SALES_INTAKE_SECRET`, and
-`SALES_EMAIL_WEBHOOK_SECRET` are generated automatically. Change `COMPANY_NAME`,
-`COMPANY_PUBLIC_URL`, `COMPANY_FORMS_URL`, and `COMPANY_BRAND_LOGO_URL` for your brand.
+`DASHBOARD_USER`, `DASHBOARD_PASSWORD`, `SALES_ACTION_TOKEN`, `SALES_INTAKE_SECRET`,
+`SALES_EMAIL_WEBHOOK_SECRET`, and `APP_ENCRYPTION_KEY` are generated automatically.
+`APP_ENCRYPTION_KEY` encrypts per-organization publisher secrets; keep it stable.
+Change `COMPANY_NAME`, `COMPANY_PUBLIC_URL`, `COMPANY_FORMS_URL`, and
+`COMPANY_BRAND_LOGO_URL` for your brand.
 
 ## AI gateway
 
@@ -31,6 +33,20 @@ and [API Keys](keys.md) for canonical values.
 | Stock media | `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `COVERR_API_KEY` in the G2 environment |
 | Social publishing | Buffer and R2 values in `engines/g3/config/g3.env` |
 | Calendar | `SALES_CALENDAR_BASE_URL`, `SALES_CALENDAR_EVENT_PATH` |
+| Website accounts | `AUTH_RESEND_API_KEY`, `AUTH_FROM_EMAIL`, `AUTH_RESEND_DOMAIN` (fall back to the sales Resend values) |
+| Per-org publishers | `APP_ENCRYPTION_KEY`, `PUBLIC_BASE_URL` for media links |
+
+## Website authentication
+
+Signup is public by default. `AUTH_SIGNUP_ENABLED=false` closes it. Verification
+links use `AUTH_VERIFY_BASE_URL` (default `http://localhost:4181/verify`; set
+`https://example.com/verify` in production). The email link puts the token in
+the URL fragment. `AUTH_COOKIE_DOMAIN=example.com` shares the session with
+`app.example.com`; `AUTH_COOKIE_SECURE=true` is required in production.
+`AUTH_ALLOWED_ORIGINS` must list both the base and app origins. For local
+development only, `AUTH_EXPOSE_DEV_TOKEN=true` returns the verification link in
+the signup/resend response; leave it false in production. See
+[Website authentication](authentication.md) for the session and free-org model.
 
 The bundled engine paths in `.env.example` work from the repository root
 (e.g. `MARKETING_G1_BIN=engines/g1/.venv/bin/company-core-g1`). The showcase and outro

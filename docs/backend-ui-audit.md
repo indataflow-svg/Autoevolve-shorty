@@ -1,3 +1,8 @@
+> **Scope note (2026-10-28):** campaign generation, asset packs, and video
+> production were removed. The Campaigns, Asset packs, and video sections below
+> are historical; the current marketing surface is manual posts + G3/Buffer.
+> See [FUNCTIONALITY §4–5](FUNCTIONALITY.md).
+
 # Backend alignment audit for the remaining UI pages
 
 > Historical gap audit. Current operator routes and onboarding behavior are recorded in [V2 closure](v2-closure.md).

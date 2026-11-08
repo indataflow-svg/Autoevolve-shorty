@@ -137,7 +137,16 @@ class SuggestTests(EvidenceBase):
                                  "metadata": meta})
 
     def test_matched_suggestions_rank_first(self):
+        from core.sales_store import upsert_company_profile
         self._icp()
+        # Verified fit (enriched industry) outranks raw lead count: the manual
+        # action this automates is judging the enriched profile, not the query.
+        upsert_company_profile("rift.test", provider="companyenrich", status="resolved",
+                               company_name="Rift Freight",
+                               summary={"industry": "logistics"})
+        upsert_company_profile("gym.test", provider="companyenrich", status="resolved",
+                               company_name="City Gym",
+                               summary={"industry": "fitness"})
         self._lead("a@rift.test", "rift.test", "Rift Freight", ["logistics"])
         for i in range(5):
             self._lead(f"g{i}@gym.test", "gym.test", "City Gym")
@@ -150,18 +159,48 @@ class SuggestTests(EvidenceBase):
         self.assertEqual(out["suggestions"][1]["icp_matches"], [])
         self.assertIn("Outside your ICPs", out["suggestions"][1]["reason"])
 
+    def test_unenriched_never_claims_match(self):
+        self._icp()
+        self._lead("a@rift.test", "rift.test", "Rift Freight", ["logistics"])
+        with patch("services.company_enrich.CompanyEnrichClient",
+                   side_effect=ValueError("no key")):
+            out = suggest_accounts(0)
+        self.assertEqual(out["suggestions"][0]["icp_matches"], [])
+        self.assertIn("Unverified", out["suggestions"][0]["reason"])
+
+    def test_enriched_mismatch_is_outside_not_match(self):
+        from core.sales_store import upsert_company_profile
+        self._icp()
+        # Rocrich-style case: found via a logistics query but enriched as
+        # industrial machinery — must not claim a match.
+        upsert_company_profile("rocrich.test", provider="companyenrich",
+                               status="resolved", company_name="Rocrich",
+                               summary={"industry": "industrial machinery manufacturing"})
+        self._lead("a@rocrich.test", "rocrich.test", "Rocrich", ["logistics"])
+        out = suggest_accounts(0)
+        self.assertEqual(out["suggestions"][0]["icp_matches"], [])
+        self.assertIn("Outside your ICPs", out["suggestions"][0]["reason"])
+
     def test_archived_icps_never_steer_suggestions(self):
+        from core.sales_store import upsert_company_profile
         icp = self._icp()
         self.client.patch(f"/company/commercial/icps/{icp['id']}", auth=self.auth,
                           headers=self.headers, json={"status": "archived"})
+        upsert_company_profile("rift.test", provider="companyenrich", status="resolved",
+                               company_name="Rift Freight",
+                               summary={"industry": "logistics"})
         self._lead("a@rift.test", "rift.test", "Rift Freight", ["logistics"])
         out = suggest_accounts(0)
         self.assertEqual(out["suggestions"][0]["icp_matches"], [])
         self.assertIn("Outside your ICPs", out["suggestions"][0]["reason"])
 
-    def test_matching_works_in_both_directions(self):
+    def test_matching_uses_fit_contains_not_keyword_echo(self):
+        from core.sales_store import upsert_company_profile
         self._icp(name="Short ICP", value="log")
-        self._lead("a@rift.test", "rift.test", "Rift Freight", ["logistics"])
+        upsert_company_profile("rift.test", provider="companyenrich", status="resolved",
+                               company_name="Rift Freight",
+                               summary={"industry": "logistics"})
+        self._lead("a@rift.test", "rift.test", "Rift Freight", ["something-else"])
         out = suggest_accounts(0)
         self.assertEqual(len(out["suggestions"][0]["icp_matches"]), 1)
 

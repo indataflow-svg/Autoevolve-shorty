@@ -4,9 +4,6 @@ import { draftOutreach } from './contacts'
 
 export type OutreachItem = components['schemas']['OutreachItem']
 export type OutreachPage = components['schemas']['OutreachPage']
-export type CampaignItem = components['schemas']['CampaignItem']
-export type CampaignDetail = components['schemas']['CampaignDetail']
-export type CampaignsPage = components['schemas']['CampaignsPage']
 export type ContentItem = components['schemas']['ContentItem']
 export type ContentView = components['schemas']['ContentView']
 export type BufferAccountsView = components['schemas']['BufferAccountsView']
@@ -16,7 +13,6 @@ export type ReplyItem = components['schemas']['ReplyItem']
 export type RepliesPage = components['schemas']['RepliesPage']
 export type MeetingMarker = components['schemas']['MeetingMarker']
 export type MeetingsPage = components['schemas']['MeetingsPage']
-export type CampaignLaunchRequest = components['schemas']['CampaignLaunchRequest']
 
 export const DRAFT_STATUS = {
   draft: 'draft', approved: 'approved', sending: 'sending', sent: 'sent',
@@ -34,28 +30,96 @@ export const updateOutreach = (credentials: Credentials, id: string, input: comp
 export const approveOutreach = (credentials: Credentials, id: string, token: string) => api<components['schemas']['SalesDraftRecord']>(`/company/sales/drafts/${encodeURIComponent(id)}/approve`, credentials, { method: 'POST' }, token)
 export const sendOutreach = (credentials: Credentials, id: string, token: string) => api<components['schemas']['SendActionResult']>(`/company/sales/drafts/${encodeURIComponent(id)}/send`, credentials, { method: 'POST' }, token)
 
-export function campaignsPage(credentials: Credentials, input: { page: number; q: string; status: string; sort: string; orgId: number | null }) {
-  const params = new URLSearchParams({ page: String(input.page), page_size: '10', sort: input.sort })
-  if (input.q) params.set('q', input.q)
-  if (input.status) params.set('status', input.status)
-  if (input.orgId) params.set('org_id', String(input.orgId))
-  return api<CampaignsPage>(`/company/ui/campaigns?${params}`, credentials)
-}
-export const campaignDetail = (credentials: Credentials, id: string) => api<CampaignDetail>(`/company/ui/campaigns/${encodeURIComponent(id)}`, credentials)
-export const createCampaign = (credentials: Credentials, input: CampaignLaunchRequest) => api<components['schemas']['CampaignCreateResult']>('/company/marketing/campaigns', credentials, { method: 'POST', body: JSON.stringify(input) })
-export const approveCampaignScript = (credentials: Credentials, id: string, token: string) => api<components['schemas']['CampaignTransitionResult']>(`/company/marketing/campaigns/${encodeURIComponent(id)}/approve-script`, credentials, { method: 'POST' }, token)
-export const retryCampaign = (credentials: Credentials, id: string, token: string) => api<components['schemas']['CampaignTransitionResult']>(`/company/marketing/campaigns/${encodeURIComponent(id)}/retry`, credentials, { method: 'POST' }, token)
 
 export const contentView = (credentials: Credentials) => api<ContentView>('/company/ui/content', credentials)
+export type PublisherCapabilities = {
+  draft: boolean; schedule: boolean; confirm: boolean; insights: boolean; platforms: string[]
+}
+export type PublisherInfo = { name: string; label: string; capabilities: PublisherCapabilities }
+export type PublisherAccount = {
+  name: string; label: string; platforms: string[]; details: Record<string, unknown>
+}
+export type PublisherAccountsView = {
+  publisher: string; label: string; capabilities: PublisherCapabilities; accounts: PublisherAccount[]; error?: string | null
+}
+
+export const publishersView = (credentials: Credentials) =>
+  api<{ publishers: PublisherInfo[] }>('/company/marketing/publishers', credentials)
+export const publisherAccounts = (credentials: Credentials, publisher: string) =>
+  api<PublisherAccountsView>(`/company/marketing/publisher-accounts?publisher=${encodeURIComponent(publisher)}`, credentials)
+
+export function publishManualPost(
+  credentials: Credentials,
+  id: string,
+  input: { action: 'draft' | 'schedule'; mode?: 'queue' | 'next' | 'timed'; dueAt?: string | null; account?: string | null; token?: string },
+) {
+  const path = input.action === 'draft'
+    ? `/company/marketing/manual-posts/${encodeURIComponent(id)}/publish/draft`
+    : `/company/marketing/manual-posts/${encodeURIComponent(id)}/publish`
+  return api<{ ok: boolean; post: ContentItem; result: unknown; message: string }>(path, credentials, {
+    method: 'POST',
+    body: JSON.stringify({
+      action: input.action,
+      mode: input.mode || 'queue',
+      due_at: input.mode === 'timed' ? input.dueAt : null,
+      account: input.account || null,
+    }),
+  }, input.action === 'schedule' ? input.token : undefined)
+}
+
+export type PublishJob = {
+  id: string
+  org_id: number
+  post_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'unknown'
+  result: { message?: string; result?: unknown; post?: ContentItem } | null
+  error: string | null
+  created_at: string
+  updated_at: string
+}
+
+export function publishManualPostAsync(
+  credentials: Credentials,
+  id: string,
+  input: { mode?: 'queue' | 'next' | 'timed'; dueAt?: string | null; account?: string | null; token?: string },
+) {
+  return api<{ ok: boolean; job: PublishJob }>(
+    `/company/marketing/manual-posts/${encodeURIComponent(id)}/publish/async`,
+    credentials,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'schedule',
+        mode: input.mode || 'queue',
+        due_at: input.mode === 'timed' ? input.dueAt : null,
+        account: input.account || null,
+      }),
+    },
+    input.token,
+  )
+}
+
+export const publishJob = (credentials: Credentials, jobId: string) =>
+  api<PublishJob>(`/company/marketing/publish-jobs/${encodeURIComponent(jobId)}`, credentials)
+
+export const confirmManualPublish = (credentials: Credentials, id: string, token: string) =>
+  api<{ ok: boolean; post: ContentItem; confirmation: Record<string, unknown>; message: string }>(
+    `/company/marketing/manual-posts/${encodeURIComponent(id)}/publish/confirm`, credentials,
+    { method: 'POST', body: '{}' }, token,
+  )
+
+export const publishInsights = (credentials: Credentials, id: string, postId: string) =>
+  api<BufferInsightsView>(`/company/marketing/manual-posts/${encodeURIComponent(id)}/publish/insights?post_id=${encodeURIComponent(postId)}`, credentials)
+
 export const assetBlob = (credentials: Credentials, path: string) => apiBlob(path, credentials)
-export const createAssetPack = (credentials: Credentials, input: components['schemas']['AssetPackRequest']) => api<components['schemas']['AssetPackCreateResult']>('/company/marketing/asset-packs', credentials, { method: 'POST', body: JSON.stringify(input) })
-export function createManualPost(credentials: Credentials, input: { platform: 'instagram' | 'x' | 'linkedin'; postType: 'carousel' | 'video'; destinationUrl: string; linkLabel: string; assets: File[]; bufferAccount: string }) {
+export function createManualPost(credentials: Credentials, input: { platform: string; postType: 'carousel' | 'video'; destinationUrl: string; linkLabel: string; assets: File[]; publisher: string; bufferAccount: string }) {
   const body = new FormData()
   body.set('platform', input.platform)
   body.set('post_type', input.postType)
   if (input.destinationUrl) body.set('destination_url', input.destinationUrl)
   if (input.linkLabel) body.set('link_label', input.linkLabel)
   if (input.bufferAccount) body.set('buffer_account', input.bufferAccount)
+  if (input.publisher) body.set('publisher', input.publisher)
   input.assets.forEach(asset => body.append('assets', asset))
   return api<components['schemas']['ManualPostCreateResult']>('/company/marketing/manual-posts', credentials, { method: 'POST', body })
 }
@@ -120,6 +184,8 @@ export interface InboxSyncResult {
 export const syncResendInbox = (credentials: Credentials, input: { limit: number; to: string | null }, token: string) =>
   api<InboxSyncResult>('/company/sales/inbox/sync', credentials, { method: 'POST', body: JSON.stringify({ limit: input.limit, to: input.to }) }, token)
 export const createReplyDraft = draftOutreach
+export const requestMeeting = (credentials: Credentials, leadId: string, input: { slots: string[]; note?: string }, token: string) =>
+  api<components['schemas']['MeetingRequestResult']>(`/company/sales/leads/${encodeURIComponent(leadId)}/meeting-request`, credentials, { method: 'POST', body: JSON.stringify(input) }, token)
 
 export function meetingsPage(credentials: Credentials, input: { page: number; q: string; view: string; sort: string }) {
   const params = new URLSearchParams({ page: String(input.page), page_size: '10', view: input.view, sort: input.sort })

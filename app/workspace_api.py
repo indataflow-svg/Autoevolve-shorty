@@ -5,12 +5,21 @@ from __future__ import annotations
 from typing import Literal
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from core.branding import company_forms_url, company_public_url
 from core.setup_keys import PROVIDER_GROUPS, group_status
-from core.state import VALID_CAPABILITIES, get_active_org, get_org_capabilities, list_orgs
+from app.sales_api import verify_founder_action
+from core.state import (
+    VALID_CAPABILITIES,
+    get_active_org,
+    get_org,
+    get_org_capabilities,
+    get_org_limits,
+    list_orgs,
+    set_org_limits,
+)
 
 router = APIRouter(prefix="/company/ui", tags=["workspace"])
 
@@ -86,8 +95,14 @@ class IntegrationsView(BaseModel):
 def integrations_view():
     from services.buffer_setup import list_accounts
 
+    from core.auth_context import current_org_id
+
     status = group_status()
     summaries, key_of = _org_connections()
+    scoped = current_org_id.get()
+    scoped_org = get_org(int(scoped)) if scoped else None
+    if scoped_org and scoped_org.get("plan") == "free":
+        raise HTTPException(403, "provider setup is not available on the free plan")
     buffer_accounts = list_accounts()
     groups = []
     for group_id, spec in PROVIDER_GROUPS.items():
@@ -224,12 +239,16 @@ def _public_link(link_id: str, label: str, raw: str) -> dict:
 def settings_view():
     from app.api import _calendar_booking_url
 
+    from core.auth_context import current_org_id
+
     active = get_active_org()
+    scoped = current_org_id.get()
+    visible = [get_org(int(scoped))] if scoped else list_orgs()
     orgs = [
         {"id": org["id"], "name": org["name"], "slug": org["slug"],
          "domain": org.get("domain") or "", "status": org.get("status"),
          "capabilities": get_org_capabilities(org["id"])}
-        for org in list_orgs()
+        for org in visible if org
     ]
     return {
         "orgs": orgs,
@@ -241,3 +260,134 @@ def settings_view():
             _public_link("calendar", "Booking calendar", _calendar_booking_url()),
         ],
     }
+
+
+class GovernanceLimitsView(BaseModel):
+    plan: str
+    max_spend_usd: float
+    max_actions: int
+    max_outreach_contacts: int
+    max_duration_days: int
+    overrides: dict
+
+
+class GovernanceLimitsPayload(BaseModel):
+    max_spend_usd: float | None = None
+    max_actions: int | None = None
+    max_outreach_contacts: int | None = None
+    max_duration_days: int | None = None
+
+
+def _org_id() -> int:
+    active = get_active_org()
+    return int(active["id"]) if active else 0
+
+
+@router.get("/limits", response_model=GovernanceLimitsView)
+def limits_view():
+    from core.plan_governance import GovernanceLimits
+
+    org = _org_id()
+    effective = GovernanceLimits.load(org)
+    return {
+        "plan": "free" if org == 0 else (get_active_org() or {}).get("plan", "paid"),
+        **effective.model_dump(),
+        "overrides": get_org_limits(org),
+    }
+
+
+@router.put("/limits", response_model=GovernanceLimitsView, dependencies=[Depends(verify_founder_action)])
+def save_limits(payload: GovernanceLimitsPayload):
+    from core.plan_governance import GovernanceLimits
+
+    org = _org_id()
+    if org == 0:
+        raise HTTPException(409, "no active org")
+    values = {key: value for key, value in payload.model_dump().items() if value is not None}
+    try:
+        set_org_limits(org, values)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    effective = GovernanceLimits.load(org)
+    return {
+        "plan": (get_active_org() or {}).get("plan", "paid"),
+        **effective.model_dump(),
+        "overrides": get_org_limits(org),
+    }
+
+
+class QuotaItem(BaseModel):
+    kind: str
+    plan: str
+    used: int
+    limit: int
+    remaining: int
+    reset_at: str
+
+
+class QuotasView(BaseModel):
+    plan: str
+    quotas: dict[str, QuotaItem]
+
+
+@router.get("/quotas", response_model=QuotasView)
+def quotas_view():
+    from core.quotas import quota_snapshot_all
+
+    org = _org_id()
+    return {
+        "plan": (get_active_org() or {}).get("plan", "paid"),
+        "quotas": quota_snapshot_all(org),
+    }
+
+
+class WebhookConnectionPayload(BaseModel):
+    url: str
+    secret: str
+    account: str = "webhook"
+    label: str = "Webhook scheduler"
+    platforms: str = "instagram,x,linkedin"
+
+
+@router.get("/publishers")
+def publisher_connections_view():
+    from core.publishers_store import public_webhook_for_org
+    from services.publishers import catalog
+
+    org = _org_id()
+    return {
+        "publishers": catalog(),
+        "webhook": public_webhook_for_org(org),
+    }
+
+
+@router.put("/publishers/webhook", dependencies=[Depends(verify_founder_action)])
+def save_webhook_connection(payload: WebhookConnectionPayload):
+    from core.publishers_store import public_webhook_for_org, save_webhook
+
+    org = _org_id()
+    if org == 0:
+        raise HTTPException(409, "no active org")
+    try:
+        save_webhook(
+            org,
+            url=payload.url,
+            secret=payload.secret,
+            account=payload.account,
+            label=payload.label,
+            platforms=payload.platforms,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"webhook": public_webhook_for_org(org)}
+
+
+@router.delete("/publishers/webhook", dependencies=[Depends(verify_founder_action)])
+def delete_webhook_connection():
+    from core.publishers_store import delete_webhook
+
+    org = _org_id()
+    if org == 0:
+        raise HTTPException(409, "no active org")
+    delete_webhook(org)
+    return {"webhook": None}

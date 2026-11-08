@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from core.channel_benchmarks import cold_reply_benchmark, expected_replies
 from core.evidence import collect_evidence
 
 
@@ -36,7 +37,7 @@ def suggest_workflows(org: int = 0, now: datetime | None = None) -> dict[str, An
 
     moment = now or _now()
     evidence = collect_evidence(org)
-    caps = GovernanceLimits.load()
+    caps = GovernanceLimits.load(org)
     accounts = evidence.get("accounts") or {}
     leads = evidence.get("leads") or {}
     engagement = evidence.get("engagement") or {}
@@ -89,6 +90,8 @@ def suggest_workflows(org: int = 0, now: datetime | None = None) -> dict[str, An
     else:
         has_world = True
 
+    industry = _evidence_industry(org)
+
     if has_world:
         if approved_unsent > 0:
             sendable = min(approved_unsent, caps.max_outreach_contacts)
@@ -106,6 +109,7 @@ def suggest_workflows(org: int = 0, now: datetime | None = None) -> dict[str, An
                     "unit": "sends",
                     "basis": "one dispatch per approved draft up to the contact cap",
                 },
+                "benchmark_replies": expected_replies(sendable, industry),
                 "channel": channel or "email",
             })
         unclaimed = len(leads.get("unlinked_domains") or [])
@@ -143,7 +147,8 @@ def suggest_workflows(org: int = 0, now: datetime | None = None) -> dict[str, An
                 "channel": channel or "email",
             })
         elif sent_total > 0 and replies == 0:
-            rate, basis = _reply_basis(evidence)
+            rate, basis = _reply_basis(evidence, industry)
+            bench_replies = expected_replies(caps.max_outreach_contacts, industry)
             recommendations.append({
                 "rank": 2,
                 "method": "targeted_outbound",
@@ -154,10 +159,11 @@ def suggest_workflows(org: int = 0, now: datetime | None = None) -> dict[str, An
                 **schedule(14),
                 "expected_range": {
                     "low": 0,
-                    "high": (round(rate * 10) if rate else caps.max_outreach_contacts),
+                    "high": (round(rate * 10) if rate else bench_replies["high"]),
                     "unit": "replies",
                     "basis": basis,
                 },
+                "benchmark_replies": bench_replies,
                 "channel": channel,
             })
         if replies > 0 and meetings == 0:
@@ -213,6 +219,23 @@ def suggest_workflows(org: int = 0, now: datetime | None = None) -> dict[str, An
     }
 
 
+def _evidence_industry(org: int = 0) -> str | None:
+    """Best-known industry for benchmark lookups, or None for the general band.
+
+    Reuses the governed research-term resolution (validated ICP first, else
+    top evidence industry). Any failure means "unknown industry", never a
+    guessed one — the benchmark module labels the general fallback itself.
+    """
+    try:
+        from core.evidence import resolve_research_terms
+
+        terms = resolve_research_terms(org)
+        industry = terms.get("industry")
+        return industry.strip() if isinstance(industry, str) and industry.strip() else None
+    except Exception:
+        return None
+
+
 def _best_channel(evidence: dict[str, Any]) -> str | None:
     """The channel with the best recorded reply rate, or the declared one, or None."""
     channels = (evidence.get("engagement") or {}).get("channels") or {}
@@ -232,100 +255,49 @@ def _best_channel(evidence: dict[str, Any]) -> str | None:
     return None
 
 
-def _reply_basis(evidence: dict[str, Any]) -> tuple[float | None, str]:
-    """A recorded reply rate if one exists, else an honest unknown."""
+def _reply_basis(evidence: dict[str, Any], industry: str | None = None) -> tuple[float | None, str]:
+    """A recorded reply rate if one exists, else a world-benchmark basis.
+
+    Recorded data (10+ sends) always wins. Below that the basis cites the
+    published world band for the industry instead of saying "unknown": the
+    founder's first sends then replace the benchmark with their own rate.
+    """
     channels = (evidence.get("engagement") or {}).get("channels") or {}
     sent = sum((c.get("sent") or 0) for c in channels.values())
     replied = sum((c.get("replied") or 0) for c in channels.values())
     if sent >= 10:
-        return replied / sent, f"recorded rate {replied}/{sent} across channels"
-    return None, "no baseline yet: 10+ sends establish one"
+        rate = replied / sent
+        market = market_comparison(rate, industry)
+        verdict = f" ({market['verdict']} the world band)" if market else ""
+        return rate, f"recorded rate {replied}/{sent} across channels{verdict}"
+    bench = cold_reply_benchmark(industry)
+    return None, (
+        f"world band {bench['reply_low_pct']:g}-{bench['reply_high_pct']:g}% cold reply "
+        f"({bench['coverage']}; {bench['vintage']}) — "
+        "no baseline yet: 10+ sends establish your own"
+    )
 
 
-def suggest_campaign(org: int = 0) -> dict[str, Any]:
-    """Propose the marketing move from evidence: video lines, campaign path, provider.
+def market_comparison(rate: float | None, industry: str | None = None) -> dict[str, Any] | None:
+    """Your recorded rate against the world band. None without a rate.
 
-    Every video line carries its source field; slots with no source are listed
-    under omitted with the exact field to fill, never papered over with
-    invented copy. The campaign path and provider follow recorded results and
-    declared resources, defaulting to honest unknowns.
+    The fusion primitive: recorded performance positioned against published
+    market reality. Verdicts are plain words over cited ranges, never grades.
     """
-    from core.company_context import get_company_context
-
-    evidence = collect_evidence(org)
-    context = get_company_context()
-    fields: dict[str, str] = {}
-    if context is not None:
-        dump = context.model_dump() if hasattr(context, "model_dump") else {}
-        for section in ("company", "product", "customer", "market", "offer"):
-            part = dump.get(section) or {}
-            if isinstance(part, dict):
-                for key, value in part.items():
-                    if isinstance(value, str) and value.strip():
-                        fields[f"{section}.{key}"] = value.strip()
-
-    wanted = [
-        ("hook", [("company.name", "company.description"), ("product.name", "product.value_proposition")]),
-        ("audience", [("customer.ideal_customer",)]),
-        ("problem", [("market.problem",)]),
-        ("offer", [("product.description",), ("offer.description",)]),
-    ]
-    lines: list[dict[str, str]] = []
-    omitted: list[dict[str, str]] = []
-    for slot, options in wanted:
-        texts = [fields[f] for group in options for f in group if fields.get(f)]
-        if texts:
-            # First non-empty phrasing wins; its field is the provenance.
-            for group in options:
-                hit = next((f for f in group if fields.get(f)), None)
-                if hit:
-                    lines.append({"slot": slot, "text": fields[hit], "source": f"context:{hit}"})
-                    break
-        else:
-            omitted.append({
-                "slot": slot,
-                "missing_field": options[0][0],
-                "note": "add it in company context and the line appears",
-            })
-
-    accounts = (evidence.get("accounts") or {}).get("total", 0)
-    meetings = (evidence.get("engagement") or {}).get("meetings", 0)
-    icps = evidence.get("icps") or []
-    validated = [i for i in icps if i.get("status") == "validated"]
-    if meetings > 0 and validated:
-        path, path_why = ("full", f"{meetings} meeting(s) and a validated ICP: position, produce, and publish")
-    elif accounts > 0 and (validated or accounts >= 3):
-        path, path_why = ("g1+g2", "enough audience to position and produce for; publishing waits for signal")
-    else:
-        path, path_why = ("g1", "positioning first: strategy before assets, assets before publishing")
-
-    channel = _best_channel(evidence)
-    connected = (evidence.get("channels") or {}).get("connected") or []
-    if channel == "email" and "resend" in connected:
-        via = "resend"
-        via_why = "Resend is connected and email leads the recorded channels."
-    elif channel == "email":
-        via = "resend-unconfigured"
-        via_why = "Email is the channel but Resend is not connected; connect it before planning sends."
-    elif channel in ("linkedin", "phone", "sms"):
-        via = "manual"
-        via_why = f"{channel} has no send API: outreach runs as manual tasks from drafts."
-    else:
-        via = "undecided"
-        via_why = "No channel evidence yet: declare channels in company context first."
-    rate, basis = _reply_basis(evidence)
-
+    if rate is None:
+        return None
+    bench = cold_reply_benchmark(industry)
+    low = float(bench["reply_low_pct"])  # type: ignore[arg-type]
+    high = float(bench["reply_high_pct"])  # type: ignore[arg-type]
+    pct = round(rate * 100, 2)
+    verdict = "above market" if pct > high else "below market" if pct < low else "within market"
     return {
-        "video_prompt": {"lines": lines, "omitted": omitted},
-        "campaign": {"path": path, "rationale": path_why,
-                     "evidence_refs": [f"accounts:{accounts}",
-                                       f"meetings:{meetings}",
-                                       f"icps:validated:{len(validated)}"]},
-        "provider": {"channel": channel, "via": via, "rationale": via_why,
-                     "reply_rate": rate, "rate_basis": basis},
-        "evidence_summary": {
-            "accounts": accounts,
-            "meetings": meetings,
-            "validated_icps": len(validated),
-        },
+        "recorded_pct": pct,
+        "band_low_pct": low,
+        "band_high_pct": high,
+        "verdict": verdict,
+        "industry": industry if isinstance(industry, str) and industry.strip() else None,
+        "coverage": bench["coverage"],
+        "sources": bench["sources"],
+        "vintage": bench["vintage"],
     }

@@ -7,6 +7,7 @@ import { companiesPage, companyDetail, prospectCompany, resolveCompanyProfile, r
 import { useCredentials } from '../app/Auth'
 import { AppShell } from '../components/Shell'
 import { DataState, LoadingRows, MetricCard, RightDrawer, StateBadge } from '../components/Primitives'
+import { VerifyBadges, VerifyFacts } from '../components/VerifyBadges'
 
 const views: { label: string; value: CompanyView; metric: 'total' | 'candidates' | 'profiled' | 'with_contacts' }[] = [
   { label: 'All companies', value: 'all', metric: 'total' },
@@ -48,6 +49,7 @@ function CompanyTable({ items, selected, onSelect }: { items: CompanySummary[]; 
     column.display({ id: 'company', header: 'Company', cell: info => <div className="company-record"><span className="company-record-icon">{initials(info.row.original.name).slice(0, 1)}</span><span className="company-record-name"><strong>{info.row.original.name}</strong><small>{info.row.original.domain || 'Domain not recorded'}</small></span></div> }),
     column.accessor('industry', { header: 'Industry', cell: info => <span className="cell-truncate">{info.getValue() || '—'}</span> }),
     column.display({ id: 'profile', header: 'Profile', cell: info => info.row.original.has_profile ? <StateBadge tone={info.row.original.profile_status === 'resolved' ? 'green' : 'yellow'}>{info.row.original.profile_status || 'Saved'}</StateBadge> : <span className="muted-copy">Not resolved</span> }),
+    column.display({ id: 'verified', header: 'Verified', cell: info => <VerifyBadges domain={info.row.original.domain || null} name={info.row.original.name} /> }),
     column.accessor('contact_count', { header: 'Contacts', cell: info => <span className="contact-count"><UsersRound size={13} />{info.getValue()}</span> }),
     column.accessor('source', { header: 'Source', cell: info => <span className="source-cell">{info.getValue() || 'Profile'}</span> }),
     column.accessor('last_seen_at', { header: 'Last seen', cell: info => <span title={info.getValue() || undefined}>{dateText(info.getValue())}</span> }),
@@ -97,6 +99,7 @@ function CompanyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       <div className="drawer-body">
         {tab === 'overview' && <>
           <section className="detail-card"><h3>Company summary</h3>{company.description ? <p className="long-text">{company.description}</p> : <p className="muted-copy">No company description is saved.</p>}<dl className="company-fields"><div><dt>Industry</dt><dd>{company.industry || 'Not recorded'}</dd></div><div><dt>Size</dt><dd>{company.size || 'Not recorded'}</dd></div><div><dt>Country</dt><dd>{company.country || 'Not recorded'}</dd></div><div><dt>Source</dt><dd>{company.source || company.profile_provider || 'Not recorded'}</dd></div><div><dt>Last seen</dt><dd>{dateText(company.last_seen_at)}</dd></div></dl></section>
+          <section className="detail-card"><h3>Verification</h3><p className="muted-copy">Free checks: registry identity and web presence. Paid enrichment is separate.</p><VerifyFacts domain={company.domain || null} name={company.name} /></section>
           <section className="detail-card"><h3>Saved contacts</h3>{company.contacts.length ? <ul className="activity-list">{company.contacts.slice(0, 3).map(contact => <li key={contact.id}><Link className="contact-link" to={`/contacts?contact=${encodeURIComponent(contact.id)}`}>{contact.full_name || contact.email || 'Unnamed contact'}</Link><span>{contact.job_title || 'Role not recorded'}</span></li>)}</ul> : <p className="muted-copy">No person record is linked to this company yet.</p>}</section>
         </>}
         {tab === 'contacts' && <section className="detail-card"><h3>Saved contacts</h3>{company.contacts.length ? <ul className="activity-list">{company.contacts.map(contact => <li key={contact.id}><Link className="contact-link" to={`/contacts?contact=${encodeURIComponent(contact.id)}`}>{contact.full_name || contact.email || 'Unnamed contact'}</Link><span>{contact.job_title || 'Role not recorded'}{contact.email ? ` · ${contact.email}` : ''}</span></li>)}</ul> : <p className="muted-copy">No person record is linked to this company yet.</p>}</section>}

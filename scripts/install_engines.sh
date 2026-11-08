@@ -16,6 +16,4 @@ install_engine() {
   fi
 }
 
-install_engine "$ROOT_DIR/engines/g1"
-install_engine "$ROOT_DIR/engines/g2" "network-voice"
 install_engine "$ROOT_DIR/engines/g3"

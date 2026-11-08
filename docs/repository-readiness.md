@@ -5,7 +5,7 @@
 - `app/`: FastAPI routes, authentication, typed reads and domain actions.
 - `core/`: SQLite stores, settings, identity, read projections.
 - `services/`, `agents/`, `tools/`, `workers/`: existing business execution.
-- `engines/g1`, `g2`, `g3`: existing marketing/content/media engines.
+- `engines/g3`: the remaining publishing engine (G1/G2 and video were removed).
 - `autoevolve-ui/`: React/Vite source, lockfile, generated contract, browser tests and baselines.
 - `autoevolve-ui-agent-pack/`: original approved images and implementation rules.
 - `templates/`, `static/`: public booking templates and logo; no old operator UI.
@@ -22,7 +22,7 @@ are excluded from Git. Docker context also excludes local secrets and registries
 
 Use [README](../README.md) for the complete installation sequence and
 [Frontend Guide](../autoevolve-ui/README.md) for development and browser setup.
-Python 3.12+, Node.js 22, Make, OpenSSL, and FFmpeg are required. Setup creates
+Python 3.12+, Node.js 22, Make, and OpenSSL are required. FFmpeg is optional. Setup creates
 local credentials; npm builds React; `make dev` runs FastAPI on `0.0.0.0:8787`.
 Open `http://localhost:8787`; `/` redirects to Home. Provider configuration is
 required only for corresponding actions. A container is optional.
@@ -50,6 +50,6 @@ for test commands and authoritative failure handling.
 Backend pytest: 186 passed. Frontend unit tests: 10 passed. Playwright: 31 passed
 (17 default, 9 workflows, 4 sales workflow, 1 onboarding), including existing
 visual comparisons. Backend lint and frontend typecheck/lint/build passed.
-G1: 25 passed; G3: 30 passed. G2 initially failed because the local host lacked
-FFmpeg/ffprobe; those documented prerequisites were installed and the rerun passed all 68 tests.
-The existing GitHub backend job already installs FFmpeg before engine checks.
+G3: 30 passed. G1/G2 and the video lane were removed on 2026-10-28. The remaining
+suite is 512 tests: 510 pass, 1 skipped, 1 known flake; the website suite adds 10 tests; lint and UI
+typecheck/build pass.

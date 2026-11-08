@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createColumnHelper } from '@tanstack/react-table'
-import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock3, FileText, Plus, X } from 'lucide-react'
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, FileText, Hourglass, Plus, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { contactsPage } from '../api/contacts'
 import { meetingDetail, meetingsPage, recordMeetingMarker, type MeetingMarker } from '../api/workflows'
@@ -15,7 +15,13 @@ const views = [
   { label: 'All records', value: 'all', count: 'total' },
   { label: 'With date', value: 'dated', count: 'dated' },
   { label: 'No date', value: 'undated', count: 'undated' },
+  { label: 'Awaiting booking', value: 'awaiting', count: 'awaiting' },
 ] as const
+
+function MeetingStatus({ meeting }: { meeting: MeetingMarker }) {
+  if (meeting.status === 'awaiting_booking') return <StateBadge tone="yellow">awaiting booking</StateBadge>
+  return <StateBadge tone="blue">{meeting.source === 'booking_link' ? 'booked by contact' : 'manual marker'}</StateBadge>
+}
 
 function RecordedWhen({ value }: { value: string | null }) {
   if (!value) return <span className="muted-copy">Not recorded</span>
@@ -28,16 +34,20 @@ function MeetingDrawer({ id, close }: { id: string; close: () => void }) {
   const credentials = useCredentials()
   const detail = useQuery({ queryKey: ['meeting', id], queryFn: () => meetingDetail(credentials, id) })
   const meeting = detail.data
+  const awaiting = meeting?.status === 'awaiting_booking'
   return <RightDrawer title="Meeting details" onClose={close} className="workflow-drawer">
     {detail.isPending ? <LoadingRows label="Loading meeting record" /> : detail.isError && !meeting ? <DataState title="Meeting record unavailable" detail={detail.error.message} retry={() => detail.refetch()} /> : meeting ? <>
       <div className="drawer-identity"><span className="provider-icon"><CalendarDays size={24} /></span><div className="drawer-name"><h2>{meeting.company || 'Company not recorded'}</h2><p>{meeting.contact_name || meeting.email || 'Contact not recorded'}</p></div></div>
-      <div className="drawer-status"><StateBadge tone="blue">Manual meeting marker · {meeting.status}</StateBadge></div>
+      <div className="drawer-status"><MeetingStatus meeting={meeting} /></div>
       <div className="drawer-tabs"><button aria-selected="true">Record</button></div>
       <div className="drawer-body">
         {detail.isError && <p className="operational-error" role="alert">Refresh failed: {detail.error.message}</p>}
-        <section className="detail-card"><h3>Recorded meeting details</h3><dl className="company-fields"><div><dt>Scheduled for</dt><dd><RecordedWhen value={meeting.scheduled_for} /></dd></div><div><dt>Recorded at</dt><dd><ShortDate value={meeting.recorded_at} /></dd></div><div><dt>Source</dt><dd>{meeting.source || 'Not recorded'}</dd></div><div><dt>Contact</dt><dd>{meeting.contact_name || 'Not recorded'}</dd></div><div><dt>Role</dt><dd>{meeting.contact_role || 'Not recorded'}</dd></div><div><dt>Email</dt><dd>{meeting.email || 'Not recorded'}</dd></div></dl></section>
+        {awaiting ? <section className="detail-card"><h3>Offered times awaiting a choice</h3>
+          <p className="operational-note">Sent to {meeting.email || 'the contact'} by email. The meeting is recorded here once they pick one of these times on the booking page.</p>
+          {meeting.slots?.length ? <ul className="company-fields">{meeting.slots.map(slot => <li key={slot}><strong>{slot}</strong></li>)}</ul> : <p className="operational-note">No slots were recorded on this request.</p>}
+        </section> : <section className="detail-card"><h3>Recorded meeting details</h3><dl className="company-fields"><div><dt>Scheduled for</dt><dd><RecordedWhen value={meeting.scheduled_for} /></dd></div><div><dt>Recorded at</dt><dd><ShortDate value={meeting.recorded_at} /></dd></div><div><dt>Source</dt><dd>{meeting.source === 'booking_link' ? 'Booking page (chosen by contact)' : meeting.source || 'Not recorded'}</dd></div><div><dt>Contact</dt><dd>{meeting.contact_name || 'Not recorded'}</dd></div><div><dt>Role</dt><dd>{meeting.contact_role || 'Not recorded'}</dd></div><div><dt>Email</dt><dd>{meeting.email || 'Not recorded'}</dd></div></dl></section>}
         <section className="detail-card"><h3>Saved note</h3><p className="workflow-message">{meeting.note || 'No note was recorded.'}</p></section>
-        <p className="operational-note">This marker was saved manually. It does not confirm a calendar booking, attendee invitation, or call link.</p>
+        <p className="operational-note">{awaiting ? 'Nothing is booked until the contact chooses a time. No reminder is sent automatically.' : 'This marker records a meeting. It does not send calendar invitations or call links.'}</p>
       </div>
       <div className="drawer-footer"><div className="workflow-actions"><Link className="button secondary" to={`/contacts?contact=${encodeURIComponent(meeting.lead_id)}`}>Open contact</Link><a className="button secondary" href="/calendar" target="_blank" rel="noreferrer">Open booking page <ArrowRight size={14} /></a></div></div>
     </> : null}
@@ -108,13 +118,13 @@ export function MeetingsPage() {
     column.display({ id: 'company', header: 'Company', cell: info => <strong>{info.row.original.company || 'Not recorded'}</strong> }),
     column.display({ id: 'contact', header: 'Contact', cell: info => info.row.original.contact_name || info.row.original.email || 'Not recorded' }),
     column.display({ id: 'when', header: 'Recorded date', cell: info => <RecordedWhen value={info.row.original.scheduled_for} /> }),
-    column.display({ id: 'status', header: 'Status', cell: () => <StateBadge tone="blue">manual marker</StateBadge> }),
+    column.display({ id: 'status', header: 'Status', cell: info => <MeetingStatus meeting={info.row.original} /> }),
     column.display({ id: 'note', header: 'Note', cell: info => <span className="cell-truncate">{info.row.original.note || 'Not recorded'}</span> }),
     column.display({ id: 'action', header: 'Action', cell: info => <button className="row-action" onClick={event => { event.stopPropagation(); update({ meeting: info.row.original.id }) }}>View record</button> }),
   ]
   return <AppShell active="Meetings" query={q} onQueryChange={value => update({ q: value, page: '1', meeting: null })}><div className="page-layout"><main className="page-main"><div className="page-content">
     <div className="page-heading"><div><h1>Meetings</h1><p>Review manually recorded meeting markers. Calendar bookings are separate.</p></div><div className="heading-actions"><a className="button secondary" href="/calendar" target="_blank" rel="noreferrer">Open booking page</a><button className="button primary" onClick={() => setCreating(true)}><Plus size={16} />Record meeting</button></div></div>
-    <WorkflowMetrics items={[{ label: 'Meeting markers', value: result?.counts.total, icon: <CalendarDays /> }, { label: 'With date', value: result?.counts.dated, icon: <Clock3 /> }, { label: 'No date', value: result?.counts.undated, icon: <ClipboardList /> }, { label: 'With note', value: result?.counts.with_note, icon: <FileText /> }]} />
+    <WorkflowMetrics items={[{ label: 'Meeting markers', value: result?.counts.total, icon: <CalendarDays /> }, { label: 'With date', value: result?.counts.dated, icon: <Clock3 /> }, { label: 'Awaiting booking', value: result?.counts.awaiting, icon: <Hourglass /> }, { label: 'With note', value: result?.counts.with_note, icon: <FileText /> }]} />
     {notice && <div className="company-page-notice" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss message">×</button></div>}
     <div className="table-toolbar"><div className="view-tabs">{views.map(item => <button key={item.value} className={view === item.value ? 'active' : ''} onClick={() => update({ view: item.value, page: '1', meeting: null })}>{item.label} ({result?.counts[item.count] ?? 0})</button>)}</div><label className="sort-control">Sort <select aria-label="Sort meeting records" value={sort} onChange={event => update({ sort: event.target.value, page: '1' })}><option value="recent">Recently recorded</option><option value="oldest">Oldest recorded</option><option value="company">Company A–Z</option></select></label></div>
     {query.isError && result && <div className="operational-error" role="alert">Refresh failed: {query.error.message} <button onClick={() => query.refetch()}>Retry</button></div>}

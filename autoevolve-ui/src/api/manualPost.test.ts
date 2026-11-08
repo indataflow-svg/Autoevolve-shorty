@@ -49,7 +49,7 @@ describe('manual post preview contract', () => {
 })
 
 describe('manual post create contract', () => {
-  it('sends the selected buffer account with the form fields', async () => {
+  it('sends the selected publisher and account with the form fields', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
     vi.stubGlobal('fetch', fetchMock)
     await createManualPost(credentials, {
@@ -58,6 +58,7 @@ describe('manual post create contract', () => {
       destinationUrl: '',
       linkLabel: '',
       assets: [],
+      publisher: 'buffer',
       bufferAccount: 'acme',
     })
     expect(fetchMock.mock.calls[0][0]).toBe('/company/marketing/manual-posts')

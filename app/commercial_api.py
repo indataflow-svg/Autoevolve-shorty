@@ -253,6 +253,112 @@ def suggest_criteria() -> dict:
             "fill_rates": fill_rates, "warnings": warnings}
 
 
+@router.get("/benchmarks")
+def world_benchmarks(
+    sends: int = Query(100, ge=1, le=100000),
+    industry: str | None = Query(None, max_length=120),
+) -> dict:
+    """World-data predictions for this company's industry. Read-only.
+
+    An explicit `industry` overrides the resolved one (for pages reasoning
+    about a planned market); otherwise the industry
+    resolves from the founder's own stored data (validated ICP first, else
+    top evidence industry). With nothing stored the general-B2B band applies
+    and says so. Every figure carries sources and vintage, and recorded
+    results elsewhere always take precedence over these bands.
+    """
+    from core import channel_benchmarks as benchmarks
+    from core.suggest import market_comparison
+
+    org = _org()
+    industry_source = "none"
+    requested = (industry or "").strip() or None
+    if requested:
+        industry = requested
+        industry_source = "requested"
+    else:
+        industry = None
+        try:
+            from core.evidence import resolve_research_terms
+
+            terms = resolve_research_terms(org)
+            if isinstance(terms.get("industry"), str) and terms["industry"].strip():
+                industry = terms["industry"].strip()
+                industry_source = terms.get("industry_source") or "evidence"
+        except Exception:
+            industry = None
+    recorded = _recorded_engagement(org)
+    rate = (recorded["replied"] / recorded["sent"]) if recorded["sent"] >= 10 else None
+    return {
+        "industry": industry,
+        "industry_source": industry_source,
+        "cold": benchmarks.cold_reply_benchmark(industry),
+        "optin": benchmarks.optin_benchmark(industry),
+        "expected": benchmarks.expected_replies(sends, industry),
+        "recorded": recorded,
+        "market": market_comparison(rate, industry),
+    }
+
+
+def _recorded_engagement(org: int) -> dict:
+    """Own send/reply/meeting counts. Counts only — never names or text."""
+    from core.evidence import collect_evidence
+
+    try:
+        engagement = collect_evidence(org).get("engagement") or {}
+    except Exception:
+        return {"sent": 0, "replied": 0, "meetings": 0, "rate": None}
+    channels = engagement.get("channels") or {}
+    sent = sum((c.get("sent") or 0) for c in channels.values())
+    replied = sum((c.get("replied") or 0) for c in channels.values())
+    meetings = engagement.get("meetings") or 0
+    return {"sent": sent, "replied": replied, "meetings": meetings,
+            "rate": (replied / sent) if sent >= 10 else None}
+
+
+class NetworkContributionIn(BaseModel):
+    opt_in: bool = Field(...)
+
+
+@router.get("/network-stats")
+def network_stats() -> dict:
+    """This tenant's anonymized contribution payload. Read-only.
+
+    Counts only: industry, per-channel sends/replies, meetings. No names,
+    domains, emails, or message text ever leave this shape. The anonymized
+    pool does not exist yet, so nothing here is transmitted anywhere — this
+    is the contribution contract, and the opt-in flag below governs it.
+    """
+    from core.state import get_network_contribution
+
+    org = _org()
+    industry = None
+    try:
+        from core.evidence import resolve_research_terms
+
+        terms = resolve_research_terms(org)
+        if isinstance(terms.get("industry"), str) and terms["industry"].strip():
+            industry = terms["industry"].strip()
+    except Exception:
+        industry = None
+    return {
+        "contribution": "opted_in" if get_network_contribution() else "opted_out",
+        "industry": industry,
+        "engagement": _recorded_engagement(org),
+        "pool": "none_yet",
+        "note": "Counts only, kept on this server. Opt in to publish this shape when the pool opens.",
+    }
+
+
+@router.post("/network-contribution", dependencies=[Depends(verify_founder_action)])
+def network_contribution(payload: NetworkContributionIn) -> dict:
+    """Opt the anonymized counts in or out of the future pool. Default out."""
+    from core.state import get_network_contribution, set_network_contribution
+
+    set_network_contribution(bool(payload.opt_in))
+    return {"contribution": "opted_in" if get_network_contribution() else "opted_out"}
+
+
 @router.get("/icps/{rid}")
 def get_icp(rid: str) -> dict:
     icp = store._row("icp_profiles", rid, _org())

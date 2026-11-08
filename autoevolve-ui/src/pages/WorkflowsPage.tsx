@@ -1,14 +1,15 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Compass, FileText, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { companyContext, setupTrigger } from '../api/companyContext'
 import {
   approveGovernedWorkflow, automationWorkflows, createGovernedWorkflow, generateValidationPlan, runWorkflowSimulation,
-  suggestCampaign, suggestWorkflows, validationGovernance, validationPlan, type AutomationWorkflowView, type CampaignSuggestion, type GovernanceRecord, type ValidationPlanRecord, type WorkflowSuggestions,
+  suggestWorkflows, validationGovernance, validationPlan, type AutomationWorkflowView, type GovernanceRecord, type ValidationPlanRecord, type WorkflowSuggestions,
 } from '../api/validation'
 import { ApiError } from '../api/client'
-import { useCredentials } from '../app/Auth'
+import { quotasView } from '../api/operational'
+import { useAuthSession, useCredentials } from '../app/Auth'
 import { AppShell } from '../components/Shell'
 import { DataState, LoadingRows, StateBadge } from '../components/Primitives'
 
@@ -79,36 +80,38 @@ function PlanView({ record }: { record: ValidationPlanRecord }) {
   </div>
 }
 
-function GovernancePanel({ record, busy, error, locked, onAction }: {
-  record: GovernanceRecord
+function GovernancePanel({ record, busy, error, locked, runRemaining, onAction }: {
+  record: GovernanceRecord | null
   busy: string
   error: string
   locked?: boolean
+  runRemaining?: number
   onAction: (action: 'validate' | 'approve' | 'run') => void
 }) {
-  const steps = (record.execution?.steps || []) as Array<{ output?: Record<string, unknown> }>
+  const steps = ((record?.execution?.steps || []) as Array<{ output?: Record<string, unknown> }>)
   const simulated = steps[0]?.output
-  const observation = eventObservation(record.execution)
-  const events = observedEventCount(record.execution, simulated || {})
+  const observation = record ? eventObservation(record.execution) : null
+  const events = observedEventCount(record?.execution, simulated || {})
+  const status = record?.status
   return <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Governance</h2><p>AutoEvolve decides whether the plan may run. Hermes never executes anything itself.</p></div>
     <ol className="validation-lifecycle">{[
       { key: 'plan', label: 'Validation Plan', reached: true },
-      { key: 'validated', label: record.status === 'blocked' ? 'Blocked' : 'Validated', reached: true },
-      { key: 'workflow_created', label: 'Workflow Created', reached: Boolean(record.workflow_id) },
-      { key: 'approved', label: 'Approved', reached: Boolean(record.approved_at) },
-      { key: 'executed', label: 'Executed', reached: Boolean(record.executed_at) },
+      { key: 'validated', label: status === 'blocked' ? 'Blocked' : 'Validated', reached: status !== undefined },
+      { key: 'workflow_created', label: 'Workflow Created', reached: Boolean(record?.workflow_id) },
+      { key: 'approved', label: 'Approved', reached: Boolean(record?.approved_at) },
+      { key: 'executed', label: 'Executed', reached: Boolean(record?.executed_at) },
     ].map(step => <li key={step.key} className={step.reached ? 'reached' : ''}><StateBadge tone={step.reached ? (step.key === 'plan' ? 'blue' : 'green') : 'neutral'}>{step.label}</StateBadge></li>)}</ol>
     <div className="validation-actions">
       <button className="button secondary" disabled={busy !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => onAction('validate')}>Validate Plan</button>
-      <button className="button secondary" disabled={busy !== '' || locked || !record.workflow_id || Boolean(record.approved_at)} onClick={() => onAction('approve')}>Approve</button>
-      <button className="button primary" disabled={busy !== '' || locked || !record.approved_at} onClick={() => onAction('run')}>Run</button>
+      <button className="button secondary" disabled={busy !== '' || locked || !record?.workflow_id || Boolean(record?.approved_at)} onClick={() => onAction('approve')}>Approve</button>
+      <button className="button primary" disabled={busy !== '' || locked || !record?.approved_at || runRemaining === 0} title={runRemaining === 0 ? 'Daily run quota reached' : undefined} onClick={() => onAction('run')}>Run</button>
     </div>
     {locked && <p className="operational-note">Actions unlock at 40% company data — <Link to="/commercial">complete it there</Link>.</p>}
     {busy && <p role="status" className="operational-note">{busy}…</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    {record.status === 'blocked' && <div className="validation-reasons"><h3><StateBadge tone="red">Blocked</StateBadge></h3><ul>{(record.reasons || []).map(reason => <li key={reason}>{reason}</li>)}</ul><p className="operational-note">No workflow was created and nothing can run until the plan changes.</p></div>}
-    {record.status === 'valid' && (record.warnings?.length ?? 0) > 0 && <div className="validation-reasons"><h3><StateBadge tone="yellow">Warnings</StateBadge></h3><ul>{(record.warnings || []).map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
-    {record.workflow_id && <p className="operational-note">Workflow <strong>{record.workflow_id}</strong> · action {(record.resolved_actions || []).map(item => item.action).join(', ') || 'none'} · approval {record.approved_at ? 'recorded' : 'required'}</p>}
+    {status === 'blocked' && <div className="validation-reasons"><h3><StateBadge tone="red">Blocked</StateBadge></h3><ul>{((record?.reasons || []) as string[]).map(reason => <li key={reason}>{reason}</li>)}</ul><p className="operational-note">No workflow was created and nothing can run until the plan changes.</p></div>}
+    {status === 'valid' && ((record?.warnings?.length ?? 0) > 0) && <div className="validation-reasons"><h3><StateBadge tone="yellow">Warnings</StateBadge></h3><ul>{((record?.warnings || []) as string[]).map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
+    {record?.workflow_id && <p className="operational-note">Workflow <strong>{record.workflow_id}</strong> · action {(record.resolved_actions || []).map(item => item.action).join(', ') || 'none'} · approval {record.approved_at ? 'recorded' : 'required'}</p>}
     {simulated && <dl className="validation-grid">
       <div><dt>Simulation</dt><dd>{String(simulated.status)} · {String(simulated.action)}</dd></div>
       <div><dt>Targets / sent</dt><dd>{String(simulated.targets)} / {String(simulated.sent)}</dd></div>
@@ -154,59 +157,56 @@ function WorkflowCard({ item }: { item: AutomationWorkflowView }) {
   </div>
 }
 
-function SuggestPanel({ onUseMethod }: {
-  onUseMethod: (method: string, channel: string | null) => void
-}) {
+function useSuggestions() {
   const credentials = useCredentials()
   const [suggestions, setSuggestions] = useState<WorkflowSuggestions | null>(null)
-  const [campaign, setCampaign] = useState<CampaignSuggestion | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  async function ask(kind: 'runs' | 'campaign') {
-    setError(''); setBusy(kind)
+  const refresh = useCallback(async () => {
+    setError(''); setBusy(true)
     try {
-      if (kind === 'runs') setSuggestions(await suggestWorkflows(credentials))
-      else setCampaign(await suggestCampaign(credentials))
+      const runs = await suggestWorkflows(credentials)
+      setSuggestions(runs)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Suggestions could not be computed.')
-    } finally { setBusy(null) }
-  }
+    } finally { setBusy(false) }
+  }, [credentials])
+  useEffect(() => { void refresh() }, [refresh])
+  return { suggestions, busy, error, refresh }
+}
+
+function RefreshRow({ busy, onRefresh }: { busy: boolean; onRefresh: () => void }) {
+  return <div className="validation-actions">
+    <button className="button secondary" disabled={busy} onClick={onRefresh}>{busy ? 'Reading evidence…' : 'Refresh suggestions'}</button>
+  </div>
+}
+
+function WhatNextPanel({ suggestions, onUseMethod }: {
+  suggestions: WorkflowSuggestions | null
+  onUseMethod: (method: string, channel: string | null) => void
+}) {
   return <section className="onboarding-panel"><div className="onboarding-panel-head">
     <h2>What next</h2><p>Ranked from everything the business has recorded — accounts, leads, imports, replies, past runs. Advisory only: nothing here plans, approves, or runs.</p></div>
-    <div className="validation-actions">
-      <button className="button secondary" disabled={busy !== null} onClick={() => void ask('runs')}>{busy === 'runs' ? 'Reading evidence…' : 'Suggest next run'}</button>
-      <button className="button secondary" disabled={busy !== null} onClick={() => void ask('campaign')}>{busy === 'campaign' ? 'Reading evidence…' : 'Suggest campaign'}</button>
-    </div>
-    {error && <p className="form-error" role="alert">{error}</p>}
-    {suggestions && (suggestions.recommendations.length === 0
-      ? <p className="operational-note">No recommendation fits the current evidence.</p>
-      : <ul className="cx-cards">{suggestions.recommendations.map(rec =>
-        <li key={`${rec.rank}-${rec.method}`} className="cx-card">
-          <div><strong>{rec.rank}. {rec.title}</strong> <StateBadge tone={rec.due_now ? 'green' : 'neutral'}>{rec.due_now ? 'due now' : 'scheduled'}</StateBadge></div>
-          <p>Run <strong>{rec.method.replaceAll('_', ' ')}</strong> · {rec.duration_days} days · expect {rec.expected_range.low}–{rec.expected_range.high} {rec.expected_range.unit}</p>
-          <p>{rec.rationale}</p>
-          <small>Basis: {rec.expected_range.basis}. Evidence: {rec.evidence_refs.join(' · ') || 'none yet'}.</small>
-          <div className="cx-card-actions">
-            <button className="button secondary" onClick={() => onUseMethod(rec.method, rec.channel)}>Use this method</button>
-          </div>
-        </li>)}</ul>)}
-    {campaign && <div className="cx-result">
-      <h3>Campaign: {campaign.campaign.path}</h3>
-      <p className="cx-note">{campaign.campaign.rationale} ({campaign.campaign.evidence_refs.join(' · ')})</p>
-      <h4>Video lines (each traced to its source)</h4>
-      <ul className="cx-list">{campaign.video_prompt.lines.map((line, i) =>
-        <li key={i}>“{line.text}” <small>— {line.source}</small></li>)}</ul>
-      {campaign.video_prompt.omitted.length > 0 && <><h4>Missing footage lines</h4>
-        <ul className="cx-list">{campaign.video_prompt.omitted.map(o =>
-          <li key={o.slot}>{o.slot}: {o.note} ({o.missing_field})</li>)}</ul></>}
-      <h4>Provider</h4>
-      <p className="cx-note">{campaign.provider.channel || 'no channel'} via {campaign.provider.via} — {campaign.provider.rationale} Rate: {campaign.provider.reply_rate ?? 'unknown'} ({campaign.provider.rate_basis}).</p>
-    </div>}
+    {!suggestions
+      ? <p className="operational-note">Reading evidence…</p>
+      : suggestions.recommendations.length === 0
+        ? <p className="operational-note">No recommendation fits the current evidence.</p>
+        : <ul className="cx-cards">{suggestions.recommendations.map(rec =>
+          <li key={`${rec.rank}-${rec.method}`} className="cx-card">
+            <div><strong>{rec.rank}. {rec.title}</strong> <StateBadge tone={rec.due_now ? 'green' : 'neutral'}>{rec.due_now ? 'due now' : 'scheduled'}</StateBadge></div>
+            <p>Run <strong>{rec.method.replaceAll('_', ' ')}</strong> · {rec.duration_days} days · expect {rec.expected_range.low}–{rec.expected_range.high} {rec.expected_range.unit}</p>
+            <p>{rec.rationale}</p>
+            <small>Basis: {rec.expected_range.basis}. Evidence: {rec.evidence_refs.join(' · ') || 'none yet'}.</small>
+            <div className="cx-card-actions">
+              <button className="button secondary" onClick={() => onUseMethod(rec.method, rec.channel)}>Use this method</button>
+            </div>
+          </li>)}</ul>}
   </section>
 }
 
 export function WorkflowsPage() {
   const credentials = useCredentials()
+  const session = useAuthSession()
   const queryClient = useQueryClient()
   const query = useQuery({ queryKey: ['validation-plan'], queryFn: () => validationPlan(credentials), retry: false })
   const routing = useQuery({ queryKey: ['company-context'], queryFn: () => companyContext(credentials), retry: false })
@@ -216,11 +216,15 @@ export function WorkflowsPage() {
   const [pending, setPending] = useState('')
   const [error, setError] = useState('')
   const [showPlan, setShowPlan] = useState(false)
+  const [tab, setTab] = useState<'Plan' | 'Governance' | 'What next'>('Plan')
+  const guide = useSuggestions()
+  const quotas = useQuery({ queryKey: ['quotas'], queryFn: () => quotasView(credentials) })
+  const planQuota = quotas.data?.quotas.plans
+  const runQuota = quotas.data?.quotas.runs
   const record = query.data
   const decision = governance.data
   // A 404 means "not there yet", which is a normal state on this page.
   const noPlanYet = !record && (query.isError ? (query.error as ApiError).status === 404 : query.isSuccess)
-  const noDecisionYet = !decision && (governance.isError ? (governance.error as ApiError).status === 404 : governance.isSuccess)
   const failed = query.isError && !noPlanYet
   const stage = (value: string | null | undefined) => (value || '—').replaceAll('_', ' ')
   // Company data lives on /commercial now; this page only reads readiness.
@@ -229,7 +233,7 @@ export function WorkflowsPage() {
   const trigger = setupTrigger(routing.data ?? null)
   const locked = trigger === 'fresh' || trigger === 'blocked'
   async function generate(hints?: { method_hint?: string; channel_hint?: string }) {
-    if (!token.trim()) { setError('Enter the founder action token before generating a plan.'); return }
+    if (!session && !token.trim()) { setError('Enter the founder action token before generating a plan.'); return }
     setError(''); setPending('Hermes is preparing a validation plan')
     try {
       const created = await generateValidationPlan(credentials, token, hints)
@@ -240,7 +244,7 @@ export function WorkflowsPage() {
     } finally { setPending('') }
   }
   async function govern(action: 'validate' | 'approve' | 'run') {
-    if (!token.trim()) { setError('Enter the founder action token before changing execution state.'); return }
+    if (!session && !token.trim()) { setError('Enter the founder action token before changing execution state.'); return }
     setError('')
     setPending(action === 'validate' ? 'Governance is validating the plan' : action === 'approve' ? 'Recording approval' : 'Running the approved workflow')
     try {
@@ -260,7 +264,14 @@ export function WorkflowsPage() {
     {query.isPending ? <LoadingRows label="Loading validation plan" /> : failed
       ? <DataState title="Validation plan could not be loaded" detail={query.error.message} retry={() => query.refetch()} />
       : <>
-        <label className="onboarding-token">Founder action token<input type="password" autoComplete="off" aria-label="Founder action token" value={token} onChange={event => setToken(event.target.value)} /><small>Required by the existing action gate; held only in this page's memory.</small></label>
+        {!session && <label className="onboarding-token">Founder action token<input type="password" autoComplete="off" aria-label="Founder action token" value={token} onChange={event => setToken(event.target.value)} /><small>Required by the existing action gate; held only in this page's memory.</small></label>}
+        {quotas.data && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Daily loop</h2><p>Plan and simulation are capped per organization per UTC day. Publishing is capped separately on Content.</p></div>
+          <div className="cx-stats">
+            <div className="cx-stat"><span>Plan</span><strong>{planQuota ? `${planQuota.remaining}/${planQuota.limit}` : '—'}</strong><small>{quotas.data.plan} plan · resets {new Date(planQuota?.reset_at || Date.now()).toLocaleString()}</small></div>
+            <div className="cx-stat"><span>Run</span><strong>{runQuota ? `${runQuota.remaining}/${runQuota.limit}` : '—'}</strong><small>{runQuota ? `used ${runQuota.used}` : 'not loaded'}</small></div>
+            <div className="cx-stat"><span>Publish</span><strong>{quotas.data.quotas.publishes ? `${quotas.data.quotas.publishes.remaining}/${quotas.data.quotas.publishes.limit}` : '—'}</strong><small>separate on Content</small></div>
+          </div>
+        </section>}
         {error && <p className="form-error" role="alert">{error}</p>}
         {routing.data && (trigger === 'fresh' || trigger === 'blocked') && (
           <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Company data</h2><p>{trigger === 'fresh'
@@ -272,15 +283,31 @@ export function WorkflowsPage() {
         {routing.data && trigger === 'incomplete' && (
           <p className="operational-note">Company data is at {routing.data.context.completeness_percent ?? 0}% — <Link to="/commercial">complete it</Link> to reach workflow readiness.</p>)}
         {pending.startsWith('Hermes') && <p role="status" className="operational-note">Hermes is preparing a validation plan through the model gateway…</p>}
-        {record && <div className="validation-actions"><StateBadge tone="green">Validation Plan Ready</StateBadge><button className="button secondary" onClick={() => setShowPlan(current => !current)}>{showPlan ? 'Hide plan' : 'View Plan'}</button><button className="button primary" disabled={pending !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => void generate()}>Generate Validation Plan</button></div>}
-        {!record && <div className="validation-actions"><button className="button primary" disabled={pending !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => void generate()}>Generate Validation Plan <ArrowRight size={16} /></button></div>}
-        {record && !showPlan && <p className="operational-note"><Compass size={15} /> A plan is stored and reviewable. Nothing has been sent, published, or spent.</p>}
-        {record && showPlan && <PlanView record={record} />}
-        {decision && <GovernancePanel record={decision} locked={locked} busy={pending.startsWith('Governance') || pending === 'Recording approval' || pending === 'Running the approved workflow' ? pending : ''} error={error} onAction={action => void govern(action)} />}
-        <SuggestPanel onUseMethod={(method, channel) => void generate({ method_hint: method, channel_hint: channel || undefined })} />
-        {noDecisionYet && record && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>Governance</h2><p>Validating the plan checks its channel, limits, constraints, and approval requirement before any workflow exists.</p></div><div className="validation-actions"><button className="button secondary" disabled={pending !== '' || locked} title={locked ? 'Needs 40% company data' : undefined} onClick={() => void govern('validate')}>Validate Plan</button></div>{locked && <p className="operational-note">Actions unlock at 40% company data — <Link to="/commercial">complete it there</Link>.</p>}</section>}
-        {showcase.data && showcase.data.length > 0 && <WorkflowShowcase items={showcase.data} />}
-        {noPlanYet && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>What happens here</h2><p>AutoEvolve reads the confirmed company context and asks Hermes for the smallest credible validation experiment.</p></div><p className="operational-note"><FileText size={15} /> The result is a reviewable plan: hypothesis, market, validation experiment, evidence, and limits. Sending, publishing, and spending are not part of this stage.</p></section>}
+        <nav className="cx-tabs" aria-label="Workflow sections">
+          {(['Plan', 'Governance', 'What next'] as const).map(t => <button key={t}
+            aria-current={tab === t ? 'page' : undefined} className={tab === t ? 'active' : ''}
+            onClick={() => setTab(t)}>{t}</button>)}
+        </nav>
+        {tab === 'Plan' && <>
+          <div className="validation-actions">
+            {record && <><StateBadge tone="green">Validation Plan Ready</StateBadge><button className="button secondary" onClick={() => setShowPlan(current => !current)}>{showPlan ? 'Hide plan' : 'View Plan'}</button></>}
+            <button className="button primary" disabled={pending !== '' || locked || planQuota?.remaining === 0} title={planQuota?.remaining === 0 ? 'Daily plan quota reached' : locked ? 'Needs 40% company data' : undefined} onClick={() => void generate()}>{record ? 'Generate Validation Plan' : <>Generate Validation Plan <ArrowRight size={16} /></>}</button>
+          </div>
+          {record && !showPlan && <p className="operational-note"><Compass size={15} /> A plan is stored and reviewable. Nothing has been sent, published, or spent.</p>}
+          {record && showPlan && <PlanView record={record} />}
+          {noPlanYet && <section className="onboarding-panel"><div className="onboarding-panel-head"><h2>What happens here</h2><p>AutoEvolve reads the confirmed company context and asks Hermes for the smallest credible validation experiment.</p></div><p className="operational-note"><FileText size={15} /> The result is a reviewable plan: hypothesis, market, validation experiment, evidence, and limits. Sending, publishing, and spending are not part of this stage.</p></section>}
+        </>}
+        {tab === 'Governance' && <>
+          {record
+            ? <><GovernancePanel record={decision ?? null} locked={locked} runRemaining={runQuota?.remaining} busy={pending.startsWith('Governance') || pending === 'Recording approval' || pending === 'Running the approved workflow' ? pending : ''} error={error} onAction={action => void govern(action)} />
+              {showcase.data && showcase.data.length > 0 && <WorkflowShowcase items={showcase.data} />}</>
+            : <p className="operational-note">Generate a plan first — governance reviews what planning produced.</p>}
+        </>}
+        {tab === 'What next' && <>
+          <RefreshRow busy={guide.busy} onRefresh={() => void guide.refresh()} />
+          {guide.error && <p className="form-error" role="alert">{guide.error}</p>}
+          <WhatNextPanel suggestions={guide.suggestions} onUseMethod={(method, channel) => void generate({ method_hint: method, channel_hint: channel || undefined })} />
+        </>}
       </>}
   </div></main></div></AppShell>
 }

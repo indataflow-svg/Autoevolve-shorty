@@ -34,7 +34,7 @@ from core.validation_plan import (
     build_plan_record,
     save_validation_plan,
 )
-from core.workflow_store import SIMULATION_ACTIONS, WORKFLOW_ACTIONS
+from core.workflow_store import EXTERNAL_ACTIONS, SIMULATION_ACTIONS, WORKFLOW_ACTIONS
 from services import workflow_runner
 from tests.market_validation_fixtures import (
     MOCK_PROSPECTS,
@@ -186,10 +186,11 @@ class PlanValidatorTests(GovernanceBase):
         self.assertTrue(any("still requires founder approval" in warning for warning in decision.warnings))
 
     def test_governance_never_authorizes_a_real_external_action(self):
-        # The only registered actions that reach real systems must stay unreachable.
+        # Campaign/media actions were removed; no registered action may reach an
+        # external system without per-item founder approval.
         for action in ("g1_strategy", "generate_assets", "publish"):
-            self.assertIn(action, WORKFLOW_ACTIONS)
-            self.assertNotIn(action, SIMULATION_ACTIONS)
+            self.assertNotIn(action, WORKFLOW_ACTIONS)
+        self.assertEqual(EXTERNAL_ACTIONS, ())
 
     def test_channel_and_method_wording_is_normalized(self):
         self.assertEqual(normalize_channel("E-Mail"), "email")
@@ -286,17 +287,13 @@ class MockExecutionTests(GovernanceBase):
     def test_simulation_has_no_external_side_effects(self):
         self._governed_workflow()
         self.client.post("/company/automation/governance/approve", auth=self.auth, headers=self.headers, json={})
-        with patch("services.marketing_worker.run_g1") as g1, \
-             patch("services.marketing_worker.run_media_pipeline") as g2, \
-             patch("services.marketing_worker.run_g3") as g3, \
-             patch("services.workflow_actions.apollo_client", create=True) as apollo:
+        with patch("services.workflow_actions.apollo_client", create=True) as apollo:
             response = self.client.post(
                 "/company/automation/governance/run", auth=self.auth,
                 headers=self.headers, json={"targets": MOCK_TARGETS},
             )
         self.assertEqual(response.status_code, 200, response.text)
-        for engine in (g1, g2, g3, apollo):
-            engine.assert_not_called()
+        apollo.assert_not_called()
         # No sales lead, no campaign, no task was created by the simulation.
         self.assertEqual(sales_store.summary()["total"], 0)
         with marketing_store.connect() as connection:

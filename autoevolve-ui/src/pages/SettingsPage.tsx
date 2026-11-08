@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Building2, Check, ExternalLink, Globe2, LockKeyhole, Plus, Settings2 } from 'lucide-react'
-import { useCredentials } from '../app/Auth'
-import { createOrganization, selectOrganization, setOrganizationCapabilities, settingsView, type WorkspaceOrg } from '../api/operational'
+import { useAuthSession, useCredentials } from '../app/Auth'
+import { createOrganization, deleteWebhookConnection, limitsView, publisherConnectionsView, saveLimits, saveWebhookConnection, selectOrganization, setOrganizationCapabilities, settingsView, type GovernanceLimitsView, type WorkspaceOrg } from '../api/operational'
 import { AppShell } from '../components/Shell'
 import { DataState, StateBadge } from '../components/Primitives'
 
@@ -26,8 +26,88 @@ function OrganizationEditor({ org, capabilities, onSaved }: { org: WorkspaceOrg;
   </section>
 }
 
+
+function LimitsEditor() {
+  const credentials = useCredentials()
+  const session = useAuthSession()
+  const queryClient = useQueryClient()
+  const query = useQuery({ queryKey: ['limits'], queryFn: () => limitsView(credentials) })
+  const [token, setToken] = useState('')
+  const [draft, setDraft] = useState<Partial<GovernanceLimitsView> | null>(null)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const data = draft ?? query.data
+  const save = useMutation({
+    mutationFn: () => saveLimits(credentials, {
+      max_spend_usd: Number(data?.max_spend_usd ?? 0),
+      max_actions: Number(data?.max_actions ?? 1),
+      max_outreach_contacts: Number(data?.max_outreach_contacts ?? 20),
+      max_duration_days: Number(data?.max_duration_days ?? 14),
+    }, token.trim()),
+    onSuccess: async result => { await queryClient.invalidateQueries({ queryKey: ['limits'] }); setDraft(result); setMessage('Governance limits saved for the active organization.'); setError('') },
+  })
+  if (!query.data && query.isPending) return <section className="settings-card"><h2>Governance limits</h2><p className="muted-copy">Loading limits…</p></section>
+  if (query.isError && !query.data) return <section className="settings-card"><h2>Governance limits</h2><p className="form-error" role="alert">{query.error.message}</p></section>
+  return <section className="settings-card"><div className="settings-card-heading"><div><h2>Governance limits</h2><p>Per-organization caps for plans and runs. Free plan caps are clamped to zero spend, 20 contacts, 14 days.</p></div><StateBadge tone="blue">{data?.plan || 'unknown'}</StateBadge></div>
+    <div className="org-create-form">
+      <label>Max spend (USD)<input type="number" min="0" step="1" value={data?.max_spend_usd ?? 0} onChange={event => setDraft({ ...(data || {}), max_spend_usd: Number(event.target.value) })} /></label>
+      <label>Max actions<input type="number" min="0" step="1" value={data?.max_actions ?? 1} onChange={event => setDraft({ ...(data || {}), max_actions: Number(event.target.value) })} /></label>
+      <label>Max outreach contacts<input type="number" min="0" step="1" value={data?.max_outreach_contacts ?? 20} onChange={event => setDraft({ ...(data || {}), max_outreach_contacts: Number(event.target.value) })} /></label>
+      <label>Max duration (days)<input type="number" min="0" step="1" value={data?.max_duration_days ?? 14} onChange={event => setDraft({ ...(data || {}), max_duration_days: Number(event.target.value) })} /></label>
+      {!session && <label>Founder action token<input type="password" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} /></label>}
+      <button className="button primary" disabled={save.isPending || (!session && !token.trim())} onClick={async () => { setError(''); setMessage(''); try { await save.mutateAsync() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save limits.') } }}>Save limits</button>
+    </div>
+    {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="success-message" role="status">{message}</p>}
+  </section>
+}
+
+
+function PublisherEditor() {
+  const credentials = useCredentials()
+  const session = useAuthSession()
+  const queryClient = useQueryClient()
+  const query = useQuery({ queryKey: ['publisher-connections'], queryFn: () => publisherConnectionsView(credentials) })
+  const [token, setToken] = useState('')
+  const [url, setUrl] = useState('')
+  const [secret, setSecret] = useState('')
+  const [account, setAccount] = useState('webhook')
+  const [label, setLabel] = useState('Webhook scheduler')
+  const [platforms, setPlatforms] = useState('instagram,x,linkedin')
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const connection = query.data?.webhook
+  useEffect(() => {
+    if (!connection) return
+    setUrl(connection.url); setAccount(connection.account); setLabel(connection.label); setPlatforms(connection.platforms.join(','))
+  }, [connection])
+  const save = useMutation({
+    mutationFn: () => saveWebhookConnection(credentials, { url, secret, account, label, platforms }, token.trim() || undefined),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['publisher-connections'] }); await queryClient.invalidateQueries({ queryKey: ['publishers'] }); setSecret(''); setMessage('Webhook connection saved and encrypted.'); setError('') },
+  })
+  const remove = useMutation({
+    mutationFn: () => deleteWebhookConnection(credentials, token.trim() || undefined),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['publisher-connections'] }); await queryClient.invalidateQueries({ queryKey: ['publishers'] }); setSecret(''); setMessage('Webhook connection removed.'); setError('') },
+  })
+  const available = query.data?.publishers.map(item => item.label).join(' · ') || 'none'
+  return <section className="settings-card"><div className="settings-card-heading"><div><h2>Publisher connection</h2><p>Free workspaces publish through their own signed webhook. The secret is encrypted at rest and never returned by the API.</p></div><StateBadge tone={connection ? 'green' : 'yellow'}>{connection ? 'connected' : 'not configured'}</StateBadge></div>
+    <p className="muted-copy">Available publishers: {available}</p>
+    <div className="org-create-form">
+      <label>Webhook URL<input type="url" value={url} onChange={event => setUrl(event.target.value)} placeholder="https://hooks.example.com/autoevolve" /></label>
+      <label>Signing secret<input type="password" autoComplete="new-password" value={secret} onChange={event => setSecret(event.target.value)} placeholder="At least 16 characters" /></label>
+      <label>Account name<input value={account} onChange={event => setAccount(event.target.value)} /></label>
+      <label>Label<input value={label} onChange={event => setLabel(event.target.value)} /></label>
+      <label>Platforms<input value={platforms} onChange={event => setPlatforms(event.target.value)} placeholder="instagram,x,linkedin" /></label>
+      {!session && <label>Founder action token<input type="password" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} /></label>}
+      <button className="button primary" disabled={save.isPending || !url.trim() || !secret.trim() || (!session && !token.trim())} onClick={async () => { setError(''); setMessage(''); try { await save.mutateAsync() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save the webhook.') } }}>{save.isPending ? 'Saving…' : 'Save webhook'}</button>
+      {connection && <button className="button secondary" disabled={remove.isPending || (!session && !token.trim())} onClick={async () => { setError(''); setMessage(''); try { await remove.mutateAsync() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not remove the webhook.') } }}>Remove</button>}
+    </div>
+    {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="success-message" role="status">{message}</p>}
+  </section>
+}
+
 export function SettingsPage() {
   const credentials = useCredentials()
+  const session = useAuthSession()
   const queryClient = useQueryClient()
   const [params, setParams] = useSearchParams()
   const section: Section = params.get('section') === 'links' ? 'Public links' : 'Workspace'
@@ -57,9 +137,11 @@ export function SettingsPage() {
           {orgs.length ? <div className="org-selector"><label>Organization<select aria-label="Organization" value={activeOrg?.id || ''} onChange={event => chooseOrg(Number(event.target.value))}>{orgs.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label><div><StateBadge tone={activeOrg?.id === query.data?.active_org_id ? 'green' : 'neutral'}>{activeOrg?.id === query.data?.active_org_id ? 'Active' : 'Not active'}</StateBadge>{activeOrg && activeOrg.id !== query.data?.active_org_id && <button className="button secondary" disabled={activate.isPending} onClick={async () => { setError(''); try { await activate.mutateAsync(activeOrg.id) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not activate organization.') } }}>Make active</button>}</div></div> : <p className="muted-copy">No organizations exist. Create one below to configure capabilities.</p>}
         </section>
         {activeOrg && <OrganizationEditor key={activeOrg.id} org={activeOrg} capabilities={query.data?.available_capabilities || []} onSaved={refresh} />}
-        <section className="settings-card"><div className="settings-card-heading"><div><h2>Create organization</h2><p>Creates a marketing organization. A company candidate or prospect is a separate record.</p></div><Plus size={18} /></div><form className="org-create-form" onSubmit={submitCreate}><label>Name<input required minLength={1} maxLength={120} value={name} onChange={event => setName(event.target.value)} placeholder="Organization name" /></label><label>Domain (optional)<input maxLength={253} value={domain} onChange={event => setDomain(event.target.value)} placeholder="example.org" /></label><button className="button primary" disabled={create.isPending}>Create organization</button></form></section>
+        <LimitsEditor />
+        <PublisherEditor />
+        {!session && <section className="settings-card"><div className="settings-card-heading"><div><h2>Create organization</h2><p>Creates a marketing organization. A company candidate or prospect is a separate record.</p></div><Plus size={18} /></div><form className="org-create-form" onSubmit={submitCreate}><label>Name<input required minLength={1} maxLength={120} value={name} onChange={event => setName(event.target.value)} placeholder="Organization name" /></label><label>Domain (optional)<input maxLength={253} value={domain} onChange={event => setDomain(event.target.value)} placeholder="example.org" /></label><button className="button primary" disabled={create.isPending}>Create organization</button></form></section>}
       </> : <section className="settings-card"><div className="settings-card-heading"><div><h2>Public links</h2><p>Configured destinations only. Reachability is not verified here.</p></div><Globe2 size={19} /></div><div className="public-link-list">{query.data?.public_links.map(link => <div key={link.id}><div><strong>{link.label}</strong><small>{link.url || 'No valid URL configured'}</small></div><StateBadge tone={link.state === 'configured' ? 'green' : link.state === 'local' ? 'blue' : 'yellow'}>{link.state === 'configured' ? 'Configured, unverified' : link.state === 'local' ? 'Local only' : link.state === 'placeholder' ? 'Placeholder' : 'Invalid URL'}</StateBadge>{link.url && link.state === 'configured' && <a href={link.url} target="_blank" rel="noreferrer" aria-label={`Open ${link.label}`}><ExternalLink size={16} /></a>}</div>)}</div><p className="operational-note">These URLs are read from backend configuration. Local and placeholder links cannot provide a public deployment.</p></section>}</div>
-      <aside className="settings-info"><section className="settings-info-card"><h3><LockKeyhole size={17} />Backend access</h3><p>Dashboard Basic authentication is required. Provider key changes also require the founder action token.</p><StateBadge tone="green">Authenticated session</StateBadge></section><section className="settings-info-card"><h3><Globe2 size={17} />Public-link status</h3>{query.data?.public_links.map(link => <div className="side-fact" key={link.id}><span>{link.label}</span><strong>{link.state}</strong></div>)}</section><section className="settings-info-card"><h3><Settings2 size={17} />Quick links</h3><Link to="/integrations">Manage integrations <ExternalLink size={13} /></Link><a href="/docs" target="_blank" rel="noreferrer">View API docs <ExternalLink size={13} /></a></section><section className="settings-info-card"><h3><Check size={17} />Source of truth</h3><p>Organization identity and capabilities come from the backend store. Environment health and backups are not available through this contract.</p></section></aside>
+      <aside className="settings-info"><section className="settings-info-card"><h3><LockKeyhole size={17} />Backend access</h3><p>{session ? 'You are signed in through your verified website session.' : 'Dashboard Basic authentication is required. Provider key changes also require the founder action token.'}</p><StateBadge tone="green">Authenticated session</StateBadge>{session && <button className="button secondary" onClick={async () => { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); window.location.assign('/') }}>Sign out</button>}</section><section className="settings-info-card"><h3><Globe2 size={17} />Public-link status</h3>{query.data?.public_links.map(link => <div className="side-fact" key={link.id}><span>{link.label}</span><strong>{link.state}</strong></div>)}</section><section className="settings-info-card"><h3><Settings2 size={17} />Quick links</h3>{!session && <Link to="/integrations">Manage integrations <ExternalLink size={13} /></Link>}<a href="/docs" target="_blank" rel="noreferrer">View API docs <ExternalLink size={13} /></a></section><section className="settings-info-card"><h3><Check size={17} />Source of truth</h3><p>Organization identity and capabilities come from the backend store. Environment health and backups are not available through this contract.</p></section></aside>
     </div>}
   </div></main></div></AppShell>
 }

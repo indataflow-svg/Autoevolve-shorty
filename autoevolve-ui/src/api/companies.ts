@@ -2,6 +2,7 @@ import type { components } from './schema'
 import { api, type Credentials } from './client'
 
 export type CompanySummary = components['schemas']['CompanySummary']
+export type CompanyVerification = components['schemas']['CompanyVerification']
 export type CompanyDetail = components['schemas']['CompanyDetail']
 export type CompaniesPage = components['schemas']['CompaniesPage']
 export type LeadResearchRequest = components['schemas']['LeadResearchRequest']
@@ -26,6 +27,13 @@ export function companiesPage(credentials: Credentials, filters: CompanyFilters)
 
 export function companyDetail(credentials: Credentials, id: string) {
   return api<CompanyDetail>(`/company/sales/companies/${encodeURIComponent(id)}`, credentials)
+}
+
+export function verifyCompany(credentials: Credentials, domain: string | null, name: string | null) {
+  const params = new URLSearchParams()
+  if (domain) params.set('domain', domain)
+  if (name) params.set('name', name)
+  return api<CompanyVerification>(`/company/sales/companies/verify/lookup?${params}`, credentials)
 }
 
 export function runCompanyResearch(credentials: Credentials, input: LeadResearchRequest, token: string) {

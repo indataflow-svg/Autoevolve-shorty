@@ -39,8 +39,6 @@ state.set_active_org(org["id"])
 lead, _ = sales_store.upsert_lead({"full_name": "Alex Carter", "job_title": "Founder", "company": "Rift Dynamics", "company_domain": "rift.test", "email": "alex@rift.test", "source": "manual"})
 sales_store.create_draft(lead["id"], "Helping Rift Dynamics scale operations", "Hi Alex, I would welcome a conversation about your current operations priorities.")
 
-task = state.create_task(org_id=org["id"], agent="growth", task_type="campaign", input_text="Create a campaign")
-marketing_store.create_campaign(org_id=org["id"], task_id=task["id"], request="Create a campaign", objective="awareness", buyer="ops_manager", topic="Operations Efficiency Q4", social_platforms=["x"], video_platform="shorts")
 marketing_store.create_manual_post(org_id=org["id"], platform="x", post_id="x_browser_workflow", title="Modern Ops with AI", destination_url="https://example.test", tracked_url="https://example.test/?utm_source=x", metadata={"workflow_status": "ready", "generated_caption": "Streamline operations with practical AI."})
 marketing_store.create_manual_post(org_id=org["id"], platform="x", post_id="x_browser_sent", title="Published Provider Example", destination_url="https://example.test", tracked_url="https://example.test/?utm_source=x", metadata={
     "workflow_status": "scheduled", "buffer_status": "scheduled", "buffer_account": "default", "buffer_accounts": ["default"],
@@ -52,14 +50,11 @@ with sales_store.connect() as connection:
     connection.execute("UPDATE sales_leads SET created_at = ?, updated_at = ?", (stamp, stamp))
     connection.execute("UPDATE sales_drafts SET created_at = ?, updated_at = ?", (stamp, stamp))
 with marketing_store.connect() as connection:
-    connection.execute("UPDATE marketing_campaigns SET created_at = ?, updated_at = ?", (stamp, stamp))
     connection.execute("UPDATE marketing_manual_posts SET created_at = ?, updated_at = ?", (stamp, stamp))
 
 import app.marketing_api  # noqa: E402
 
 app.marketing_api.PROJECTS_ROOT = Path(pack_directory.name)
-app.marketing_api.spawn_asset_pack = lambda *_args, **_kwargs: None
-app.marketing_api.spawn = lambda *_args, **_kwargs: None
 app.marketing_api._manual_post_handoff = lambda _post: (Path(pack_directory.name) / "handoff.json", Path(pack_directory.name))
 
 

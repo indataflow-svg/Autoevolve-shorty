@@ -15,6 +15,19 @@ export type QualRule = { id: string; name: string; rule_type: string }
 export type Integration = { provider: string; label: string; state?: string; configured?: boolean; keys?: string[]; connection?: { status: string; sync_status: string; credential_ref?: string } | null; blocker?: string }
 export type ImportPreview = { import_id: string; headers: string[]; suggested_mapping: Record<string, string>; totals: Record<string, number>; sample: Array<Record<string, string>>; ambiguous: Array<{ row: number; reason: string }> }
 export type OBSession = { id: string; path: string; current_step: string; completed: number; progress?: Record<string, unknown> }
+export type WorldBenchmarks = {
+  industry: string | null; industry_source: string;
+  cold: { reply_low_pct: number; reply_high_pct: number; elite_pct: number; coverage: string; sources: string[]; vintage: string; industry: string | null; industry_matched: boolean };
+  optin: { open_low_pct: number; open_high_pct: number; click_low_pct: number; click_high_pct: number; coverage: string; sources: string[]; vintage: string; industry: string | null; industry_matched: boolean };
+  expected: { low: number; high: number; unit: string; sends: number; basis: string; sources: string[] };
+  recorded: { sent: number; replied: number; meetings: number; rate: number | null };
+  market: { recorded_pct: number; band_low_pct: number; band_high_pct: number; verdict: string; industry: string | null; coverage: string; sources: string[]; vintage: string } | null;
+}
+export type NetworkStats = {
+  contribution: 'opted_in' | 'opted_out'; industry: string | null;
+  engagement: { sent: number; replied: number; meetings: number; rate: number | null };
+  pool: string; note: string;
+}
 
 const base = '/company/commercial'
 const write = (credentials: Credentials, token: string, path: string, method: string, body?: unknown) =>
@@ -40,7 +53,16 @@ export const commercialApi = (credentials: Credentials) => ({
   integrations: () => api<Integration[]>(`${base}/integrations`, credentials),
   imports: () => api<Array<{ id: string; entity_type: string; filename: string; status: string; totals: unknown }>>(`${base}/imports`, credentials),
   sessions: () => api<OBSession[]>(`${base}/onboarding-sessions`, credentials),
+  benchmarks: (sends = 100, industry?: string) => {
+    const qs = `sends=${encodeURIComponent(String(sends))}${industry?.trim() ? `&industry=${encodeURIComponent(industry.trim())}` : ''}`
+    return api<WorldBenchmarks>(`${base}/benchmarks?${qs}`, credentials)
+  },
+  networkStats: () => api<NetworkStats>(`${base}/network-stats`, credentials),
+  setContribution: (optIn: boolean, token: string) => api<{ contribution: string }>(`${base}/network-contribution`, credentials, { method: 'POST', body: JSON.stringify({ opt_in: optIn }) }, token),
   suggestAccounts: () => api<{ suggestions: Array<{ company_name: string; domain: string; icp_matches: Array<{ icp_id: string; icp_name: string; on: string }>; enrichment: { industry: string | null; size: string | null; country: string | null; description: string | null; source: string; cached: boolean } | null; evidence: { lead_count: number; stages: string[]; sources: string[]; research_candidate: boolean }; reason: string }>; total: number; generated_from: Record<string, number> }>(`${base}/accounts/suggest`, credentials, { method: 'POST', body: '{}' }),
+  forms: () => api<Array<{ slug: string; name: string; description: string | null; fields: Array<{ key: string; label: string; type: string; required: boolean; options?: string[] }>; active: boolean; hosted_path: string; external_endpoint: string }>>(`${base}/forms`, credentials),
+  formsConfig: () => api<{ endpoint_url: string; secret_header: string; secret: string | null; secret_configured: boolean }>(`${base}/forms/config`, credentials),
+  updateForm: (slug: string, v: Record<string, unknown>, token: string) => api<unknown>(`${base}/forms/${encodeURIComponent(slug)}`, credentials, { method: 'PATCH', body: JSON.stringify(v) }, token),
 })
 
 export const commercialWrite = (credentials: Credentials, token: string) => ({
@@ -64,6 +86,7 @@ export const commercialWrite = (credentials: Credentials, token: string) => ({
   sync: (p: string) => write(credentials, token, `/integrations/${p}/sync`, 'POST', {}),
   createSession: (v: Record<string, unknown>) => write(credentials, token, '/onboarding-sessions', 'POST', v),
   updateSession: (id: string, v: Record<string, unknown>) => write(credentials, token, `/onboarding-sessions/${id}`, 'PATCH', v),
+  createForm: (v: Record<string, unknown>) => write(credentials, token, '/forms', 'POST', v),
 })
 
 export async function previewImport(credentials: Credentials, token: string, entityType: string, file: File): Promise<ImportPreview> {

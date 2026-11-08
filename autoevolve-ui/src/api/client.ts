@@ -14,7 +14,10 @@ export class ApiError extends Error {
 
 export type Credentials = { username: string; password: string }
 
-function basic(credentials: Credentials): string {
+function basic(credentials: Credentials): string | null {
+  // A cookie session uses a sentinel with no password, so it never emits a
+  // Basic header. Legacy operator sign-in keeps the existing path.
+  if (!credentials.password) return null
   const bytes = new TextEncoder().encode(`${credentials.username}:${credentials.password}`)
   return `Basic ${btoa(String.fromCharCode(...bytes))}`
 }
@@ -48,13 +51,14 @@ async function request(
   path: string, credentials: Credentials, options: RequestInit = {}, actionToken?: string,
 ): Promise<Response> {
   const headers = new Headers(options.headers)
-  headers.set('Authorization', basic(credentials))
+  const authorization = basic(credentials)
+  if (authorization) headers.set('Authorization', authorization)
   headers.set('X-Requested-With', 'XMLHttpRequest')
   if (actionToken) headers.set('X-Founder-Action-Token', actionToken)
   if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   let response: Response
   try {
-    response = await fetch(path, { ...options, headers, cache: 'no-store' })
+    response = await fetch(path, { ...options, headers, cache: 'no-store', credentials: 'same-origin' })
   } catch {
     throw new ApiError(0, 'Could not reach AutoEvolve. Check the server connection.', (options.method || 'GET').toUpperCase(), path)
   }

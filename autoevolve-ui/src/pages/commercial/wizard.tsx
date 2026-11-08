@@ -1,18 +1,22 @@
 /** One coherent guided setup. Two starting choices, one stepper, no duplicate buttons. */
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Credentials } from '../../api/client'
 import { commercialApi, commercialWrite } from '../../api/commercial'
 import { companyContext, mergeContextSections, replaceCompanyContext } from '../../api/companyContext'
 import { Empty, Field, Stepper } from './shared'
+import { StateBadge } from '../../components/Primitives'
 import { AnswerCards } from '../../components/CompanyDataCards'
 import { CsvWizard } from './csvWizard'
 
 const STORAGE_KEY = 'cx-setup-session'
 const STEPS = ['Company & offer', 'ICP & market', 'Accounts & data', 'Pipeline & qualification', 'Integrations', 'Review']
 
-export function SetupWizard({ credentials, token }: { credentials: Credentials; token: string }) {
+export function SetupWizard({ credentials, token, onScores, onTab, onCompanyData }: {
+  credentials: Credentials; token: string; onScores?: () => void
+  onTab?: (tab: string) => void; onCompanyData?: () => void
+}) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const api = commercialApi(credentials)
@@ -23,7 +27,24 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
   const [showCsv, setShowCsv] = useState(false)
   const [form, setForm] = useState<Record<string, string>>({})
   const set = (k: string, v: string) => setForm(s => ({ ...s, [k]: v }))
+  const [params] = useSearchParams()
+  const [showStarter, setShowStarter] = useState(() => params.get('fresh') === '1')
   const [ctxTick, setCtxTick] = useState(0)
+  const [addingOffer, setAddingOffer] = useState(false)
+  const [offerName, setOfferName] = useState('')
+  const [offerBusy, setOfferBusy] = useState(false)
+
+  async function saveOffer() {
+    if (!offerName.trim()) return
+    if (!token.trim()) { setError('Enter the founder action token at the top of the page first.'); return }
+    setError(''); setOfferBusy(true)
+    try {
+      await commercialWrite(credentials, token).createOffer({ name: offerName.trim() })
+      setOfferName(''); setAddingOffer(false)
+      await queryClient.invalidateQueries({ queryKey: ['c-offers'] })
+    } catch (e) { setError(e instanceof Error ? e.message : 'Offer was not saved.') }
+    finally { setOfferBusy(false) }
+  }
 
   const sessions = useQuery({ queryKey: ['c-sessions'], queryFn: api.sessions })
   const ctxView = useQuery({ queryKey: ['company-context'], queryFn: () => companyContext(credentials) })
@@ -61,6 +82,7 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
       localStorage.setItem(STORAGE_KEY, s.id)
       setActiveId(s.id)
       setStep(0)
+      setShowStarter(false)
       await queryClient.invalidateQueries({ queryKey: ['c-sessions'] })
     } catch (e) { setError(e instanceof Error ? e.message : 'Setup could not start.') }
     finally { setBusy(null) }
@@ -68,10 +90,12 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
   function resume(id: string) {
     localStorage.setItem(STORAGE_KEY, id)
     setActiveId(id)
+    setShowStarter(false)
   }
   function leave() {
     localStorage.removeItem(STORAGE_KEY)
     setActiveId(null)
+    setShowStarter(false)
   }
   function go(index: number) {
     setStep(index)
@@ -90,7 +114,8 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
       .catch(() => undefined)
   }
 
-  const company = (ctxView.data?.context as { company?: { name?: string } } | undefined)?.company
+  const company = (ctxView.data?.context as { company?: { name?: string; website?: string; description?: string } } | undefined)?.company
+  const ctxPercent = ctxView.data?.context.completeness_percent ?? 0
   const done = {
     company: Boolean(company?.name) && (offers.data || []).length > 0,
     icp: (icps.data || []).length > 0,
@@ -100,10 +125,100 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
     review: Boolean(company?.name) && (offers.data || []).length > 0 && (icps.data || []).length > 0
       && (accounts.data?.total || 0) > 0 && (pipelines.data || []).length > 0 && (rules.data || []).length > 0,
   }
+  const allSessions = sessions.data || []
+  // Identity exists when any commercial fact is stored — company data started,
+  // or any offer/ICP/account/pipeline/rule/session. Starter choices must not
+  // reappear once this is true.
+  const hasIdentity = Boolean(company?.name) || ctxPercent > 0
+    || (offers.data || []).length > 0 || (icps.data || []).length > 0
+    || (accounts.data?.total || 0) > 0 || (pipelines.data || []).length > 0
+    || (rules.data || []).length > 0 || allSessions.length > 0
 
   if (!active) {
-    const open = (sessions.data || []).filter(s => !s.completed)
+    const open = allSessions.filter(s => !s.completed)
+    const lastDone = [...allSessions].reverse().find(s => s.completed)
+    if (hasIdentity && !showStarter) {
+      const offerNames = (offers.data || []).map(o => o.name).filter(Boolean)
+      const icpNames = (icps.data || []).map(i => `${i.name}${i.status && i.status !== 'active' ? ` (${i.status})` : ''}`)
+      const pipeNames = (pipelines.data || []).map(p => p.name)
+      const ruleNames = (rules.data || []).map(r => r.name)
+      const companyDone = Boolean(company?.name)
+      const statusRows: Array<{
+        label: string; detail: string; ok: boolean; action: string;
+        onAction: () => void; info: string[]; quickAdd?: boolean;
+      }> = [
+        { label: 'Company identity', detail: companyDone ? `${company?.name}${company?.website ? ` · ${company.website}` : ''}` : `${ctxPercent}% complete`,
+          ok: companyDone, action: 'Company data', onAction: () => onCompanyData?.(),
+          info: [...(company?.description ? [company.description] : []),
+                 ...(company?.website ? [`Website: ${company.website}`] : []),
+                 ...(!companyDone ? ['Name missing — set it in Company data.'] : [])] },
+        { label: 'Offers', detail: `${offerNames.length} offer(s)`, ok: offerNames.length > 0,
+          action: 'Add offer', onAction: () => setAddingOffer(v => !v), quickAdd: true,
+          info: offerNames.length ? offerNames.map(n => `Offer: ${n}`) : ['No offers yet — add the first below.'] },
+        { label: 'ICP hypothesis', detail: `${icpNames.length} profile(s)`, ok: done.icp,
+          action: 'Open ICPs', onAction: () => onTab?.('ICPs & Qualification'),
+          info: icpNames.length ? icpNames.map(n => `Profile: ${n}`) : ['No profiles yet — start from a template in ICPs.'] },
+        { label: 'Accounts', detail: `${accounts.data?.total || 0} saved`, ok: done.accounts,
+          action: 'Open accounts', onAction: () => onTab?.('Accounts'),
+          info: (accounts.data?.total || 0) > 0
+            ? [`${accounts.data?.total} saved — manage, qualify, and suggest lookalikes in Accounts.`]
+            : ['None saved — add one manually or import CSV in Accounts.'] },
+        { label: 'Pipeline and rules', detail: `${pipeNames.length} pipeline(s), ${ruleNames.length} rule(s)`, ok: done.pipeline,
+          action: 'Open pipeline', onAction: () => onTab?.('Pipeline'),
+          info: [...pipeNames.map(n => `Pipeline: ${n}`), ...ruleNames.map(n => `Rule: ${n}`),
+                 ...((pipeNames.length + ruleNames.length) === 0 ? ['Defaults appear automatically; add a rule in Pipeline.'] : [])] },
+      ]
+      const ready = ctxView.data?.context.workflow_ready
+      return <div className="cx-stack">
+        <div className="cx-cards">
+          <div className="cx-card">
+            <div className="cx-hero">
+              <CompletenessRing percent={ctxPercent} />
+              <div className="cx-hero-text">
+                <h3>{company?.name || 'Company commercial identity'}</h3>
+                {company?.description && <p>{company.description}</p>}
+                <div className="cx-hero-meta">
+                  {company?.website && <small>{company.website}</small>}
+                  <StateBadge tone={ready ? 'green' : 'yellow'}>{ready ? 'ready' : 'needs attention'}</StateBadge>
+                </div>
+              </div>
+            </div>
+            <ul className="cx-status-rows">{statusRows.map(row => <li key={row.label}>
+              <span><strong>{row.label}</strong><small>{row.detail}</small>
+                <details className="cx-row-info"><summary>More info</summary>
+                  <ul>{row.info.map((line, i) => <li key={i}>{line}</li>)}</ul>
+                </details>
+                {row.quickAdd && addingOffer && <div className="cx-row-add">
+                  <input aria-label="New offer name" value={offerName}
+                    onChange={e => setOfferName(e.target.value)} placeholder="e.g. Managed dispatch desk" maxLength={120} />
+                  <button className="button primary cx-row-action" disabled={offerBusy || !offerName.trim()}
+                    onClick={() => void saveOffer()}>{offerBusy ? 'Saving…' : 'Save offer'}</button>
+                </div>}
+              </span>
+              <span className="cx-row-side">
+                <StateBadge tone={row.ok ? 'green' : 'yellow'}>{row.ok ? 'done' : 'missing'}</StateBadge>
+                <button className="button secondary cx-row-action" onClick={row.onAction}>{row.quickAdd && addingOffer ? 'Cancel' : row.action}</button>
+              </span>
+            </li>)}</ul>
+            <div className="cx-card-actions">
+              {open.length > 0 && <button className="button primary" onClick={() => resume(open[0].id)}>Resume path {open[0].path} — at {open[0].current_step}</button>}
+              {open.length === 0 && lastDone && <button className="button primary" onClick={() => resume(lastDone.id)}>Review setup</button>}
+              <button className="button secondary" onClick={() => setShowStarter(true)}>Setup new company commercial identity</button>
+            </div>
+            <PoolRow credentials={credentials} token={token} />
+          </div>
+        </div>
+        {open.length > 1 && <div className="cx-resume"><h3>Other paused setups</h3>
+          <ul>{open.slice(1).map(s => <li key={s.id}>
+            <button className="button secondary" onClick={() => resume(s.id)}>Resume path {s.path} — at {s.current_step}</button>
+          </li>)}</ul></div>}
+        <ScoreKpis credentials={credentials} onScores={onScores} />
+        <p className="cx-note">Starting a new identity keeps existing accounts, offers, and history — it opens a fresh guided setup you can leave and resume.</p>
+        {error && <p className="form-error" role="alert">{error}</p>}
+      </div>
+    }
     return <div>
+      {hasIdentity && <p className="cx-note"><button className="cx-link" onClick={() => setShowStarter(false)}>← Back to company identity</button></p>}
       <div className="cx-cards">
         <div className="cx-card"><h3>Starting from zero</h3>
           <p>For a company establishing its commercial process for the first time. Builds the profile, hypothesis, and pipeline step by step.</p>
@@ -191,8 +306,97 @@ export function SetupWizard({ credentials, token }: { credentials: Credentials; 
   </div>
 }
 
-function stepKey(index: number): string {
-  return ['company', 'icp', 'accounts', 'pipeline', 'integrations', 'review'][index] || 'company'
+/** World-data predictions for the stored company data. Stat blocks first. */
+export function BenchmarkCard({ credentials }: { credentials: Credentials }) {
+  const [sends, setSends] = useState(100)
+  const api = commercialApi(credentials)
+  const bench = useQuery({ queryKey: ['c-benchmarks', sends], queryFn: () => api.benchmarks(sends) })
+  const data = bench.data
+  return <div className="cx-cards">
+    <div className="cx-card">
+      <h3>Predicted outcomes</h3>
+      {bench.isPending && <p>Loading world benchmarks…</p>}
+      {bench.isError && <p className="cx-note">Benchmarks are unavailable right now.</p>}
+      {data && <>
+        <p className="cx-note">{data.industry ? `For ${data.industry} (from ${data.industry_source}).` : 'General B2B band — no industry stored yet.'}</p>
+        <div className="cx-stats">
+          <div className="cx-stat"><span>Cold reply</span><strong>{data.cold.reply_low_pct}–{data.cold.reply_high_pct}%</strong></div>
+          <div className="cx-stat"><span>Expected</span><strong>{data.expected.low}–{data.expected.high}</strong><small>replies / {data.expected.sends} sends</small></div>
+          <div className="cx-stat"><span>Opt-in open</span><strong>{data.optin.open_low_pct}–{data.optin.open_high_pct}%</strong></div>
+        </div>
+        {data.market
+          ? <p>Your {data.market.recorded_pct}% across {data.recorded.sent} sends — {data.market.verdict} the world band.</p>
+          : <p className="cx-note">{data.recorded.sent} sends so far — 10+ position you against the market.</p>}
+        <div className="cx-estimate">
+          <Field label="Sends to estimate">
+            <input type="number" min={1} max={100000} value={sends}
+              onChange={e => setSends(Math.min(100000, Math.max(1, Math.floor(Number(e.target.value) || 1))))} />
+          </Field>
+        </div>
+        <details className="cx-src"><summary>Sources & coverage</summary>
+          {data.cold.sources.length + data.optin.sources.length} cited studies · {data.cold.vintage} · {data.cold.coverage}</details>
+      </>}
+    </div>
+  </div>
+}
+
+/** Compact score KPIs for the Setup page. Full detail lives in Scores. */
+function ScoreKpis({ credentials, onScores }: { credentials: Credentials; onScores?: () => void }) {
+  const api = commercialApi(credentials)
+  const bench = useQuery({ queryKey: ['c-benchmarks', 100], queryFn: () => api.benchmarks(100) })
+  const data = bench.data
+  if (bench.isPending || bench.isError || !data) return null
+  return <div className="cx-cards"><div className="cx-card">
+    <div className="cx-stats cx-stats-compact">
+      <div className="cx-stat"><span>Cold reply</span><strong>{data.cold.reply_low_pct}–{data.cold.reply_high_pct}%</strong></div>
+      <div className="cx-stat"><span>Expected</span><strong>{data.expected.low}–{data.expected.high}</strong><small>replies / 100 sends</small></div>
+      <div className="cx-stat"><span>Opt-in open</span><strong>{data.optin.open_low_pct}–{data.optin.open_high_pct}%</strong></div>
+    </div>
+    <div className="cx-card-actions">
+      <button className="button secondary" onClick={onScores}>See more</button>
+      {data.market && <span className="operational-note">Your {data.market.recorded_pct}% — {data.market.verdict}</span>}
+    </div>
+  </div></div>
+}
+
+/** Pool preference lives with identity: a privacy decision, not a prediction. */
+function PoolRow({ credentials, token }: { credentials: Credentials; token: string }) {
+  const queryClient = useQueryClient()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const api = commercialApi(credentials)
+  const stats = useQuery({ queryKey: ['c-network-stats'], queryFn: api.networkStats })
+  async function flip() {
+    if (!token.trim()) { setError('Enter the founder action token at the top of the page first.'); return }
+    const next = (stats.data?.contribution || 'opted_out') !== 'opted_in'
+    setError(''); setBusy(true)
+    try {
+      await api.setContribution(next, token)
+      await queryClient.invalidateQueries({ queryKey: ['c-network-stats'] })
+    } catch (e) { setError(e instanceof Error ? e.message : 'Preference was not saved.') }
+    finally { setBusy(false) }
+  }
+  const optedIn = stats.data?.contribution === 'opted_in'
+  return <div className="cx-pool">
+    <small>Anonymized pool: <strong>{stats.data ? (optedIn ? 'opted in' : 'opted out') : '…'}</strong> · counts only, kept on this server.</small>
+    <button className="button secondary" disabled={busy || stats.isPending} onClick={() => void flip()}>
+      {busy ? 'Saving…' : (optedIn ? 'Opt out' : 'Opt in')}</button>
+    {error && <p className="form-error" role="alert">{error}</p>}
+  </div>
+}
+
+function CompletenessRing({ percent }: { percent: number }) {
+  const r = 26
+  const circle = 2 * Math.PI * r
+  const done = Math.min(100, Math.max(0, percent)) / 100
+  return <svg className="cx-ring" width="72" height="72" viewBox="0 0 72 72" role="img" aria-label={`${percent}% complete`}>
+    <circle cx="36" cy="36" r={r} fill="none" stroke="var(--border)" strokeWidth="7" />
+    <circle cx="36" cy="36" r={r} fill="none" stroke={percent >= 80 ? 'var(--success)' : 'var(--primary)'} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${circle * done} ${circle}`} transform="rotate(-90 36 36)" />
+    <text x="36" y="36" textAnchor="middle" dominantBaseline="central" fill="var(--text)" fontSize="15" fontWeight="700">{percent}%</text>
+  </svg>
+}
+
+function stepKey(index: number): string {  return ['company', 'icp', 'accounts', 'pipeline', 'integrations', 'review'][index] || 'company'
 }
 
 function stepFromKey(key: string): number {

@@ -57,6 +57,200 @@
         }
       }
     },
+    "/api/auth/signup": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Signup",
+        "operationId": "signup_api_auth_signup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/verify": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Verify",
+        "operationId": "verify_api_auth_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/resend": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Resend",
+        "operationId": "resend_api_auth_resend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "operationId": "logout_api_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/company/coding/tasks": {
       "post": {
         "tags": [
@@ -612,150 +806,6 @@
         ]
       }
     },
-    "/company/marketing/asset-packs": {
-      "post": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Create Asset Pack",
-        "operationId": "create_asset_pack_company_marketing_asset_packs_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AssetPackRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AssetPackCreateResult"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Asset Packs",
-        "operationId": "asset_packs_company_marketing_asset_packs_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 20,
-              "title": "Limit"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/marketing/asset-packs/{pack_id}/files/{relative_path}": {
-      "get": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Asset Pack File",
-        "operationId": "asset_pack_file_company_marketing_asset_packs__pack_id__files__relative_path__get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "pack_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Pack Id"
-            }
-          },
-          {
-            "name": "relative_path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Relative Path"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/company/marketing/manual-posts/preview": {
       "post": {
         "tags": [
@@ -1012,6 +1062,450 @@
               "type": "integer",
               "default": 50,
               "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/marketing/publishers": {
+      "get": {
+        "tags": [
+          "marketing"
+        ],
+        "summary": "Publishers",
+        "operationId": "publishers_company_marketing_publishers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/marketing/publisher-accounts": {
+      "get": {
+        "tags": [
+          "marketing"
+        ],
+        "summary": "Publisher Accounts",
+        "operationId": "publisher_accounts_company_marketing_publisher_accounts_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "publisher",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Publisher"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/marketing/manual-posts/{post_record_id}/publish": {
+      "post": {
+        "tags": [
+          "marketing"
+        ],
+        "summary": "Publish Manual Post",
+        "description": "Schedule a finalized manual post through its configured publisher.",
+        "operationId": "publish_manual_post_company_marketing_manual_posts__post_record_id__publish_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "post_record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Post Record Id"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/marketing/manual-posts/{post_record_id}/publish/async": {
+      "post": {
+        "tags": [
+          "marketing"
+        ],
+        "summary": "Queue Manual Post Publish",
+        "description": "Queue a provider schedule so Cloudflare's ~125s edge timeout cannot\nturn a completed provider call into an ambiguous 524 response.",
+        "operationId": "queue_manual_post_publish_company_marketing_manual_posts__post_record_id__publish_async_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "post_record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Post Record Id"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/marketing/publish-jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "marketing"
+        ],
+        "summary": "Get Publish Job Status",
+        "operationId": "get_publish_job_status_company_marketing_publish_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/marketing/manual-posts/{post_record_id}/publish/draft": {
+      "post": {
+        "tags": [
+          "marketing"
+        ],
+        "summary": "Draft Manual Post",
+        "description": "Create a provider draft. Buffer supports this; the webhook does not.",
+        "operationId": "draft_manual_post_company_marketing_manual_posts__post_record_id__publish_draft_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "post_record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Post Record Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/marketing/manual-posts/{post_record_id}/publish/confirm": {
+      "post": {
+        "tags": [
+          "marketing"
+        ],
+        "summary": "Confirm Manual Post Publish",
+        "description": "Ask the configured publisher for the fate of every saved provider post.",
+        "operationId": "confirm_manual_post_publish_company_marketing_manual_posts__post_record_id__publish_confirm_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "post_record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Post Record Id"
+            }
+          },
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/marketing/manual-posts/{post_record_id}/publish/insights": {
+      "get": {
+        "tags": [
+          "marketing"
+        ],
+        "summary": "Manual Post Publish Insights",
+        "operationId": "manual_post_publish_insights_company_marketing_manual_posts__post_record_id__publish_insights_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "post_record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Post Record Id"
+            }
+          },
+          {
+            "name": "post_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Post Id"
             }
           }
         ],
@@ -1710,625 +2204,6 @@
         }
       }
     },
-    "/company/marketing/campaigns": {
-      "post": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Create Campaign From Ui",
-        "operationId": "create_campaign_from_ui_company_marketing_campaigns_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CampaignLaunchRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CampaignCreateResult"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Campaigns",
-        "operationId": "campaigns_company_marketing_campaigns_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 20,
-              "title": "Limit"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/marketing/campaigns/{campaign_id}": {
-      "get": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Campaign",
-        "operationId": "campaign_company_marketing_campaigns__campaign_id__get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Campaign Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/marketing/campaigns/{campaign_id}/voice-handoff": {
-      "get": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Campaign Voice Handoff",
-        "operationId": "campaign_voice_handoff_company_marketing_campaigns__campaign_id__voice_handoff_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Campaign Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/marketing/campaigns/{campaign_id}/voice-recording": {
-      "post": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Upload Campaign Voice Recording",
-        "operationId": "upload_campaign_voice_recording_company_marketing_campaigns__campaign_id__voice_recording_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Campaign Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_upload_campaign_voice_recording_company_marketing_campaigns__campaign_id__voice_recording_post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/marketing/campaigns/{campaign_id}/variants/{variant_id}/video": {
-      "get": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Variant Video",
-        "operationId": "variant_video_company_marketing_campaigns__campaign_id__variants__variant_id__video_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Campaign Id"
-            }
-          },
-          {
-            "name": "variant_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Variant Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/marketing/campaigns/{campaign_id}/variants/{variant_id}/select": {
-      "post": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Select Variant",
-        "operationId": "select_variant_company_marketing_campaigns__campaign_id__variants__variant_id__select_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Campaign Id"
-            }
-          },
-          {
-            "name": "variant_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Variant Id"
-            }
-          },
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/marketing/campaigns/{campaign_id}/drafts": {
-      "post": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Create Drafts",
-        "operationId": "create_drafts_company_marketing_campaigns__campaign_id__drafts_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Campaign Id"
-            }
-          },
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/marketing/campaigns/{campaign_id}/approve-script": {
-      "post": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Approve Script",
-        "operationId": "approve_script_company_marketing_campaigns__campaign_id__approve_script_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Campaign Id"
-            }
-          },
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CampaignTransitionResult"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/marketing/campaigns/{campaign_id}/regenerate-script": {
-      "post": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Regenerate Script",
-        "operationId": "regenerate_script_company_marketing_campaigns__campaign_id__regenerate_script_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Campaign Id"
-            }
-          },
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": true,
-                "default": {},
-                "title": "Payload"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/marketing/campaigns/{campaign_id}/retry": {
-      "post": {
-        "tags": [
-          "marketing"
-        ],
-        "summary": "Retry Campaign",
-        "operationId": "retry_campaign_company_marketing_campaigns__campaign_id__retry_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Campaign Id"
-            }
-          },
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CampaignTransitionResult"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/company/marketing/validation/plan": {
       "post": {
         "tags": [
@@ -2797,35 +2672,6 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Suggest Next Runs Company Automation Suggest Post"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
-    "/company/automation/suggest-campaign": {
-      "post": {
-        "tags": [
-          "automation"
-        ],
-        "summary": "Suggest Campaign Move",
-        "description": "Propose the marketing move from evidence. Advisory only.\n\nVideo lines carry their source fields, missing slots are listed with the\nexact field to fill, and the campaign path and provider follow recorded\nresults. Nothing is created or queued.",
-        "operationId": "suggest_campaign_move_company_automation_suggest_campaign_post",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Suggest Campaign Move Company Automation Suggest Campaign Post"
                 }
               }
             }
@@ -3764,6 +3610,172 @@
             "HTTPBasic": []
           }
         ]
+      }
+    },
+    "/company/commercial/benchmarks": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "World Benchmarks",
+        "description": "World-data predictions for this company's industry. Read-only.\n\nAn explicit `industry` overrides the resolved one (for pages reasoning\nabout a planned market); otherwise the industry\nresolves from the founder's own stored data (validated ICP first, else\ntop evidence industry). With nothing stored the general-B2B band applies\nand says so. Every figure carries sources and vintage, and recorded\nresults elsewhere always take precedence over these bands.",
+        "operationId": "world_benchmarks_company_commercial_benchmarks_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "sends",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Sends"
+            }
+          },
+          {
+            "name": "industry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Industry"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response World Benchmarks Company Commercial Benchmarks Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/commercial/network-stats": {
+      "get": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Network Stats",
+        "description": "This tenant's anonymized contribution payload. Read-only.\n\nCounts only: industry, per-channel sends/replies, meetings. No names,\ndomains, emails, or message text ever leave this shape. The anonymized\npool does not exist yet, so nothing here is transmitted anywhere \u2014 this\nis the contribution contract, and the opt-in flag below governs it.",
+        "operationId": "network_stats_company_commercial_network_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Network Stats Company Commercial Network Stats Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/commercial/network-contribution": {
+      "post": {
+        "tags": [
+          "commercial"
+        ],
+        "summary": "Network Contribution",
+        "description": "Opt the anonymized counts in or out of the future pool. Default out.",
+        "operationId": "network_contribution_company_commercial_network_contribution_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkContributionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Network Contribution Company Commercial Network Contribution Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/company/commercial/icps/{rid}": {
@@ -5857,6 +5869,67 @@
         }
       }
     },
+    "/company/sales/companies/verify/lookup": {
+      "get": {
+        "tags": [
+          "companies"
+        ],
+        "summary": "Verify Company",
+        "description": "Free verification state for a prospect company. Read-only, no writes.\n\nGLEIF is looked up live (free, keyless); web presence and enriched\nprofiles come from local stores only. A miss in any source is reported,\nnever filled \u2014 the calibration UI renders it as an honest badge.",
+        "operationId": "verify_company_company_sales_companies_verify_lookup_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 253,
+              "default": "",
+              "title": "Domain"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "default": "",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyVerification"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/company/sales/companies/{company_id}": {
       "get": {
         "tags": [
@@ -5981,6 +6054,256 @@
             "HTTPBasic": []
           }
         ]
+      }
+    },
+    "/company/ui/limits": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Limits View",
+        "operationId": "limits_view_company_ui_limits_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceLimitsView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Save Limits",
+        "operationId": "save_limits_company_ui_limits_put",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GovernanceLimitsPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceLimitsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/company/ui/quotas": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Quotas View",
+        "operationId": "quotas_view_company_ui_quotas_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuotasView"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/ui/publishers": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Publisher Connections View",
+        "operationId": "publisher_connections_view_company_ui_publishers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/company/ui/publishers/webhook": {
+      "put": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Save Webhook Connection",
+        "operationId": "save_webhook_connection_company_ui_publishers_webhook_put",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookConnectionPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Delete Webhook Connection",
+        "operationId": "delete_webhook_connection_company_ui_publishers_webhook_delete",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-founder-action-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Founder-Action-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/company/ui/replies": {
@@ -6428,168 +6751,6 @@
         }
       }
     },
-    "/company/ui/campaigns": {
-      "get": {
-        "tags": [
-          "workflow-views"
-        ],
-        "summary": "Campaigns View",
-        "operationId": "campaigns_view_company_ui_campaigns_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1,
-              "title": "Page"
-            }
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 50,
-              "minimum": 1,
-              "default": 10,
-              "title": "Page Size"
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "maxLength": 200,
-              "default": "",
-              "title": "Q"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "maxLength": 40,
-              "default": "",
-              "title": "Status"
-            }
-          },
-          {
-            "name": "org_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": 1
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Org Id"
-            }
-          },
-          {
-            "name": "sort",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "recent",
-                "oldest",
-                "name"
-              ],
-              "type": "string",
-              "default": "recent",
-              "title": "Sort"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CampaignsPage"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/ui/campaigns/{campaign_id}": {
-      "get": {
-        "tags": [
-          "workflow-views"
-        ],
-        "summary": "Campaign Detail",
-        "operationId": "campaign_detail_company_ui_campaigns__campaign_id__get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "campaign_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Campaign Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CampaignDetail"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/company/ui/content": {
       "get": {
         "tags": [
@@ -7009,58 +7170,6 @@
             }
           }
         }
-      }
-    },
-    "/company/ui/onboarding": {
-      "get": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Onboarding View",
-        "operationId": "onboarding_view_company_ui_onboarding_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
-    "/company/ui/service-discovery": {
-      "get": {
-        "tags": [
-          "service discovery"
-        ],
-        "summary": "Service Discovery",
-        "operationId": "service_discovery_company_ui_service_discovery_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ServiceDiscoveryView"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
       }
     },
     "/company/sales/prospect/domain": {
@@ -8960,1992 +9069,6 @@
         }
       }
     },
-    "/company/video/specs": {
-      "get": {
-        "tags": [
-          "video"
-        ],
-        "summary": "List Specs",
-        "operationId": "list_specs_company_video_specs_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
-              "default": 50,
-              "title": "Limit"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response List Specs Company Video Specs Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "video-actions"
-        ],
-        "summary": "Create Spec",
-        "operationId": "create_spec_company_video_specs_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SpecCreate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Create Spec Company Video Specs Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/specs/{spec_id}": {
-      "get": {
-        "tags": [
-          "video"
-        ],
-        "summary": "Read Spec",
-        "operationId": "read_spec_company_video_specs__spec_id__get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "spec_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Spec Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Read Spec Company Video Specs  Spec Id  Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/plans": {
-      "get": {
-        "tags": [
-          "video"
-        ],
-        "summary": "List Plans",
-        "operationId": "list_plans_company_video_plans_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "spec_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Spec Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response List Plans Company Video Plans Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "video-actions"
-        ],
-        "summary": "Create Plan",
-        "operationId": "create_plan_company_video_plans_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlanCreate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Create Plan Company Video Plans Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/plans/{plan_id}": {
-      "get": {
-        "tags": [
-          "video"
-        ],
-        "summary": "Read Plan",
-        "operationId": "read_plan_company_video_plans__plan_id__get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "plan_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Plan Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Read Plan Company Video Plans  Plan Id  Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/jobs": {
-      "get": {
-        "tags": [
-          "video"
-        ],
-        "summary": "List Render Jobs",
-        "operationId": "list_render_jobs_company_video_jobs_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "shot_plan_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Shot Plan Id"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Status"
-            }
-          },
-          {
-            "name": "renderer",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Renderer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response List Render Jobs Company Video Jobs Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/jobs/{job_id}": {
-      "get": {
-        "tags": [
-          "video"
-        ],
-        "summary": "Read Job",
-        "operationId": "read_job_company_video_jobs__job_id__get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Job Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Read Job Company Video Jobs  Job Id  Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/queue/stats": {
-      "get": {
-        "tags": [
-          "video"
-        ],
-        "summary": "Read Queue Stats",
-        "operationId": "read_queue_stats_company_video_queue_stats_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Read Queue Stats Company Video Queue Stats Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
-    "/company/video/hunyuan/profile": {
-      "get": {
-        "tags": [
-          "video"
-        ],
-        "summary": "Read Hunyuan Profile",
-        "operationId": "read_hunyuan_profile_company_video_hunyuan_profile_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Read Hunyuan Profile Company Video Hunyuan Profile Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ]
-      }
-    },
-    "/company/video/ingest/{project_id}": {
-      "get": {
-        "tags": [
-          "video"
-        ],
-        "summary": "List Ingest",
-        "description": "What a project has uploaded, so the UI can show pack and assets.",
-        "operationId": "list_ingest_company_video_ingest__project_id__get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response List Ingest Company Video Ingest  Project Id  Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/plans/{plan_id}/queue": {
-      "post": {
-        "tags": [
-          "video-actions"
-        ],
-        "summary": "Queue Plan",
-        "operationId": "queue_plan_company_video_plans__plan_id__queue_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "plan_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Plan Id"
-            }
-          },
-          {
-            "name": "render_mode",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "maxLength": 16,
-              "default": "shots",
-              "title": "Render Mode"
-            }
-          },
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Queue Plan Company Video Plans  Plan Id  Queue Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/jobs/{job_id}/retry": {
-      "post": {
-        "tags": [
-          "video-actions"
-        ],
-        "summary": "Retry Render Job",
-        "operationId": "retry_render_job_company_video_jobs__job_id__retry_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Job Id"
-            }
-          },
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Retry Render Job Company Video Jobs  Job Id  Retry Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/jobs/{job_id}/cancel": {
-      "post": {
-        "tags": [
-          "video-actions"
-        ],
-        "summary": "Cancel Render Job",
-        "operationId": "cancel_render_job_company_video_jobs__job_id__cancel_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Job Id"
-            }
-          },
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Cancel Render Job Company Video Jobs  Job Id  Cancel Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/ingest/pack": {
-      "post": {
-        "tags": [
-          "video-actions"
-        ],
-        "summary": "Ingest Pack",
-        "description": "Store and parse an uploaded scenario pack.\n\nThe pack is the source of truth for a composed video, so it is validated\nhere rather than at render time: a malformed pack fails the upload, not the\nrender.",
-        "operationId": "ingest_pack_company_video_ingest_pack_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_ingest_pack_company_video_ingest_pack_post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Ingest Pack Company Video Ingest Pack Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/ingest/media": {
-      "post": {
-        "tags": [
-          "video-actions"
-        ],
-        "summary": "Ingest Media",
-        "description": "Store and validate an uploaded media asset.\n\nThe bytes are written unchanged and probed with ffprobe, so a truncated or\nunreadable file is rejected here instead of surfacing as a broken video.",
-        "operationId": "ingest_media_company_video_ingest_media_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_ingest_media_company_video_ingest_media_post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Ingest Media Company Video Ingest Media Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/render-jobs/next": {
-      "get": {
-        "tags": [
-          "video-worker"
-        ],
-        "summary": "Lease Next Render Job",
-        "operationId": "lease_next_render_job_company_video_render_jobs_next_get",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "worker_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 120,
-              "title": "Worker Id"
-            }
-          },
-          {
-            "name": "renderer",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "maxLength": 32
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Renderer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Lease Next Render Job Company Video Render Jobs Next Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/render-jobs/{job_id}/heartbeat": {
-      "post": {
-        "tags": [
-          "video-worker"
-        ],
-        "summary": "Heartbeat Render Job",
-        "operationId": "heartbeat_render_job_company_video_render_jobs__job_id__heartbeat_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Job Id"
-            }
-          },
-          {
-            "name": "worker_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 120,
-              "title": "Worker Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Heartbeat Render Job Company Video Render Jobs  Job Id  Heartbeat Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/render-jobs/{job_id}/complete": {
-      "post": {
-        "tags": [
-          "video-worker"
-        ],
-        "summary": "Complete Render Job",
-        "operationId": "complete_render_job_company_video_render_jobs__job_id__complete_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Job Id"
-            }
-          },
-          {
-            "name": "worker_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 120,
-              "title": "Worker Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/JobComplete"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Complete Render Job Company Video Render Jobs  Job Id  Complete Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/video/render-jobs/{job_id}/fail": {
-      "post": {
-        "tags": [
-          "video-worker"
-        ],
-        "summary": "Fail Render Job",
-        "operationId": "fail_render_job_company_video_render_jobs__job_id__fail_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Job Id"
-            }
-          },
-          {
-            "name": "worker_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 120,
-              "title": "Worker Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/JobFail"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Fail Render Job Company Video Render Jobs  Job Id  Fail Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/company": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Start Company",
-        "operationId": "start_company_company_setup_onboarding_company_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CompanyStart"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/research-company": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Research Company",
-        "operationId": "research_company_company_setup_onboarding_research_company_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/company/confirm": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Confirm Company",
-        "operationId": "confirm_company_company_setup_onboarding_company_confirm_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CompanyConfirm"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/strategy/draft": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Suggest Strategy",
-        "operationId": "suggest_strategy_company_setup_onboarding_strategy_draft_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/strategy": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Confirm Strategy",
-        "operationId": "confirm_strategy_company_setup_onboarding_strategy_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StrategyInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/search": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "First Search",
-        "operationId": "first_search_company_setup_onboarding_search_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/calibration": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Record Calibration",
-        "operationId": "record_calibration_company_setup_onboarding_calibration_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CalibrationInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/refinement": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Decide Refinement",
-        "operationId": "decide_refinement_company_setup_onboarding_refinement_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefinementDecision"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/buyer": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Resolve Buyer",
-        "operationId": "resolve_buyer_company_setup_onboarding_buyer_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BuyerRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/draft": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Create First Draft",
-        "operationId": "create_first_draft_company_setup_onboarding_draft_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DraftRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/onboarding/activate": {
-      "post": {
-        "tags": [
-          "onboarding"
-        ],
-        "summary": "Activate Program",
-        "operationId": "activate_program_company_setup_onboarding_activate_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OnboardingView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/service-discovery/search": {
-      "post": {
-        "tags": [
-          "service discovery"
-        ],
-        "summary": "Start Service Search",
-        "operationId": "start_service_search_company_setup_service_discovery_search_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ServiceInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ServiceDiscoveryView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/company/setup/service-discovery/{run_id}/search": {
-      "post": {
-        "tags": [
-          "service discovery"
-        ],
-        "summary": "Retarget Service Search",
-        "operationId": "retarget_service_search_company_setup_service_discovery__run_id__search_post",
-        "security": [
-          {
-            "HTTPBasic": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
-            }
-          },
-          {
-            "name": "x-founder-action-token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Founder-Action-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ServiceTargetEdit"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ServiceDiscoveryView"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/integrations/leads/website": {
       "post": {
         "tags": [
@@ -11544,115 +9667,6 @@
         "type": "object",
         "title": "ApprovalPayload"
       },
-      "ApprovalPolicy": {
-        "properties": {
-          "outbound_send_requires_approval": {
-            "type": "boolean",
-            "title": "Outbound Send Requires Approval",
-            "default": true
-          },
-          "linkedin_manual": {
-            "type": "boolean",
-            "title": "Linkedin Manual",
-            "default": true
-          },
-          "publishing_requires_approval": {
-            "type": "boolean",
-            "title": "Publishing Requires Approval",
-            "default": true
-          },
-          "enrichment_after_qualification": {
-            "type": "boolean",
-            "title": "Enrichment After Qualification",
-            "default": true
-          },
-          "followup_generation_allowed": {
-            "type": "boolean",
-            "title": "Followup Generation Allowed",
-            "default": true
-          },
-          "followup_send_requires_approval": {
-            "type": "boolean",
-            "title": "Followup Send Requires Approval",
-            "default": true
-          }
-        },
-        "type": "object",
-        "title": "ApprovalPolicy"
-      },
-      "AssetPackActionRecord": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "objective": {
-            "type": "string",
-            "title": "Objective"
-          }
-        },
-        "additionalProperties": true,
-        "type": "object",
-        "required": [
-          "id",
-          "title",
-          "status",
-          "objective"
-        ],
-        "title": "AssetPackActionRecord"
-      },
-      "AssetPackCreateResult": {
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "title": "Ok"
-          },
-          "pack": {
-            "$ref": "#/components/schemas/AssetPackActionRecord"
-          },
-          "message": {
-            "type": "string",
-            "title": "Message"
-          }
-        },
-        "type": "object",
-        "required": [
-          "ok",
-          "pack",
-          "message"
-        ],
-        "title": "AssetPackCreateResult"
-      },
-      "AssetPackRequest": {
-        "properties": {
-          "script": {
-            "type": "string",
-            "maxLength": 12000,
-            "minLength": 20,
-            "title": "Script"
-          },
-          "objective": {
-            "type": "string",
-            "maxLength": 80,
-            "minLength": 3,
-            "title": "Objective",
-            "default": "awareness"
-          }
-        },
-        "type": "object",
-        "required": [
-          "script"
-        ],
-        "title": "AssetPackRequest"
-      },
       "AutomationWorkflowView": {
         "properties": {
           "governance": {
@@ -11755,6 +9769,17 @@
             ],
             "title": "Buffer Account"
           },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher"
+          },
           "assets": {
             "items": {
               "type": "string",
@@ -11771,42 +9796,6 @@
         ],
         "title": "Body_create_manual_post_from_ui_company_marketing_manual_posts_post"
       },
-      "Body_ingest_media_company_video_ingest_media_post": {
-        "properties": {
-          "payload": {
-            "$ref": "#/components/schemas/MediaUpload"
-          },
-          "media": {
-            "type": "string",
-            "contentMediaType": "application/octet-stream",
-            "title": "Media"
-          }
-        },
-        "type": "object",
-        "required": [
-          "payload",
-          "media"
-        ],
-        "title": "Body_ingest_media_company_video_ingest_media_post"
-      },
-      "Body_ingest_pack_company_video_ingest_pack_post": {
-        "properties": {
-          "payload": {
-            "$ref": "#/components/schemas/PackUpload"
-          },
-          "pack": {
-            "type": "string",
-            "contentMediaType": "application/octet-stream",
-            "title": "Pack"
-          }
-        },
-        "type": "object",
-        "required": [
-          "payload",
-          "pack"
-        ],
-        "title": "Body_ingest_pack_company_video_ingest_pack_post"
-      },
       "Body_preview_import_company_commercial_imports_preview_post": {
         "properties": {
           "file": {
@@ -11820,20 +9809,6 @@
           "file"
         ],
         "title": "Body_preview_import_company_commercial_imports_preview_post"
-      },
-      "Body_upload_campaign_voice_recording_company_marketing_campaigns__campaign_id__voice_recording_post": {
-        "properties": {
-          "recording": {
-            "type": "string",
-            "contentMediaType": "application/octet-stream",
-            "title": "Recording"
-          }
-        },
-        "type": "object",
-        "required": [
-          "recording"
-        ],
-        "title": "Body_upload_campaign_voice_recording_company_marketing_campaigns__campaign_id__voice_recording_post"
       },
       "Body_upload_manual_post_asset_company_marketing_manual_posts__post_record_id__assets_post": {
         "properties": {
@@ -12507,649 +10482,6 @@
         ],
         "title": "BufferSetupAccountsView"
       },
-      "BuyerRequest": {
-        "properties": {
-          "candidate_lead_id": {
-            "type": "string",
-            "title": "Candidate Lead Id"
-          },
-          "provider": {
-            "type": "string",
-            "enum": [
-              "hunter",
-              "apollo"
-            ],
-            "title": "Provider",
-            "default": "hunter"
-          },
-          "existing_contact_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Existing Contact Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "candidate_lead_id"
-        ],
-        "title": "BuyerRequest"
-      },
-      "CalibrationCandidate": {
-        "properties": {
-          "lead_id": {
-            "type": "string",
-            "title": "Lead Id"
-          },
-          "company_id": {
-            "type": "string",
-            "title": "Company Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "domain": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Domain"
-          },
-          "country": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Country"
-          },
-          "industry": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Industry"
-          },
-          "lead_score": {
-            "type": "integer",
-            "title": "Lead Score"
-          },
-          "confidence_band": {
-            "type": "string",
-            "enum": [
-              "high",
-              "medium",
-              "borderline"
-            ],
-            "title": "Confidence Band"
-          },
-          "feedback": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Feedback"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "buyer_lead_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Buyer Lead Id"
-          },
-          "draft_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Draft Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "lead_id",
-          "company_id",
-          "name",
-          "lead_score",
-          "confidence_band"
-        ],
-        "title": "CalibrationCandidate"
-      },
-      "CalibrationInput": {
-        "properties": {
-          "feedback": {
-            "items": {
-              "$ref": "#/components/schemas/FeedbackEntry"
-            },
-            "type": "array",
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Feedback"
-          }
-        },
-        "type": "object",
-        "required": [
-          "feedback"
-        ],
-        "title": "CalibrationInput"
-      },
-      "CampaignActionRecord": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "current_stage": {
-            "type": "string",
-            "title": "Current Stage"
-          },
-          "g3_status": {
-            "type": "string",
-            "title": "G3 Status"
-          }
-        },
-        "additionalProperties": true,
-        "type": "object",
-        "required": [
-          "id",
-          "status",
-          "current_stage",
-          "g3_status"
-        ],
-        "title": "CampaignActionRecord"
-      },
-      "CampaignCreateResult": {
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "title": "Ok"
-          },
-          "campaign": {
-            "$ref": "#/components/schemas/CampaignActionRecord"
-          },
-          "message": {
-            "type": "string",
-            "title": "Message"
-          }
-        },
-        "type": "object",
-        "required": [
-          "ok",
-          "campaign",
-          "message"
-        ],
-        "title": "CampaignCreateResult"
-      },
-      "CampaignDetail": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "org_id": {
-            "type": "integer",
-            "title": "Org Id"
-          },
-          "org_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Org Name"
-          },
-          "topic": {
-            "type": "string",
-            "title": "Topic"
-          },
-          "objective": {
-            "type": "string",
-            "title": "Objective"
-          },
-          "buyer": {
-            "type": "string",
-            "title": "Buyer"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "current_stage": {
-            "type": "string",
-            "title": "Current Stage"
-          },
-          "g3_status": {
-            "type": "string",
-            "title": "G3 Status"
-          },
-          "social_platforms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Social Platforms"
-          },
-          "video_platform": {
-            "type": "string",
-            "title": "Video Platform"
-          },
-          "script_available": {
-            "type": "boolean",
-            "title": "Script Available"
-          },
-          "selected_variant_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selected Variant Id"
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "title": "Updated At"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "script_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Script Text"
-          },
-          "variants": {
-            "items": {
-              "$ref": "#/components/schemas/CampaignVariant"
-            },
-            "type": "array",
-            "title": "Variants"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "org_id",
-          "org_name",
-          "topic",
-          "objective",
-          "buyer",
-          "status",
-          "current_stage",
-          "g3_status",
-          "social_platforms",
-          "video_platform",
-          "script_available",
-          "selected_variant_id",
-          "created_at",
-          "updated_at",
-          "error",
-          "script_text",
-          "variants"
-        ],
-        "title": "CampaignDetail"
-      },
-      "CampaignItem": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "org_id": {
-            "type": "integer",
-            "title": "Org Id"
-          },
-          "org_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Org Name"
-          },
-          "topic": {
-            "type": "string",
-            "title": "Topic"
-          },
-          "objective": {
-            "type": "string",
-            "title": "Objective"
-          },
-          "buyer": {
-            "type": "string",
-            "title": "Buyer"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "current_stage": {
-            "type": "string",
-            "title": "Current Stage"
-          },
-          "g3_status": {
-            "type": "string",
-            "title": "G3 Status"
-          },
-          "social_platforms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Social Platforms"
-          },
-          "video_platform": {
-            "type": "string",
-            "title": "Video Platform"
-          },
-          "script_available": {
-            "type": "boolean",
-            "title": "Script Available"
-          },
-          "selected_variant_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selected Variant Id"
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "title": "Updated At"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "org_id",
-          "org_name",
-          "topic",
-          "objective",
-          "buyer",
-          "status",
-          "current_stage",
-          "g3_status",
-          "social_platforms",
-          "video_platform",
-          "script_available",
-          "selected_variant_id",
-          "created_at",
-          "updated_at",
-          "error"
-        ],
-        "title": "CampaignItem"
-      },
-      "CampaignLaunchRequest": {
-        "properties": {
-          "objective": {
-            "type": "string",
-            "maxLength": 80,
-            "minLength": 3,
-            "title": "Objective"
-          },
-          "brief": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 10,
-            "title": "Brief"
-          },
-          "social_platforms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 4,
-            "minItems": 1,
-            "title": "Social Platforms"
-          },
-          "video_platform": {
-            "type": "string",
-            "maxLength": 40,
-            "minLength": 2,
-            "title": "Video Platform"
-          },
-          "voice_mode": {
-            "type": "string",
-            "maxLength": 20,
-            "minLength": 3,
-            "title": "Voice Mode",
-            "default": "tts"
-          },
-          "voice_transcript": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 6000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Voice Transcript"
-          }
-        },
-        "type": "object",
-        "required": [
-          "objective",
-          "brief",
-          "social_platforms",
-          "video_platform"
-        ],
-        "title": "CampaignLaunchRequest"
-      },
-      "CampaignTransitionResult": {
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "title": "Ok"
-          },
-          "campaign_id": {
-            "type": "string",
-            "title": "Campaign Id"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          },
-          "next_stage": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Stage"
-          },
-          "resume_stage": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Resume Stage"
-          },
-          "g3_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "G3 Status"
-          }
-        },
-        "type": "object",
-        "required": [
-          "ok",
-          "campaign_id"
-        ],
-        "title": "CampaignTransitionResult"
-      },
-      "CampaignVariant": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "platform": {
-            "type": "string",
-            "title": "Platform"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "platform",
-          "status"
-        ],
-        "title": "CampaignVariant"
-      },
-      "CampaignsPage": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/CampaignItem"
-            },
-            "type": "array",
-            "title": "Items"
-          },
-          "total": {
-            "type": "integer",
-            "title": "Total"
-          },
-          "page": {
-            "type": "integer",
-            "title": "Page"
-          },
-          "page_size": {
-            "type": "integer",
-            "title": "Page Size"
-          },
-          "by_status": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object",
-            "title": "By Status"
-          },
-          "active_org_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Active Org Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "items",
-          "total",
-          "page",
-          "page_size",
-          "by_status",
-          "active_org_id"
-        ],
-        "title": "CampaignsPage"
-      },
       "CodingTaskRequest": {
         "properties": {
           "workspace": {
@@ -13264,357 +10596,6 @@
           "metrics"
         ],
         "title": "CompaniesPage"
-      },
-      "CompanyConfirm": {
-        "properties": {
-          "name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "website": {
-            "type": "string",
-            "maxLength": 2083,
-            "minLength": 1,
-            "format": "uri",
-            "title": "Website"
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 3000,
-            "minLength": 10,
-            "title": "Description"
-          },
-          "industry": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
-            "title": "Industry"
-          },
-          "positioning": {
-            "type": "string",
-            "maxLength": 1000,
-            "minLength": 5,
-            "title": "Positioning"
-          },
-          "offer_summary": {
-            "type": "string",
-            "maxLength": 1000,
-            "minLength": 5,
-            "title": "Offer Summary"
-          },
-          "geography": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 200
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Geography"
-          },
-          "product_name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 160
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Product Name"
-          },
-          "product_description": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 3000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Product Description"
-          },
-          "product_category": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 160
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Product Category"
-          },
-          "ideal_customer": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ideal Customer"
-          },
-          "company_sizes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 10,
-            "title": "Company Sizes"
-          },
-          "customer_geography": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 10,
-            "title": "Customer Geography"
-          },
-          "buyer_roles": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 12,
-            "title": "Buyer Roles"
-          },
-          "segment": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 500
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Segment"
-          },
-          "problem": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Problem"
-          },
-          "urgency": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 1000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Urgency"
-          },
-          "alternatives": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Alternatives"
-          },
-          "existing_customers": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Existing Customers"
-          },
-          "existing_demand": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Existing Demand"
-          },
-          "previous_marketing": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Previous Marketing"
-          },
-          "testimonials": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Testimonials"
-          },
-          "traction": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Traction"
-          },
-          "other_evidence": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Other Evidence"
-          },
-          "pricing": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 500
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pricing"
-          },
-          "business_model": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 500
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Business Model"
-          },
-          "channels": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Channels"
-          },
-          "assets": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Assets"
-          },
-          "team": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Team"
-          },
-          "budget": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 500
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Budget"
-          },
-          "geographic_constraints": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Geographic Constraints"
-          },
-          "brand_constraints": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Brand Constraints"
-          },
-          "budget_constraints": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Budget Constraints"
-          },
-          "regulatory_constraints": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Regulatory Constraints"
-          },
-          "operational_constraints": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Operational Constraints"
-          },
-          "desired_outcome": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Desired Outcome"
-          },
-          "marketing_stage": {
-            "type": "string",
-            "const": "starting_from_zero",
-            "title": "Marketing Stage",
-            "default": "starting_from_zero"
-          }
-        },
-        "type": "object",
-        "required": [
-          "website",
-          "description",
-          "industry",
-          "positioning",
-          "offer_summary"
-        ],
-        "title": "CompanyConfirm",
-        "description": "Founder-confirmed company answers from the research/confirm step.\n\nThe first six fields stay required because the existing flow depends on them.\nEverything else is optional on purpose: an answer the founder does not have\nmust stay unknown rather than be invented. These values are projected onto\nthe canonical company context (core.company_context), not stored twice."
       },
       "CompanyContact": {
         "properties": {
@@ -14318,48 +11299,6 @@
         ],
         "title": "CompanyResolutionResult"
       },
-      "CompanyStart": {
-        "properties": {
-          "name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "website": {
-            "type": "string",
-            "maxLength": 2083,
-            "minLength": 1,
-            "format": "uri",
-            "title": "Website"
-          },
-          "objective": {
-            "type": "string",
-            "maxLength": 300,
-            "minLength": 3,
-            "title": "Objective"
-          },
-          "market": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
-            "title": "Market"
-          }
-        },
-        "type": "object",
-        "required": [
-          "website",
-          "objective",
-          "market"
-        ],
-        "title": "CompanyStart"
-      },
       "CompanySummary": {
         "properties": {
           "id": {
@@ -14505,6 +11444,52 @@
           "has_profile"
         ],
         "title": "CompanySummary"
+      },
+      "CompanyVerification": {
+        "properties": {
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "gleif": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gleif"
+          },
+          "web_presence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Web Presence"
+          },
+          "cached_profile": {
+            "type": "boolean",
+            "title": "Cached Profile",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "CompanyVerification"
       },
       "ConnectIn": {
         "properties": {
@@ -15166,10 +12151,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": [
-              "manual_post",
-              "asset_pack"
-            ],
+            "const": "manual_post",
             "title": "Kind"
           },
           "title": {
@@ -15227,6 +12209,51 @@
               }
             ],
             "title": "Platform"
+          },
+          "publisher": {
+            "type": "string",
+            "title": "Publisher",
+            "default": "buffer"
+          },
+          "publisher_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher Status"
+          },
+          "publisher_post_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Publisher Post Ids"
+          },
+          "publisher_account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher Account"
+          },
+          "publisher_scheduled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher Scheduled At"
           },
           "asset_count": {
             "type": "integer",
@@ -15332,26 +12359,16 @@
             "type": "integer",
             "title": "Manual Posts Loaded"
           },
-          "asset_packs_loaded": {
-            "type": "integer",
-            "title": "Asset Packs Loaded"
-          },
           "manual_posts_truncated": {
             "type": "boolean",
             "title": "Manual Posts Truncated"
-          },
-          "asset_packs_truncated": {
-            "type": "boolean",
-            "title": "Asset Packs Truncated"
           }
         },
         "type": "object",
         "required": [
           "items",
           "manual_posts_loaded",
-          "asset_packs_loaded",
-          "manual_posts_truncated",
-          "asset_packs_truncated"
+          "manual_posts_truncated"
         ],
         "title": "ContentView"
       },
@@ -15428,19 +12445,6 @@
         "type": "object",
         "title": "CustomerFacts",
         "description": "Who buys."
-      },
-      "DraftRequest": {
-        "properties": {
-          "candidate_lead_id": {
-            "type": "string",
-            "title": "Candidate Lead Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "candidate_lead_id"
-        ],
-        "title": "DraftRequest"
       },
       "DraftSummary": {
         "properties": {
@@ -15611,89 +12615,6 @@
         "title": "EvidenceLedger",
         "description": "Facts the founder gave, assumptions we made, and what we still need."
       },
-      "Feedback": {
-        "properties": {
-          "rating": {
-            "type": "string",
-            "enum": [
-              "good",
-              "maybe",
-              "bad"
-            ],
-            "title": "Rating"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "wrong_industry",
-                  "too_small",
-                  "too_large",
-                  "wrong_geography",
-                  "wrong_buyer",
-                  "weak_signal",
-                  "existing_customer",
-                  "other"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          }
-        },
-        "type": "object",
-        "required": [
-          "rating"
-        ],
-        "title": "Feedback"
-      },
-      "FeedbackEntry": {
-        "properties": {
-          "rating": {
-            "type": "string",
-            "enum": [
-              "good",
-              "maybe",
-              "bad"
-            ],
-            "title": "Rating"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "wrong_industry",
-                  "too_small",
-                  "too_large",
-                  "wrong_geography",
-                  "wrong_buyer",
-                  "weak_signal",
-                  "existing_customer",
-                  "other"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "lead_id": {
-            "type": "string",
-            "title": "Lead Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "rating",
-          "lead_id"
-        ],
-        "title": "FeedbackEntry"
-      },
       "FormCreatePayload": {
         "properties": {
           "slug": {
@@ -15853,11 +12774,105 @@
         "title": "GovernanceLimits",
         "description": "Caps the operator has agreed to. Defaults refuse anything costly."
       },
+      "GovernanceLimitsPayload": {
+        "properties": {
+          "max_spend_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Spend Usd"
+          },
+          "max_actions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Actions"
+          },
+          "max_outreach_contacts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Outreach Contacts"
+          },
+          "max_duration_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Duration Days"
+          }
+        },
+        "type": "object",
+        "title": "GovernanceLimitsPayload"
+      },
+      "GovernanceLimitsView": {
+        "properties": {
+          "plan": {
+            "type": "string",
+            "title": "Plan"
+          },
+          "max_spend_usd": {
+            "type": "number",
+            "title": "Max Spend Usd"
+          },
+          "max_actions": {
+            "type": "integer",
+            "title": "Max Actions"
+          },
+          "max_outreach_contacts": {
+            "type": "integer",
+            "title": "Max Outreach Contacts"
+          },
+          "max_duration_days": {
+            "type": "integer",
+            "title": "Max Duration Days"
+          },
+          "overrides": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Overrides"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan",
+          "max_spend_usd",
+          "max_actions",
+          "max_outreach_contacts",
+          "max_duration_days",
+          "overrides"
+        ],
+        "title": "GovernanceLimitsView"
+      },
       "GovernanceRecord": {
         "properties": {
           "id": {
             "type": "string",
             "title": "Id"
+          },
+          "org_id": {
+            "type": "integer",
+            "title": "Org Id",
+            "default": 0
           },
           "plan_id": {
             "type": "string",
@@ -16087,10 +13102,6 @@
             "type": "integer",
             "title": "Outreach Unknown Total"
           },
-          "campaigns_total": {
-            "type": "integer",
-            "title": "Campaigns Total"
-          },
           "manual_posts_total": {
             "type": "integer",
             "title": "Manual Posts Total"
@@ -16113,20 +13124,9 @@
             "type": "array",
             "title": "Recent Contacts"
           },
-          "recent_campaigns": {
-            "items": {
-              "$ref": "#/components/schemas/CampaignItem"
-            },
-            "type": "array",
-            "title": "Recent Campaigns"
-          },
           "drafts_waiting_approval": {
             "type": "integer",
             "title": "Drafts Waiting Approval"
-          },
-          "campaigns_awaiting_review": {
-            "type": "integer",
-            "title": "Campaigns Awaiting Review"
           },
           "latest_replies": {
             "type": "integer",
@@ -16136,9 +13136,10 @@
             "type": "integer",
             "title": "Open Provider Incidents"
           },
-          "onboarding_status": {
-            "type": "string",
-            "title": "Onboarding Status"
+          "onboarding_ready": {
+            "type": "boolean",
+            "title": "Onboarding Ready",
+            "default": false
           }
         },
         "type": "object",
@@ -16147,16 +13148,12 @@
           "outreach_drafts_total",
           "outreach_approved_total",
           "outreach_unknown_total",
-          "campaigns_total",
           "manual_posts_total",
           "active_org_name",
           "recent_contacts",
-          "recent_campaigns",
           "drafts_waiting_approval",
-          "campaigns_awaiting_review",
           "latest_replies",
-          "open_provider_incidents",
-          "onboarding_status"
+          "open_provider_incidents"
         ],
         "title": "HomeView"
       },
@@ -16245,36 +13242,6 @@
           "name"
         ],
         "title": "ICPIn"
-      },
-      "Icp": {
-        "properties": {
-          "industry": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
-            "title": "Industry"
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 1200,
-            "minLength": 10,
-            "title": "Description"
-          },
-          "company_sizes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 10,
-            "title": "Company Sizes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "industry",
-          "description"
-        ],
-        "title": "Icp"
       },
       "ImportCommit": {
         "properties": {
@@ -16603,45 +13570,6 @@
         ],
         "title": "InteractionSummary"
       },
-      "JobComplete": {
-        "properties": {
-          "result": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Result"
-          }
-        },
-        "type": "object",
-        "title": "JobComplete"
-      },
-      "JobFail": {
-        "properties": {
-          "code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code"
-          },
-          "message": {
-            "type": "string",
-            "maxLength": 2000,
-            "title": "Message",
-            "default": ""
-          },
-          "retryable": {
-            "type": "boolean",
-            "title": "Retryable",
-            "default": true
-          }
-        },
-        "type": "object",
-        "title": "JobFail"
-      },
       "LeadCreateResult": {
         "properties": {
           "lead": {
@@ -16912,6 +13840,28 @@
         ],
         "title": "LeadResearchSuggestionsRequest"
       },
+      "LoginPayload": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginPayload"
+      },
       "ManualPostActionRecord": {
         "properties": {
           "id": {
@@ -17141,6 +14091,18 @@
               }
             ],
             "title": "Buffer Account"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher"
           }
         },
         "type": "object",
@@ -17375,40 +14337,6 @@
           "org"
         ],
         "title": "MarketingOrgCreateResult"
-      },
-      "MediaUpload": {
-        "properties": {
-          "project_id": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Project Id"
-          },
-          "filename": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Filename"
-          },
-          "tag": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 60
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tag"
-          }
-        },
-        "type": "object",
-        "required": [
-          "project_id",
-          "filename"
-        ],
-        "title": "MediaUpload"
       },
       "MeetingActionResult": {
         "properties": {
@@ -17772,6 +14700,19 @@
         ],
         "title": "MeetingsPage"
       },
+      "NetworkContributionIn": {
+        "properties": {
+          "opt_in": {
+            "type": "boolean",
+            "title": "Opt In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "opt_in"
+        ],
+        "title": "NetworkContributionIn"
+      },
       "ObjectiveFacts": {
         "properties": {
           "primary_goal": {
@@ -17907,106 +14848,6 @@
           "name"
         ],
         "title": "OfferIn"
-      },
-      "OnboardingView": {
-        "properties": {
-          "marketing_stage": {
-            "anyOf": [
-              {
-                "type": "string",
-                "const": "starting_from_zero"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Marketing Stage"
-          },
-          "next_stage": {
-            "anyOf": [
-              {
-                "type": "string",
-                "const": "market_validation"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Stage"
-          },
-          "route_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Route Label"
-          },
-          "route_summary": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Route Summary"
-          },
-          "routing_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Routing Error"
-          },
-          "program": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ProgramState"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "next_step": {
-            "type": "string",
-            "title": "Next Step"
-          },
-          "sample": {
-            "items": {
-              "$ref": "#/components/schemas/CalibrationCandidate"
-            },
-            "type": "array",
-            "title": "Sample"
-          },
-          "confidence_basis": {
-            "type": "string",
-            "title": "Confidence Basis",
-            "default": "Existing lead_score only; not a verified ICP fit score."
-          },
-          "onboarding_complete": {
-            "type": "boolean",
-            "title": "Onboarding Complete",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "program",
-          "next_step",
-          "sample"
-        ],
-        "title": "OnboardingView",
-        "description": "The onboarding projection plus the initial route from the saved context."
       },
       "OpportunityIn": {
         "properties": {
@@ -18295,6 +15136,18 @@
             },
             "type": "object",
             "title": "By Status"
+          },
+          "benchmark": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark"
           }
         },
         "type": "object",
@@ -18306,28 +15159,6 @@
           "by_status"
         ],
         "title": "OutreachPage"
-      },
-      "PackUpload": {
-        "properties": {
-          "project_id": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Project Id"
-          },
-          "filename": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Filename"
-          }
-        },
-        "type": "object",
-        "required": [
-          "project_id",
-          "filename"
-        ],
-        "title": "PackUpload"
       },
       "PipelineIn": {
         "properties": {
@@ -18358,21 +15189,6 @@
           "stages"
         ],
         "title": "PipelineIn"
-      },
-      "PlanCreate": {
-        "properties": {
-          "spec_id": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Spec Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "spec_id"
-        ],
-        "title": "PlanCreate"
       },
       "PlanHint": {
         "properties": {
@@ -18539,6 +15355,28 @@
               }
             ],
             "title": "Channel Hint"
+          },
+          "input_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Hash"
+          },
+          "input_schema_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Schema Version"
           }
         },
         "type": "object",
@@ -18606,175 +15444,6 @@
         "type": "object",
         "title": "ProductFacts",
         "description": "What the company sells."
-      },
-      "ProgramState": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "company": {
-            "$ref": "#/components/schemas/CompanyStart"
-          },
-          "company_research": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Company Research"
-          },
-          "research_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Research Provider"
-          },
-          "research_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Research Error"
-          },
-          "company_context": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CompanyConfirm"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "strategy_draft": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/StrategyInput"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "strategy": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/StrategyInput"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "approval_policy": {
-            "$ref": "#/components/schemas/ApprovalPolicy"
-          },
-          "provider_limits": {
-            "$ref": "#/components/schemas/ProviderLimits"
-          },
-          "calibration_status": {
-            "type": "string",
-            "title": "Calibration Status",
-            "default": "not_started"
-          },
-          "sample_lead_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Sample Lead Ids"
-          },
-          "feedback": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/Feedback"
-            },
-            "type": "object",
-            "title": "Feedback"
-          },
-          "proposed_refinement": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RefinementProposal"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "refinement_decision": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "pending",
-                  "approved",
-                  "rejected"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Refinement Decision"
-          },
-          "buyer_leads": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Buyer Leads"
-          },
-          "draft_ids": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Draft Ids"
-          },
-          "research_warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Research Warnings"
-          },
-          "activated_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Activated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "status",
-          "company"
-        ],
-        "title": "ProgramState"
       },
       "ProspectActionResult": {
         "properties": {
@@ -18971,32 +15640,6 @@
         ],
         "title": "ProviderGroup"
       },
-      "ProviderLimits": {
-        "properties": {
-          "research_per_provider": {
-            "type": "integer",
-            "title": "Research Per Provider",
-            "default": 3
-          },
-          "sample_size": {
-            "type": "integer",
-            "title": "Sample Size",
-            "default": 10
-          },
-          "buyers_per_company": {
-            "type": "integer",
-            "title": "Buyers Per Company",
-            "default": 1
-          },
-          "enrichment_batch": {
-            "type": "integer",
-            "title": "Enrichment Batch",
-            "default": 1
-          }
-        },
-        "type": "object",
-        "title": "ProviderLimits"
-      },
       "PublicLink": {
         "properties": {
           "id": {
@@ -19042,6 +15685,111 @@
           "state"
         ],
         "title": "PublicLink"
+      },
+      "PublishRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "schedule"
+            ],
+            "title": "Action",
+            "default": "schedule"
+          },
+          "mode": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 3,
+            "title": "Mode",
+            "default": "queue"
+          },
+          "due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
+          "account": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account"
+          }
+        },
+        "type": "object",
+        "title": "PublishRequest"
+      },
+      "QuotaItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "plan": {
+            "type": "string",
+            "title": "Plan"
+          },
+          "used": {
+            "type": "integer",
+            "title": "Used"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "remaining": {
+            "type": "integer",
+            "title": "Remaining"
+          },
+          "reset_at": {
+            "type": "string",
+            "title": "Reset At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "plan",
+          "used",
+          "limit",
+          "remaining",
+          "reset_at"
+        ],
+        "title": "QuotaItem"
+      },
+      "QuotasView": {
+        "properties": {
+          "plan": {
+            "type": "string",
+            "title": "Plan"
+          },
+          "quotas": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/QuotaItem"
+            },
+            "type": "object",
+            "title": "Quotas"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan",
+          "quotas"
+        ],
+        "title": "QuotasView"
       },
       "RecentContact": {
         "properties": {
@@ -19089,39 +15837,6 @@
           "updated_at"
         ],
         "title": "RecentContact"
-      },
-      "RefinementDecision": {
-        "properties": {
-          "approved": {
-            "type": "boolean",
-            "title": "Approved"
-          }
-        },
-        "type": "object",
-        "required": [
-          "approved"
-        ],
-        "title": "RefinementDecision"
-      },
-      "RefinementProposal": {
-        "properties": {
-          "exclusions": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Exclusions"
-          },
-          "notes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Notes"
-          }
-        },
-        "type": "object",
-        "title": "RefinementProposal"
       },
       "RepliesPage": {
         "properties": {
@@ -19388,6 +16103,21 @@
           "requested"
         ],
         "title": "ResearchActionResult"
+      },
+      "ResendPayload": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "ResendPayload"
       },
       "ResolvedAction": {
         "properties": {
@@ -19786,316 +16516,6 @@
         ],
         "title": "SendReconcilePayload"
       },
-      "ServiceContact": {
-        "properties": {
-          "lead_id": {
-            "type": "string",
-            "title": "Lead Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "job_title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Job Title"
-          },
-          "company": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Company"
-          },
-          "country": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Country"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email"
-          }
-        },
-        "type": "object",
-        "required": [
-          "lead_id",
-          "name"
-        ],
-        "title": "ServiceContact"
-      },
-      "ServiceDiscoveryView": {
-        "properties": {
-          "runs": {
-            "items": {
-              "$ref": "#/components/schemas/ServiceRunView"
-            },
-            "type": "array",
-            "title": "Runs"
-          }
-        },
-        "type": "object",
-        "required": [
-          "runs"
-        ],
-        "title": "ServiceDiscoveryView"
-      },
-      "ServiceInput": {
-        "properties": {
-          "service": {
-            "type": "string",
-            "maxLength": 1000,
-            "minLength": 5,
-            "title": "Service"
-          },
-          "desired_contacts": {
-            "type": "integer",
-            "maximum": 25.0,
-            "minimum": 1.0,
-            "title": "Desired Contacts"
-          },
-          "company_name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Company Name"
-          }
-        },
-        "type": "object",
-        "required": [
-          "service",
-          "desired_contacts"
-        ],
-        "title": "ServiceInput"
-      },
-      "ServiceRunView": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "service": {
-            "type": "string",
-            "title": "Service"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "planned",
-              "searched",
-              "no_results",
-              "provider_error"
-            ],
-            "title": "Status"
-          },
-          "plan": {
-            "$ref": "#/components/schemas/ServiceSearchPlan"
-          },
-          "desired_contacts": {
-            "type": "integer",
-            "title": "Desired Contacts"
-          },
-          "market": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Market"
-          },
-          "contact_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Contact Ids"
-          },
-          "provider_counts": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object",
-            "title": "Provider Counts"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Warnings"
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At"
-          },
-          "contacts": {
-            "items": {
-              "$ref": "#/components/schemas/ServiceContact"
-            },
-            "type": "array",
-            "title": "Contacts"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "service",
-          "status",
-          "plan",
-          "desired_contacts",
-          "created_at",
-          "contacts"
-        ],
-        "title": "ServiceRunView"
-      },
-      "ServiceSearchPlan": {
-        "properties": {
-          "buyer_industry": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
-            "title": "Buyer Industry"
-          },
-          "search_keywords": {
-            "items": {
-              "type": "string",
-              "maxLength": 80,
-              "minLength": 2
-            },
-            "type": "array",
-            "maxItems": 5,
-            "minItems": 1,
-            "title": "Search Keywords"
-          },
-          "buyer_titles": {
-            "items": {
-              "type": "string",
-              "maxLength": 80,
-              "minLength": 2
-            },
-            "type": "array",
-            "maxItems": 8,
-            "minItems": 1,
-            "title": "Buyer Titles"
-          },
-          "rationale": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 10,
-            "title": "Rationale"
-          }
-        },
-        "type": "object",
-        "required": [
-          "buyer_industry",
-          "search_keywords",
-          "buyer_titles",
-          "rationale"
-        ],
-        "title": "ServiceSearchPlan"
-      },
-      "ServiceTargetEdit": {
-        "properties": {
-          "buyer_industry": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
-            "title": "Buyer Industry"
-          },
-          "search_keywords": {
-            "items": {
-              "type": "string",
-              "maxLength": 80,
-              "minLength": 2
-            },
-            "type": "array",
-            "maxItems": 5,
-            "minItems": 1,
-            "title": "Search Keywords"
-          },
-          "buyer_titles": {
-            "items": {
-              "type": "string",
-              "maxLength": 80,
-              "minLength": 2
-            },
-            "type": "array",
-            "maxItems": 8,
-            "minItems": 1,
-            "title": "Buyer Titles"
-          },
-          "market": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Market"
-          },
-          "desired_contacts": {
-            "type": "integer",
-            "maximum": 25.0,
-            "minimum": 1.0,
-            "title": "Desired Contacts"
-          }
-        },
-        "type": "object",
-        "required": [
-          "buyer_industry",
-          "search_keywords",
-          "buyer_titles",
-          "desired_contacts"
-        ],
-        "title": "ServiceTargetEdit"
-      },
       "SessionIn": {
         "properties": {
           "path": {
@@ -20270,6 +16690,34 @@
         ],
         "title": "SetupStepPayload"
       },
+      "SignupPayload": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 10,
+            "title": "Password"
+          },
+          "company_name": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Company Name",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "SignupPayload"
+      },
       "SimulationRun": {
         "properties": {
           "targets": {
@@ -20284,65 +16732,6 @@
         "type": "object",
         "title": "SimulationRun",
         "description": "Execution request. `targets` are identifiers the founder chose at run\ntime: lead ids for research and drafting, draft ids for sends."
-      },
-      "SpecCreate": {
-        "properties": {
-          "script_text": {
-            "type": "string",
-            "maxLength": 200000,
-            "minLength": 1,
-            "title": "Script Text"
-          },
-          "project_id": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Project Id"
-          },
-          "campaign_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Campaign Id"
-          },
-          "aspect_ratio": {
-            "type": "string",
-            "maxLength": 8,
-            "title": "Aspect Ratio",
-            "default": "9:16"
-          },
-          "fps": {
-            "type": "integer",
-            "maximum": 120.0,
-            "minimum": 1.0,
-            "title": "Fps",
-            "default": 24
-          },
-          "source_name": {
-            "type": "string",
-            "maxLength": 160,
-            "title": "Source Name",
-            "default": "script"
-          },
-          "style": {
-            "type": "string",
-            "maxLength": 40,
-            "title": "Style",
-            "default": "noir"
-          }
-        },
-        "type": "object",
-        "required": [
-          "script_text",
-          "project_id"
-        ],
-        "title": "SpecCreate"
       },
       "StageMove": {
         "properties": {
@@ -20457,125 +16846,6 @@
         ],
         "title": "StepExecution",
         "description": "A persisted StepResult plus the observability envelope for it."
-      },
-      "StrategyInput": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
-            "title": "Name"
-          },
-          "objective": {
-            "type": "string",
-            "maxLength": 300,
-            "minLength": 3,
-            "title": "Objective"
-          },
-          "success_metric": {
-            "type": "string",
-            "maxLength": 300,
-            "minLength": 3,
-            "title": "Success Metric"
-          },
-          "offers": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 8,
-            "minItems": 1,
-            "title": "Offers"
-          },
-          "icp": {
-            "$ref": "#/components/schemas/Icp"
-          },
-          "buyer_titles": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 12,
-            "minItems": 1,
-            "title": "Buyer Titles"
-          },
-          "markets": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 12,
-            "minItems": 1,
-            "title": "Markets"
-          },
-          "positive_signals": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 12,
-            "minItems": 1,
-            "title": "Positive Signals"
-          },
-          "exclusions": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Exclusions"
-          },
-          "tone": {
-            "type": "string",
-            "maxLength": 300,
-            "minLength": 3,
-            "title": "Tone"
-          },
-          "approved_claims": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Approved Claims"
-          },
-          "prohibited_claims": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Prohibited Claims"
-          },
-          "channels": {
-            "items": {
-              "type": "string",
-              "enum": [
-                "email",
-                "linkedin",
-                "social"
-              ]
-            },
-            "type": "array",
-            "maxItems": 3,
-            "minItems": 1,
-            "title": "Channels"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "objective",
-          "success_metric",
-          "offers",
-          "icp",
-          "buyer_titles",
-          "markets",
-          "positive_signals",
-          "tone",
-          "channels"
-        ],
-        "title": "StrategyInput"
       },
       "SuccessMetric": {
         "properties": {
@@ -20695,6 +16965,11 @@
             "type": "string",
             "title": "Id"
           },
+          "org_id": {
+            "type": "integer",
+            "title": "Org Id",
+            "default": 0
+          },
           "status": {
             "type": "string",
             "const": "planned",
@@ -20790,11 +17065,64 @@
         "title": "ValidationStrategy",
         "description": "The smallest experiment that can produce the validation event.\n\n``method`` is free text on purpose: the candidate list is a set of examples,\nnot a menu, so the model may justify a method nobody enumerated."
       },
+      "VerifyPayload": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 10,
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "VerifyPayload"
+      },
+      "WebhookConnectionPayload": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "secret": {
+            "type": "string",
+            "title": "Secret"
+          },
+          "account": {
+            "type": "string",
+            "title": "Account",
+            "default": "webhook"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": "Webhook scheduler"
+          },
+          "platforms": {
+            "type": "string",
+            "title": "Platforms",
+            "default": "instagram,x,linkedin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "secret"
+        ],
+        "title": "WebhookConnectionPayload"
+      },
       "Workflow": {
         "properties": {
           "id": {
             "type": "string",
             "title": "Id"
+          },
+          "org_id": {
+            "type": "integer",
+            "title": "Org Id",
+            "default": 0
           },
           "name": {
             "type": "string",

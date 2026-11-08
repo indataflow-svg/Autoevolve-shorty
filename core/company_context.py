@@ -397,91 +397,87 @@ def _has_content(value: Any) -> bool:
 # Confirmed onboarding answers mapped onto the canonical sections. The source
 # keys are the onboarding confirm payload; `None` means the value comes from the
 # first onboarding step instead.
-_ONBOARDING_SECTIONS: dict[str, dict[str, str | None]] = {
-    "company": {
-        "name": "name", "description": "description",
-        "website": "website", "geography": "geography",
-    },
-    "product": {
-        "name": "product_name", "description": "product_description",
-        "category": "product_category", "value_proposition": "positioning",
-    },
-    "customer": {
-        "ideal_customer": "ideal_customer", "industry": "industry",
-        "company_size": "company_sizes", "geography": "customer_geography",
-        "buyer_roles": "buyer_roles",
-    },
-    "market": {
-        "market": None, "segment": "segment", "problem": "problem",
-        "urgency": "urgency", "alternatives": "alternatives",
-    },
-    "evidence": {
-        "existing_customers": "existing_customers", "existing_demand": "existing_demand",
-        "previous_marketing": "previous_marketing", "testimonials": "testimonials",
-        "traction": "traction", "other": "other_evidence",
-    },
-    "offer": {
-        "description": "offer_summary", "pricing": "pricing",
-        "business_model": "business_model",
-    },
-    "resources": {
-        "channels": "channels", "assets": "assets", "team": "team", "budget": "budget",
-    },
-    "constraints": {
-        "geographic": "geographic_constraints", "brand": "brand_constraints",
-        "budget": "budget_constraints", "regulatory": "regulatory_constraints",
-        "operational": "operational_constraints",
-    },
-    "objective": {
-        "primary_goal": None, "desired_outcome": "desired_outcome",
-    },
-    "state": {
-        "marketing_stage": "marketing_stage",
-    },
-}
 
 
-def context_from_onboarding(
-    *, start: Mapping[str, Any], confirm: Mapping[str, Any]
-) -> CompanyContext:
-    """Project confirmed onboarding answers onto the canonical sections.
 
-    The first step already owns the primary market and objective; everything
-    else comes from the confirmed company step. Unanswered fields stay unknown.
+def resolve_context_org(org_id: int | None = None) -> int:
+    """Resolve the org for a context read/write.
+
+    ``None`` means the active organization. No active org falls back to 0 so
+    legacy single-tenant tests and pre-migration rows keep working.
     """
-    step = dict(start or {})
-    answers = dict(confirm or {})
-    raw: dict[str, dict[str, Any]] = {
-        section: {field: answers.get(source) for field, source in mapping.items() if source}
-        for section, mapping in _ONBOARDING_SECTIONS.items()
-    }
-    raw["market"]["market"] = step.get("market")
-    raw["objective"]["primary_goal"] = step.get("objective")
-    return normalize_company_context(raw)
+    if org_id is not None:
+        return int(org_id)
+    try:
+        from core.state import get_active_org
+
+        active = get_active_org()
+        return int(active["id"]) if active else 0
+    except Exception:
+        return 0
 
 
 def init_context_db() -> None:
-    """Create the single-row company context table (idempotent, as elsewhere)."""
+    """Create or migrate the org-scoped company context table."""
     with connect() as db:
-        db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS company_context (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                schema_version INTEGER NOT NULL DEFAULT 1,
-                context_json TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+        columns = {
+            row[1] for row in db.execute("PRAGMA table_info(company_context)").fetchall()
+        }
+        if columns and "org_id" not in columns:
+            # Legacy singleton (id=1). Rebuild with one row per org, assigning
+            # the existing row to the currently active org.
+            active = resolve_context_org(None)
+            db.execute(
+                """
+                CREATE TABLE company_context_org (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    org_id INTEGER NOT NULL DEFAULT 0,
+                    schema_version INTEGER NOT NULL DEFAULT 1,
+                    context_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(org_id)
+                )
+                """
             )
-            """
+            db.execute(
+                """
+                INSERT INTO company_context_org
+                    (org_id, schema_version, context_json, created_at, updated_at)
+                SELECT ?, schema_version, context_json, created_at, updated_at
+                FROM company_context ORDER BY id LIMIT 1
+                """,
+                (active,),
+            )
+            db.execute("DROP TABLE company_context")
+            db.execute("ALTER TABLE company_context_org RENAME TO company_context")
+        elif not columns:
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS company_context (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    org_id INTEGER NOT NULL DEFAULT 0,
+                    schema_version INTEGER NOT NULL DEFAULT 1,
+                    context_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(org_id)
+                )
+                """
+            )
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS company_context_org "
+            "ON company_context(org_id)"
         )
 
 
-def get_company_context() -> CompanyContext | None:
-    """Load the stored context, or ``None`` when onboarding has not produced one."""
+def get_company_context(org_id: int | None = None) -> CompanyContext | None:
+    """Load one org's context, or ``None`` when onboarding has not produced one."""
     init_context_db()
+    org = resolve_context_org(org_id)
     with connect() as db:
         row = db.execute(
-            "SELECT context_json FROM company_context WHERE id = ?", (CONTEXT_ROW_ID,)
+            "SELECT context_json FROM company_context WHERE org_id = ?", (org,)
         ).fetchone()
     if not row:
         return None
@@ -493,21 +489,24 @@ def get_company_context() -> CompanyContext | None:
         return None
 
 
-def save_company_context(context: CompanyContextSections) -> CompanyContext:
-    """Persist the canonical context and return exactly what was stored."""
+def save_company_context(
+    context: CompanyContextSections, org_id: int | None = None
+) -> CompanyContext:
+    """Persist one org's context and return exactly what was stored."""
     init_context_db()
+    org = resolve_context_org(org_id)
     timestamp = now_iso()
     stored = CompanyContext.model_validate(
         {**context.model_dump(mode="json"), "updated_at": timestamp}
     )
     with connect() as db:
         db.execute(
-            "INSERT INTO company_context (id, schema_version, context_json, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+            "INSERT INTO company_context (org_id, schema_version, context_json, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(org_id) DO UPDATE SET "
             "schema_version = excluded.schema_version, context_json = excluded.context_json, "
             "updated_at = excluded.updated_at",
             (
-                CONTEXT_ROW_ID,
+                org,
                 stored.schema_version,
                 json.dumps(stored.model_dump(mode="json"), ensure_ascii=False),
                 timestamp,
@@ -517,89 +516,29 @@ def save_company_context(context: CompanyContextSections) -> CompanyContext:
     return stored
 
 
-def clear_company_context() -> None:
-    """Remove the stored record. Used by tests and future "start over" flows."""
+def clear_company_context(org_id: int | None = None) -> None:
+    """Remove one org's record. Used by tests and future "start over" flows."""
     init_context_db()
+    org = resolve_context_org(org_id)
     with connect() as db:
-        db.execute("DELETE FROM company_context WHERE id = ?", (CONTEXT_ROW_ID,))
+        db.execute("DELETE FROM company_context WHERE org_id = ?", (org,))
 
 
 def _is_empty(value: Any) -> bool:
     return value is None or value == "" or value == []
 
 
-def merge_seed(base: CompanyContext, seed: CompanyContextSections) -> CompanyContextSections:
-    """Fill the base context's empty fields from the seed. Never overwrites.
-
-    Confirmed or previously seeded answers always win: a field that already has
-    a value keeps it, even if the seed disagrees. List fields are taken wholesale
-    only when the base list is empty, so a founder's partial list is never padded
-    with inferred entries.
-    """
-    merged = base.model_dump(mode="json")
-    seed_data = seed.model_dump(mode="json")
-    for section, fields in seed_data.items():
-        if not isinstance(fields, dict) or section not in merged or not isinstance(merged[section], dict):
-            continue
-        for field, value in fields.items():
-            if field not in merged[section]:
-                continue
-            if _is_empty(merged[section][field]) and not _is_empty(value):
-                merged[section][field] = value
-    merged.pop("status", None)
-    merged.pop("missing", None)
-    merged.pop("completeness_percent", None)
-    merged.pop("workflow_ready", None)
-    merged.pop("updated_at", None)
-    merged.pop("schema_version", None)
-    return CompanyContextSections.model_validate(merged)
-
-
-def seed_from_service(
-    *,
-    service: str,
-    company_name: str | None = None,
-    buyer_industry: str | None = None,
-    buyer_titles: list[str] | None = None,
-    market: str | None = None,
-    contact_count: int = 0,
-    provider_names: list[str] | None = None,
-) -> CompanyContext:
-    """Project a service quick-start into the canonical context, merging only.
-
-    Only what the quick-start actually knows is seeded: the service itself, the
-    AI contact plan's buyer industry and titles, the market, and a factual note
-    about discovered contacts. Everything else stays unknown for onboarding.
-    An existing record is filled in, never overwritten.
-    """
-    demand: list[str] = []
-    if contact_count > 0:
-        sources = ", ".join(provider_names or []) or "providers"
-        demand = [f"{contact_count} prospect contact{'s' if contact_count != 1 else ''} discovered via {sources}"]
-    seed = normalize_company_context({
-        "company": {"name": company_name},
-        "product": {"name": service, "description": service},
-        "customer": {"industry": buyer_industry, "buyer_roles": buyer_titles or []},
-        "market": {"market": market},
-        "evidence": {"existing_demand": demand},
-        "state": {"marketing_stage": "starting_from_zero"},
-    })
-    existing = get_company_context()
-    if existing is None:
-        return save_company_context(seed)
-    return save_company_context(merge_seed(existing, seed))
-
-
-def get_recorded_marketing_stage() -> str | None:
+def get_recorded_marketing_stage(org_id: int | None = None) -> str | None:
     """The stored stage exactly as written, even if it no longer normalizes.
 
     Read models use this to explain a record whose stage this build cannot
     interpret. It never rewrites or defaults the value.
     """
     init_context_db()
+    org = resolve_context_org(org_id)
     with connect() as db:
         row = db.execute(
-            "SELECT context_json FROM company_context WHERE id = ?", (CONTEXT_ROW_ID,)
+            "SELECT context_json FROM company_context WHERE org_id = ?", (org,)
         ).fetchone()
     if not row:
         return None

@@ -1,6 +1,6 @@
 # AutoEvolve locked API reference
 
-Generated from source by `scripts/gen_api_reference.py` at commit `ff68fb7` on 2026-10-15T16:39:46Z.
+Generated from source by `scripts/gen_api_reference.py` at commit `506debb` on 2026-10-29T15:29:48Z.
 
 Every public constant, function, class and method in the shipped packages, with its real signature. Read this as the contract: if a name here disagrees with the code, the code is authoritative and this file must be regenerated.
 
@@ -8,15 +8,15 @@ Every public constant, function, class and method in the shipped packages, with 
 
 | subsystem | modules | functions | classes | methods | constants |
 |---|---|---|---|---|---|
-| Core state and models | 23 | 208 | 39 | 5 | 70 |
-| Support services | 28 | 113 | 26 | 37 | 66 |
-| Video pipeline package | 11 | 56 | 11 | 3 | 35 |
-| Agents | 9 | 65 | 12 | 0 | 43 |
-| HTTP surface | 19 | 214 | 136 | 0 | 60 |
-| Operations scripts | 13 | 50 | 1 | 25 | 61 |
-| **all** | **103** | **706** | **225** | **70** | **335** |
+| Core state and models | 33 | 250 | 44 | 5 | 94 |
+| Support services | 21 | 84 | 22 | 24 | 33 |
+| Publisher adapters | 4 | 9 | 7 | 19 | 5 |
+| Agents | 8 | 64 | 11 | 0 | 41 |
+| HTTP surface | 18 | 210 | 125 | 0 | 56 |
+| Operations scripts | 12 | 43 | 2 | 27 | 60 |
+| **all** | **96** | **660** | **211** | **75** | **289** |
 
-Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the end.
+Plus 218 HTTP routes, 45 database tables and 0 CLI subcommands, listed at the end.
 
 ## Core state and models
 
@@ -24,12 +24,78 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 
 - (no public module-level names)
 
+### `core/auth.py`
+
+- const `EMAIL_RE`
+- class `AuthError`(Exception)
+- class `SignupResult`
+- class `SessionResult`
+- `validate_email(email: str) -> str`
+- `validate_password(password: str) -> str`
+- `public_user(user: dict[str, Any] | None) -> dict[str, Any] | None`
+- `public_org(org: dict[str, Any] | None) -> dict[str, Any] | None`
+- `signup(email: str, password: str, company_name: str='') -> SignupResult`
+- `login(email: str, password: str) -> SessionResult`
+- `verify_email(token: str) -> SessionResult`
+- `resend_verification(email: str) -> AuthEmailResult` — Always returns a generic result to avoid account enumeration
+- `resolve_session(token: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None`
+- `me(user_id: str, org_id: int, session_hash: str | None) -> dict[str, Any]`
+
+### `core/auth_context.py`
+
+- `bind_session(*, user_id: str, org_id: int, session_hash: str) -> tuple`
+- `reset_session(tokens: tuple) -> None`
+
+### `core/auth_security.py`
+
+- const `SCRYPT_N`
+- const `SCRYPT_R`
+- const `SCRYPT_P`
+- const `SCRYPT_DKLEN`
+- `hash_password(password: str) -> str`
+- `verify_password(password: str, encoded: str | None) -> bool`
+- `new_token() -> str`
+
+### `core/auth_store.py`
+
+- const `SESSION_TTL_DAYS`
+- const `VERIFICATION_TTL_HOURS`
+- `init_auth_db() -> None`
+- `new_id(prefix: str) -> str`
+- `normalize_email(email: str) -> str`
+- `create_user(email: str, password_hash: str) -> dict[str, Any]`
+- `get_user(user_id: str) -> dict[str, Any] | None`
+- `get_user_by_email(email: str) -> dict[str, Any] | None`
+- `delete_user(user_id: str) -> None`
+- `mark_email_verified(user_id: str) -> dict[str, Any] | None`
+- `add_membership(org_id: int, user_id: str, role: str='owner') -> None`
+- `memberships_for_user(user_id: str) -> list[dict[str, Any]]`
+- `primary_org_for_user(user_id: str) -> dict[str, Any] | None`
+- `token_hash(token: str) -> str`
+- `create_session(user_id: str, org_id: int) -> tuple[str, dict[str, Any]]`
+- `get_session(token: str) -> dict[str, Any] | None`
+- `delete_session(token: str) -> None`
+- `create_verification(user_id: str) -> str`
+- `consume_verification(token: str) -> str | None`
+
 ### `core/branding.py`
 
 - `company_name() -> str`
 - `company_public_url() -> str`
 - `company_forms_url() -> str`
 - `company_logo_url() -> str`
+
+### `core/channel_benchmarks.py`
+
+- const `MODULE_VERSION`
+- const `VINTAGE`
+- const `COLD_OUTBOUND_GENERAL`
+- const `OPTIN_BY_INDUSTRY`
+- const `INDUSTRY_ALIASES`
+- `normalize_industry(text: object) -> str` — Map free-text industry to a benchmark key. Unknown -> 'general'
+- `cold_reply_benchmark(industry: object=None) -> dict[str, object]` — Cold-outbound reply band for an industry
+- `optin_benchmark(industry: object=None) -> dict[str, object]` — Opt-in open/click band for an industry, with honest coverage flag
+- `expected_replies(sends: int, industry: object=None) -> dict[str, object]` — Estimate reply counts for a send volume from the world band
 
 ### `core/commercial_store.py`
 
@@ -71,20 +137,18 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - class `CompanyContext`(CompanyContextSections) — The canonical company context
 - `normalize_company_context(raw: Mapping[str, Any] | None) -> CompanyContext` — Turn raw onboarding or API answers into the canonical context
 - `has_any_fact(context: CompanyContextSections) -> bool` — True when at least one founder answer is known
-- `context_from_onboarding(*, start: Mapping[str, Any], confirm: Mapping[str, Any]) -> CompanyContext` — Project confirmed onboarding answers onto the canonical sections
-- `init_context_db() -> None` — Create the single-row company context table (idempotent, as elsewhere)
-- `get_company_context() -> CompanyContext | None` — Load the stored context, or ``None`` when onboarding has not produced one
-- `save_company_context(context: CompanyContextSections) -> CompanyContext` — Persist the canonical context and return exactly what was stored
-- `clear_company_context() -> None` — Remove the stored record. Used by tests and future "start over" flows
-- `merge_seed(base: CompanyContext, seed: CompanyContextSections) -> CompanyContextSections` — Fill the base context's empty fields from the seed. Never overwrites
-- `seed_from_service(*, service: str, company_name: str | None=None, buyer_industry: str | None=None, buyer_titles: list[str] | None=None, market: str | None=None, contact_count: int=0, provider_names: list[str] | None=None) -> CompanyContext` — Project a service quick-start into the canonical context, merging only
-- `get_recorded_marketing_stage() -> str | None` — The stored stage exactly as written, even if it no longer normalizes
+- `resolve_context_org(org_id: int | None=None) -> int` — Resolve the org for a context read/write
+- `init_context_db() -> None` — Create or migrate the org-scoped company context table
+- `get_company_context(org_id: int | None=None) -> CompanyContext | None` — Load one org's context, or ``None`` when onboarding has not produced one
+- `save_company_context(context: CompanyContextSections, org_id: int | None=None) -> CompanyContext` — Persist one org's context and return exactly what was stored
+- `clear_company_context(org_id: int | None=None) -> None` — Remove one org's record. Used by tests and future "start over" flows
+- `get_recorded_marketing_stage(org_id: int | None=None) -> str | None` — The stored stage exactly as written, even if it no longer normalizes
 
 ### `core/company_read.py`
 
 - const `SUMMARY_FIELDS`
-- `list_company_records(*, page: int, page_size: int, query: str, view: str, sort: str, industry: str='', country: str='') -> tuple[list[dict[str, Any]], int, dict[str, int]]`
-- `get_company_record(company_id: str) -> dict[str, Any] | None`
+- `list_company_records(*, page: int, page_size: int, query: str, view: str, sort: str, industry: str='', country: str='', org_id: int | None=None) -> tuple[list[dict[str, Any]], int, dict[str, int]]`
+- `get_company_record(company_id: str, org_id: int | None=None) -> dict[str, Any] | None`
 
 ### `core/dashboard.py`
 
@@ -100,15 +164,41 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 
 ### `core/evidence.py`
 
-- `collect_evidence(org: int=0) -> dict[str, Any]` — Assemble the evidence union for one organization. Never raises on
+- const `EVIDENCE_CACHE_SECONDS`
+- `collect_evidence(org: int=0) -> dict[str, Any]` — Cached read of the evidence union (see ``_collect_evidence``)
 - `resolve_research_terms(org: int=0) -> dict[str, Any]` — Decide what a governed research run searches for, from evidence
-- `suggest_accounts(org: int=0) -> dict[str, Any]` — Propose accounts from evidence nobody has claimed yet
+- `suggest_accounts(org: int=0, enrich_budget: int=5) -> dict[str, Any]` — Propose accounts from evidence nobody has claimed yet
+
+### `core/form_store.py`
+
+- const `DB_PATH`
+- const `SLUG_PATTERN`
+- const `FIELD_TYPES`
+- const `MAPPED_KEYS`
+- const `DEFAULT_FORM`
+- `connect() -> sqlite3.Connection`
+- `init_form_db() -> None`
+- `list_forms() -> list[dict[str, Any]]`
+- `get_form(slug: str) -> dict[str, Any] | None`
+- `validate_fields(fields: Any) -> list[dict[str, Any]]`
+- `create_form(slug: str, name: str, fields: Any, description: str | None=None) -> dict[str, Any]`
+- `update_form(slug: str, *, name: str | None=None, description: str | None=None, fields: Any=None, active: bool | None=None) -> dict[str, Any]`
+- `map_answers_to_lead(form: dict[str, Any] | None, answers: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]` — Split a submission into a LeadIntake-shaped payload and the clean
+
+### `core/jobs_store.py`
+
+- `init_jobs_db() -> None`
+- `create_publish_job(org_id: int, post_id: str) -> dict[str, Any]`
+- `get_publish_job(job_id: str, org_id: int | None=None) -> dict[str, Any] | None`
+- `latest_publish_job(org_id: int, post_id: str) -> dict[str, Any] | None`
+- `update_publish_job(job_id: str, *, status: str, result: dict[str, Any] | None=None, error: str | None=None) -> dict[str, Any] | None`
+- `mark_interrupted_jobs() -> int` — A process restart cannot resume an in-flight provider call
 
 ### `core/marketing_config.py`
 
 - const `ROOT`
 - const `WORKSPACE_ROOT`
-- class `MarketingConfig`
+- class `MarketingConfig` — The only engine the app still calls: G3 (Buffer/R2 publishing)
   - `load(cls) -> 'MarketingConfig'`
   - `diagnostics(self) -> dict`
 
@@ -117,7 +207,7 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - class `UnsupportedMarketingStage`(ValueError) — Raised when a company state has no route. Never replaced by a default
 - class `InitialRoute`(BaseModel) — A resolved route: the founder's starting stage and the next state
 - const `INITIAL_ROUTES`
-- class `RouteState`(BaseModel) — Flat routing fields for typed API views (context route, onboarding, home)
+- class `RouteState`(BaseModel) — Flat routing fields for typed API views (context route, Get Started, home)
   - `resolved(cls, route: InitialRoute) -> 'RouteState'`
   - `unresolved(cls, error: str | None=None) -> 'RouteState'` — No route is claimed. Either nothing is decided yet, or it failed
 - `route_for_stage(stage: str | None) -> InitialRoute` — Return the route for one starting stage, or explain why there is none
@@ -130,16 +220,6 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - const `TERMINAL_CAMPAIGN_STATES`
 - `connect() -> sqlite3.Connection`
 - `init_marketing_db() -> None`
-- `create_campaign(*, org_id: int, task_id: int, request: str, objective: str, buyer: str, topic: str, social_platforms: list[str], video_platform: str, voice_mode: str='tts', voice_transcript: str | None=None) -> dict`
-- `update_campaign(campaign_id: str, **fields: Any) -> None`
-- `get_campaign(campaign_id: str, *, include_variants: bool=True) -> dict | None`
-- `list_campaigns(limit: int=20, org_id: int | None=None) -> list[dict]`
-- `create_variant(campaign_id: str, platform: str, voice: str, speed: float) -> dict`
-- `update_variant(variant_id: str, **fields: Any) -> None`
-- `get_variant(variant_id: str) -> dict | None`
-- `clear_variants(campaign_id: str) -> int`
-- `add_event(campaign_id: str, event: str, payload: dict, *, connection: sqlite3.Connection | None=None) -> None`
-- `list_events(campaign_id: str) -> list[dict]`
 - `create_manual_post(*, org_id: int, platform: str, post_id: str, destination_url: str, tracked_url: str, campaign_id: str | None=None, title: str | None=None, creative: str | None=None, hook: str | None=None, offer: str | None=None, cta: str | None=None, source_detail: str | None=None, asset_dir: str | None=None, assets: list[dict[str, Any]] | None=None, metadata: dict[str, Any] | None=None) -> dict`
 - `get_manual_post(post_record_id: str) -> dict | None`
 - `list_manual_posts(limit: int=50, org_id: int | None=None) -> list[dict]`
@@ -186,17 +266,25 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `normalize_channel(value: str | None) -> str` — Fold founder wording onto a channel key: 'Email' and 'e-mail' -> 'email'
 - `normalize_method(value: str | None) -> str`
 - class `GovernanceLimits`(BaseModel) — Caps the operator has agreed to. Defaults refuse anything costly
-  - `load(cls) -> 'GovernanceLimits'`
+  - `load(cls, org_id: int | None=None) -> 'GovernanceLimits'`
 - class `ResolvedAction`(BaseModel) — One workflow step governance is willing to authorize
 - class `GovernanceDecision`(BaseModel) — The structured result of validating one plan. Always persisted
-- `validate_plan(plan: ValidationPlan | dict[str, Any], context: CompanyContext, *, plan_id: str='', limits: GovernanceLimits | None=None) -> tuple[GovernanceDecision, ValidationPlan]` — Decide whether a plan may become a workflow. Returns (decision, plan)
+- `validate_plan(plan: ValidationPlan | dict[str, Any], context: CompanyContext, *, plan_id: str='', limits: GovernanceLimits | None=None, org_id: int=0) -> tuple[GovernanceDecision, ValidationPlan]` — Decide whether a plan may become a workflow. Returns (decision, plan)
 - class `GovernanceRecord`(BaseModel) — A persisted governance decision plus the lifecycle it has reached
 - `new_governance_id() -> str`
-- `record_from_decision(decision: GovernanceDecision, record_id: str | None=None) -> GovernanceRecord`
+- `record_from_decision(decision: GovernanceDecision, record_id: str | None=None, *, org_id: int=0) -> GovernanceRecord`
 - `init_governance_db() -> None` — Create the governance table (idempotent, in the existing company database)
 - `save_governance(record: GovernanceRecord) -> GovernanceRecord`
 - `get_governance(governance_id: str) -> GovernanceRecord | None`
-- `latest_governance() -> GovernanceRecord | None` — The most recent decision, so the lifecycle survives a reload
+- `latest_governance(org_id: int=0) -> GovernanceRecord | None` — The most recent decision for one org, so the lifecycle survives a reload
+
+### `core/plan_input.py`
+
+- const `SCHEMA`
+- class `PlanInputError`(RuntimeError) — The planner input cannot be built from the recorded company state
+- `build_plan_input(org_id: int | None=None) -> dict[str, Any]` — Build the canonical, org-scoped `PlanInput` for today's decision
+- `save_plan_input(payload: dict[str, Any]) -> dict[str, Any]`
+- `get_plan_input(org_id: int, input_hash: str) -> dict[str, Any] | None`
 
 ### `core/projects.py`
 
@@ -205,6 +293,32 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `slugify(text: str) -> str`
 - `ensure_project(name: str) -> tuple[dict, Path]` — Create or reuse a project
 - `save_research(project_path: Path, report: dict) -> Path`
+
+### `core/publishers_store.py`
+
+- const `DEFAULT_PLATFORMS`
+- `init_publishers_db() -> None`
+- `save_webhook(org_id: int, *, url: str, secret: str, account: str='webhook', label: str='Webhook scheduler', platforms: list[str] | str | None=None) -> dict[str, Any]`
+- `webhook_for_org(org_id: int) -> dict[str, Any] | None`
+- `public_webhook_for_org(org_id: int) -> dict[str, Any] | None`
+- `delete_webhook(org_id: int) -> None`
+
+### `core/quotas.py`
+
+- const `FREE_LIMITS`
+- const `PAID_DEFAULTS`
+- class `QuotaExceeded`(RuntimeError)
+- `reset_at(now: datetime | None=None) -> str`
+- `org_plan(org_id: int | None=None) -> str`
+- `used_today(org_id: int | None, kind: str) -> int`
+- `quota_snapshot(org_id: int | None, kind: str) -> dict`
+- `enforce_quota(org_id: int | None, kind: str) -> dict`
+- `record_usage(org_id: int | None, kind: str, ref: str) -> None`
+- `quota_snapshot_all(org_id: int | None) -> dict`
+- `retry_after_seconds(exc: QuotaExceeded) -> int`
+- `provider_limit(org_id: int | None, provider: str) -> int`
+- `provider_remaining(org_id: int | None, provider: str) -> int`
+- `claim_provider(org_id: int | None, provider: str, action: str) -> bool`
 
 ### `core/sales_store.py`
 
@@ -215,14 +329,14 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `linkedin_profile_for_lead_org(lead: dict | None) -> str | None`
 - `contact_profile_for_lead(lead: dict | None) -> dict[str, Any]`
 - `normalize_company_domain(value: Any) -> str | None`
-- `get_company_profile(domain: str | None) -> dict | None`
-- `upsert_company_profile(domain: str, *, provider: str, status: str, company_name: str | None=None, summary: dict[str, Any] | None=None, raw: dict[str, Any] | None=None, fetched_at: str | None=None) -> dict`
+- `get_company_profile(domain: str | None, org_id: int=0) -> dict | None`
+- `upsert_company_profile(domain: str, *, provider: str, status: str, company_name: str | None=None, summary: dict[str, Any] | None=None, raw: dict[str, Any] | None=None, fetched_at: str | None=None, org_id: int=0) -> dict`
 - `score_lead(lead: dict) -> int`
 - `upsert_lead(payload: dict) -> tuple[dict, bool]`
-- `get_lead(lead_id: str) -> dict | None`
+- `get_lead(lead_id: str, org_id: int | None=None) -> dict | None`
 - `get_lead_by_email(email: str | None) -> dict | None`
-- `list_leads(limit: int=50, stage: str | None=None) -> list[dict]`
-- `list_contacts_page(*, page: int=1, page_size: int=10, stage: str | None=None, query: str='', sort: str='recent') -> tuple[list[dict], int, dict[str, Any]]` — Read-only, complete pagination over the existing sales leads
+- `list_leads(limit: int=50, stage: str | None=None, org_id: int | None=None) -> list[dict]`
+- `list_contacts_page(*, page: int=1, page_size: int=10, stage: str | None=None, query: str='', sort: str='recent', org_id: int | None=None) -> tuple[list[dict], int, dict[str, Any]]` — Read-only, complete pagination over the existing sales leads
 - `merge_lead_metadata(lead_id: str, patch: dict[str, Any]) -> dict`
 - `record_contact_resolution(lead_id: str, *, provider: str, email: str | None=None, phone: str | None=None, whatsapp_candidate: str | None=None, status: str, details: dict[str, Any] | None=None) -> dict`
 - `update_lead(lead_id: str, **fields: Any) -> None`
@@ -241,12 +355,13 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `mark_sent(draft_id: str, provider_message_id: str, metadata: dict | None=None) -> None`
 - `add_interaction(lead_id: str, direction: str, channel: str, kind: str, subject: str | None, body: str | None, provider_message_id: str | None=None, metadata: dict | None=None) -> bool`
 - `mark_replied(lead_id: str, subject: str, body: str, provider_message_id: str | None=None, metadata: dict | None=None) -> None`
-- `mark_meeting_scheduled(lead_id: str, scheduled_for: str | None=None, note: str | None=None) -> dict`
+- `mark_meeting_scheduled(lead_id: str, scheduled_for: str | None=None, note: str | None=None, source: str='manual') -> dict`
+- `mark_meeting_requested(lead_id: str, slots: list[str], note: str | None=None) -> dict` — Record a founder-sent booking request: the offered slots are saved, the
 - `add_event(lead_id: str | None, event: str, payload: dict) -> None`
 - `count_company_profile_attempts() -> int`
-- `list_events(limit: int=50, lead_id: str | None=None) -> list[dict]`
-- `list_interactions(limit: int=50, lead_id: str | None=None) -> list[dict]`
-- `summary() -> dict`
+- `list_events(limit: int=50, lead_id: str | None=None, org_id: int | None=None) -> list[dict]`
+- `list_interactions(limit: int=50, lead_id: str | None=None, org_id: int | None=None) -> list[dict]`
+- `summary(org_id: int | None=None) -> dict`
 
 ### `core/setup_keys.py`
 
@@ -259,8 +374,10 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `env_file() -> Path`
 - `g3_env_file() -> Path`
 - const `PROVIDER_GROUPS`
+- `read_values(path: Path) -> dict[str, str]` — Public, read-only access to an env file (values never leave the server)
 - `group_status() -> dict[str, dict]` — Masked per-group status: which keys are set (never values)
 - `validate_group(group: str, values: dict[str, str]) -> dict` — Format-level validation (no credits spent). Live gateway check for ai_gateway
+- `write_values(path: Path, values: dict[str, str]) -> dict` — Backup, then update keys in place. Rolls the file back on any failure
 - `save_group(group: str, values: dict[str, str]) -> dict` — Validate, backup, then write. Rolls back the file on any failure
 
 ### `core/state.py`
@@ -274,14 +391,14 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `get_org_capabilities(org_id: int) -> dict[str, bool]`
 - `get_setup_step() -> str`
 - `set_setup_step(step: str) -> None`
-- `get_onboarding_program() -> dict | None` — The single first-run sales program, stored with existing setup settings
-- `save_onboarding_program(program: dict) -> None`
-- `get_service_discovery_run(run_id: str) -> dict | None`
-- `list_service_discovery_runs(limit: int=10) -> list[dict]`
-- `save_service_discovery_run(run: dict) -> None`
-- `claim_service_provider_request(provider: str, action: str, limit_24h: int) -> bool` — Reserve one request against a conservative rolling local provider cap
-- `create_org(name: str, slug: str, env_prefix: str='BUFFER_', organization_id: str='', domain: str='') -> dict`
+- `get_network_contribution() -> bool` — Anonymized-pool opt-in. Default opted out: nothing is shared ever
+- `set_network_contribution(opt_in: bool) -> bool`
+- `claim_service_provider_request(provider: str, action: str, limit_24h: int, org_id: int=0) -> bool` — Reserve one request against a conservative rolling local provider cap
+- `create_org(name: str, slug: str, env_prefix: str='BUFFER_', organization_id: str='', domain: str='', plan: str='paid', limits: dict | None=None) -> dict`
 - `get_org(org_id: int) -> Optional[dict]`
+- const `LIMIT_KEYS`
+- `get_org_limits(org_id: int) -> dict`
+- `set_org_limits(org_id: int, limits: dict) -> dict`
 - `get_org_by_slug(slug: str) -> Optional[dict]`
 - `list_orgs() -> list[dict]`
 - `set_active_org(org_id: int) -> None`
@@ -300,7 +417,7 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 ### `core/suggest.py`
 
 - `suggest_workflows(org: int=0, now: datetime | None=None) -> dict[str, Any]` — Rank the next governed runs from evidence. Read-only
-- `suggest_campaign(org: int=0) -> dict[str, Any]` — Propose the marketing move from evidence: video lines, campaign path, provider
+- `market_comparison(rate: float | None, industry: str | None=None) -> dict[str, Any] | None` — Your recorded rate against the world band. None without a rate
 
 ### `core/validation_plan.py`
 
@@ -324,41 +441,9 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `new_plan_id() -> str`
 - `init_validation_db() -> None` — Create the plan table (idempotent, in the existing company database)
 - `save_validation_plan(record: ValidationPlanRecord) -> ValidationPlanRecord` — Persist a planned record and return exactly what was stored
-- `build_plan_record(plan: ValidationPlan, provenance: PlanProvenance, grounding: GroundingReport) -> ValidationPlanRecord`
-- `get_validation_plan(plan_id: str) -> ValidationPlanRecord | None`
-- `get_latest_validation_plan() -> ValidationPlanRecord | None` — The newest plan, so the UI can show the current thinking after a reload
-
-### `core/video_store.py`
-
-- const `RENDERERS`
-- const `JOB_STATUSES`
-- const `DEFAULT_LEASE_SECONDS`
-- const `DEFAULT_MAX_ATTEMPTS`
-- `connect() -> sqlite3.Connection`
-- `init_video_db() -> None`
-- `create_spec(payload: dict[str, Any]) -> dict[str, Any]`
-- `get_spec(spec_id: str) -> dict[str, Any] | None`
-- `list_specs(limit: int=50) -> list[dict[str, Any]]`
-- `update_spec_status(spec_id: str, status: str) -> dict[str, Any] | None`
-- `create_shot_plan(payload: dict[str, Any]) -> dict[str, Any]`
-- `get_shot_plan(plan_id: str) -> dict[str, Any] | None`
-- `list_shot_plans(spec_id: str | None=None) -> list[dict[str, Any]]`
-- `update_plan_status(plan_id: str, status: str) -> dict[str, Any] | None`
-- `enqueue_jobs(rows: list[dict[str, Any]]) -> list[dict[str, Any]]` — Insert render jobs. Output paths must be unique across the queue
-- `get_job(job_id: str) -> dict[str, Any] | None`
-- `list_jobs(shot_plan_id: str | None=None, status: str | None=None, renderer: str | None=None, limit: int=200) -> list[dict[str, Any]]`
-- `queue_stats() -> dict[str, Any]`
-- `lease_next_job(worker_id: str, renderer: str | None=None, lease_seconds: int=DEFAULT_LEASE_SECONDS) -> dict[str, Any] | None` — Atomically lease the oldest pending job (or reclaim an expired lease)
-- `claim_job(job_id: str, worker_id: str, lease_seconds: int=DEFAULT_LEASE_SECONDS) -> dict[str, Any]` — Claim a specific pending job for control-plane dispatch (push model)
-- `heartbeat_job(job_id: str, worker_id: str, lease_seconds: int=DEFAULT_LEASE_SECONDS) -> dict[str, Any]`
-- `complete_job(job_id: str, worker_id: str, result: dict[str, Any] | None=None) -> dict[str, Any]`
-- `fail_job(job_id: str, worker_id: str, code: str | None=None, message: str='', retryable: bool=True) -> dict[str, Any]`
-- `retry_job(job_id: str) -> dict[str, Any]` — Operator requeue of a failed or cancelled job with a fresh attempt budget
-- `cancel_job(job_id: str) -> dict[str, Any]`
-- `save_visual_bible(spec_id: str, bible: dict[str, Any], recipe_id: str | None=None) -> dict[str, Any]`
-- `get_visual_bible(spec_id: str) -> dict[str, Any] | None`
-- `register_assets(spec_id: str, assets: list[dict[str, Any]]) -> list[dict[str, Any]]`
-- `list_assets(spec_id: str) -> list[dict[str, Any]]`
+- `build_plan_record(plan: ValidationPlan, provenance: PlanProvenance, grounding: GroundingReport, *, org_id: int=0) -> ValidationPlanRecord`
+- `get_validation_plan(plan_id: str, org_id: int | None=None) -> ValidationPlanRecord | None`
+- `get_latest_validation_plan(org_id: int=0) -> ValidationPlanRecord | None` — The newest plan for one org, so the UI can show current thinking
 
 ### `core/workflow_store.py`
 
@@ -386,10 +471,21 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `connect() -> sqlite3.Connection`
 - `init_db() -> None`
 - `save_workflow(workflow: Workflow) -> Workflow` — Persist (insert or replace) a workflow document
-- `build_workflow(*, name: str, objective: str='', steps: list[dict[str, Any]] | None=None, trigger: dict[str, Any] | None=None, success_metric: dict[str, Any] | None=None, workflow_id: str | None=None) -> Workflow` — Construct (but do not persist) a workflow document; raises ValueError if malformed
-- `create_workflow(*, name: str, objective: str='', steps: list[dict[str, Any]] | None=None, trigger: dict[str, Any] | None=None, success_metric: dict[str, Any] | None=None, workflow_id: str | None=None) -> Workflow`
+- `build_workflow(*, name: str, objective: str='', steps: list[dict[str, Any]] | None=None, trigger: dict[str, Any] | None=None, success_metric: dict[str, Any] | None=None, workflow_id: str | None=None, org_id: int=0) -> Workflow` — Construct (but do not persist) a workflow document; raises ValueError if malformed
+- `create_workflow(*, name: str, objective: str='', steps: list[dict[str, Any]] | None=None, trigger: dict[str, Any] | None=None, success_metric: dict[str, Any] | None=None, workflow_id: str | None=None, org_id: int=0) -> Workflow`
 - `get_workflow(workflow_id: str) -> Workflow | None`
-- `list_workflows(limit: int=50, *, status: str | None=None) -> list[Workflow]`
+- `list_workflows(limit: int=50, *, status: str | None=None, org_id: int | None=None) -> list[Workflow]`
+
+### `core/worlddata_store.py`
+
+- `connect() -> sqlite3.Connection`
+- `init_worlddata_db() -> None`
+- `upsert_record(source: str, kind: str, ref: str, name: str, data: dict[str, Any], vintage: str='') -> None`
+- `count_records(source: str | None=None, kind: str | None=None) -> int`
+- `sources_summary() -> dict[str, Any]` — Coverage answer for the evidence union: per-source counts + vintages
+- `find_records(source: str, kind: str, limit: int=50) -> list[dict[str, Any]]`
+- `get_record(source: str, kind: str, ref: str) -> dict[str, Any] | None` — One world record by identity. None when absent or on any error
+- `clear_source(source: str, kind: str | None=None) -> int`
 
 ## Support services
 
@@ -407,49 +503,31 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
   - `bulk_match(self, details: list[dict[str, Any]]) -> list[dict]`
   - `match_person(self, *, email: str | None=None, name: str | None=None, domain: str | None=None, apollo_id: str | None=None) -> dict`
 
-### `services/asset_pack_builder.py`
+### `services/auth_email.py`
 
-- const `STOPWORDS`
-- const `MAX_CONTENT_SLIDES`
-- `split_script_sections(script: str) -> list[str]`
-- `build_asset_package(script: str, *, objective: str='awareness', social_platforms: list[str] | None=None, video_platform: str='shorts') -> dict[str, Any]`
-- `build_pack_title(script: str) -> str`
+- const `RESEND_SEND_URL`
+- class `AuthEmailResult`
+- `verify_url(token: str) -> str`
+- `send_verification_email(email: str, token: str, *, company_name: str='') -> AuthEmailResult`
+- `dev_token_visible() -> bool`
 
-### `services/asset_pack_worker.py`
+### `services/buffer_setup.py`
 
-- const `ROOT`
-- const `PROJECTS_ROOT`
-- `run_asset_pack(project_slug: str, pack_id: str) -> None`
-- `spawn_asset_pack(project_slug: str, pack_id: str) -> None`
-- `main() -> int`
-
-### `services/asset_scene_planner.py`
-
-- const `MAX_SCENES`
-- const `WORDS_PER_MINUTE`
-- const `SECONDS_PER_SCENE`
-- class `SceneBoundary`(BaseModel)
-- class `SceneBoundaryPlan`(BaseModel)
-- `plan_script_scenes(script: str) -> dict[str, Any]`
+- const `DEFAULT_ACCOUNT`
+- const `ACCOUNT_NAME_RE`
+- const `SERVICE_TO_PLATFORM`
+- const `PLATFORMS`
+- `normalize_account_name(value: str | None) -> str`
+- `account_keys(name: str) -> dict[str, str]` — Environment key names for one account, matching G3's prefix rules
+- `list_accounts() -> list[dict]` — Configured accounts with masked state. Never returns the token
+- `discover(account: str, api_key: str | None=None, *, client_factory: ClientFactory | None=None) -> dict` — Read the organizations and channels a token can reach
+- `bind(account: str, *, api_key: str | None, organization_id: str, instagram_channel_id: str | None=None, x_channel_id: str | None=None, linkedin_channel_id: str | None=None, client_factory: ClientFactory | None=None) -> dict` — Verify the chosen channel IDs against Buffer, then persist the account
 
 ### `services/caption_variants.py`
 
 - const `CTA_BY_PLATFORM`
 - `build_short_caption_variants(*, topic: str, buyer: str, transcript: str, platform_copy: dict[str, Any] | None=None) -> dict[str, list[str]]`
 - `enrich_platform_copy(platform_copy: dict[str, Any] | None) -> dict[str, Any]`
-
-### `services/cinematography.py`
-
-- const `SHOT_TYPES`
-- const `CAMERA_MOVEMENTS`
-- const `LENSES`
-- const `LIGHTING`
-- const `DEPTH_OF_FIELD`
-- const `COMPOSITION`
-- const `TRANSITIONS`
-- const `MOTION_PATTERNS`
-- `validate_camera(camera: dict[str, Any]) -> list[str]`
-- `describe_shot_language(camera: dict[str, Any] | None, lens: dict[str, Any] | None, framing: dict[str, Any] | None) -> str` — Compile camera/lens/framing records into a prompt fragment
 
 ### `services/company_enrich.py`
 
@@ -460,14 +538,21 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
   - `extract_company_profile(self, payload: dict[str, Any]) -> dict[str, Any]`
 - `company_usage_profile(company_profile: dict[str, Any] | None) -> dict[str, Any]`
 
-### `services/creative_director.py`
+### `services/g3_cli.py`
 
-- const `ROLE_ROUTES`
-- class `DirectorUnavailable`(RuntimeError) — Raised when an AI director role needs a model router key
-- `require_director() -> None`
-- class `CreativeDirector` — One director role (e.g. ``storyboarding``) backed by an OmniRoute route
-  - `run(self, prompt: str, output_model: type[OutputModel]) -> OutputModel` — Run the role synchronously; returns a validated output model
-- `director_available(role: str | None=None) -> bool` — True when the model router is configured (per-role check is the same)
+- `run(command: list[str], *, cwd: Path, env_file: Path | None, timeout: int, log_path: Path) -> str`
+- `last_json(text: str) -> dict`
+
+### `services/gleif.py`
+
+- const `BASE_URL`
+- const `TIMEOUT_SECONDS`
+- const `PAGE_SIZE`
+- class `GleifError`(RuntimeError)
+- `search_records(company_name: str, *, page_size: int=PAGE_SIZE) -> list[dict[str, Any]]` — Full-text legal-name search. Raw JSON:API records, may be empty
+- `extract_identity(record: dict[str, Any]) -> dict[str, Any]` — Flatten one lei-record into the identity dict the ladder stores
+- `fetch_direct_parent(identity: dict[str, Any]) -> dict[str, Any] | None` — Best-effort direct-parent legalName/LEI. None on any failure
+- `resolve_identity(company_name: str) -> dict[str, Any] | None` — Free identity for a company name, or None (miss/error → paid ladder)
 
 ### `services/hunter.py`
 
@@ -489,21 +574,7 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
   - `contact_filter_values(self, filter_type: str, query: str | None=None) -> dict`
   - `company_filter_values(self, filter_type: str, query: str | None=None) -> dict`
   - `prospect_contacts(self, *, job_title: str | None=None, service_keywords: list[str] | None=None, location: str | None=None, company_size: str | None=None, limit: int=5) -> dict`
-  - `enrich_contacts(self, request_id: str, contact_ids: list[str]) -> dict`
-
-### `services/marketing_worker.py`
-
-- const `ROOT`
-- const `G2_CAMPAIGN_FIELDS`
-- const `G2_SLIDE_FIELDS`
-- const `G2_NESTED_FIELDS`
-- `run_g1(campaign_id: str, *, config: MarketingConfig | None=None, root: Path | None=None, logs: Path | None=None, fresh_research: bool=True) -> dict` — Execute only the G1 strategy stage and persist the campaign package
-- `run_pipeline(campaign_id: str) -> None`
-- `run_media_pipeline(campaign_id: str, *, campaign: dict | None=None, package: dict | None=None, config: MarketingConfig | None=None, root: Path | None=None, logs: Path | None=None) -> None`
-- `run_real_voice_render(campaign_id: str) -> None`
-- `run_g3(campaign_id: str) -> None`
-- `spawn(campaign_id: str, stage: str='pipeline') -> None`
-- `main() -> int`
+  - `enrich_contacts(self, contact_ids: list[str], *, reveal: tuple[str, ...]=('emails', 'phones')) -> dict`
 
 ### `services/monitor.py`
 
@@ -517,13 +588,6 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `handle_failure(name: str, service: dict, h: dict) -> dict`
 - `check_service(name: str) -> dict`
 - `check_all() -> list[dict]`
-
-### `services/motion_recipes.py`
-
-- const `RECIPES`
-- `list_recipes() -> list[str]`
-- `select_recipe(text: str) -> tuple[str, dict[str, Any]]` — Deterministically score recipes by cue overlap; ties break by name
-- `select_recipe_ai(brief: str, *, candidates: list[str] | None=None) -> dict[str, Any]` — Let the director pick (and justify) a recipe; falls back deterministically
 
 ### `services/oauth.py`
 
@@ -541,6 +605,16 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `exchange_code(provider: str, code: str, org_id: int=0) -> dict[str, Any]` — Trade one single-use authorization code for tokens, then persist them
 - `refresh_tokens(provider: str, org_id: int=0) -> dict[str, Any]` — Rotate an expiring access token. Failure surfaces as action-required, never silent
 - `validate_connection(provider: str, org_id: int=0) -> dict[str, Any]` — Health check used by sync: refresh when expiring, report honestly
+
+### `services/opencorporates.py`
+
+- class `OpenCorporatesError`(RuntimeError)
+- const `COUNTRY_JURISDICTIONS`
+- `jurisdiction_for_country(country: str | None) -> str | None` — Map a free-text country to an OpenCorporates jurisdiction code
+- `normalize_company_name(value: Any) -> str`
+- class `OpenCorporatesClient` — OpenCorporates company search (registry verification, not discovery)
+  - `search_companies(self, name: str, *, jurisdiction: str | None=None, inactive: bool=False) -> list[dict]` — Raw registry hits for a company name, each with name/number/jurisdiction
+  - `verify_company(self, name: str, *, jurisdiction: str | None=None) -> dict | None` — Confirm a candidate exists in the registry under that jurisdiction
 
 ### `services/pdl.py`
 
@@ -566,62 +640,6 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `providers_for(datapoint: str, order: list[str] | None=None) -> list[ProviderSpec]` — Specs supplying a data point, in explicit order or cost order
 - `run_waterfall(steps: list[tuple[str, Callable[[], list[dict[str, Any]]], tuple[type[BaseException], ...]]], target: int | None, key_fn: Callable[[dict[str, Any]], str | None], warn_fn: Callable[[str, Exception], str]) -> dict[str, Any]` — Query suppliers in order until `target` unique results are held
 
-### `services/quality_gates.py`
-
-- const `GATES`
-- `run_gates(spec: dict[str, Any], plan: dict[str, Any], jobs: list[dict[str, Any]], *, artifacts: dict[str, str] | None=None, context: dict[str, Any] | None=None, render_mode: str='shots') -> dict[str, Any]` — Run all quality gates. ``artifacts`` maps shot_id -> local MP4 path
-
-### `services/renderers.py`
-
-- const `REPO`
-- const `DEFAULT_RENDER_TIMEOUT_SECONDS`
-- const `DEFAULT_CONNECT_TIMEOUT_SECONDS`
-- const `HEALTH_TIMEOUT_SECONDS`
-- const `PRE_SUBMIT_ATTEMPTS`
-- const `WORKER_ERROR_MAX_CHARS`
-- const `FRAME_SHORTFALL_BASE`
-- const `FRAME_COUNT_TOLERANCE`
-- const `DEFAULT_CHUNK_FRAMES`
-- const `DISTILLED_STEPS`
-- const `DEFAULT_POLL_INTERVAL_SECONDS`
-- const `ASYNC_STATUSES`
-- const `TERMINAL_WORKER_STATUSES`
-- class `RenderWorkerError`(Exception) — A failed render submit. ``retryable`` decides the job's fate
-- class `RenderQAError`(Exception) — A worker output that failed local validation
-- `render_worker_url() -> str`
-- `render_timeout_seconds() -> int`
-- `poll_interval_seconds() -> int`
-- `worker_api_token() -> str` — Bearer token for protected worker endpoints (empty = not configured)
-- `render_output_dir() -> Path`
-- `aspect_ratio_for(width: int | None, height: int | None) -> str` — Canonical 'W:H' ratio for the worker payload (it defaults to 16:9)
-- class `Renderer`(ABC) — Minimal renderer interface. Submitters only; no local GPU work
-  - `check_health(self) -> dict[str, Any]` — Lightweight liveness probe. Raises RenderWorkerError when down
-  - `check_capacity(self) -> dict[str, Any]` — Worker availability snapshot. Raises RenderWorkerError when down
-  - `submit_render(self, payload: dict[str, Any]) -> dict[str, Any]` — Submit one render payload
-  - `get_render_status(self, worker_job_id: str) -> dict[str, Any]` — Poll ``GET /render/{job_id}``. Raises RenderWorkerError
-  - `download_render(self, worker_job_id: str, dest_path: str | Path, *, expected_sha256: str | None=None) -> dict[str, Any]` — Stream ``GET /render/{job_id}/download`` to disk (no full RAM load)
-  - `download_by_name(self, output_name: str, dest_path: str | Path, *, expected_sha256: str | None=None) -> dict[str, Any]` — Stream ``GET /video/{output_name}`` to disk (observed worker shape)
-- class `HunyuanRenderer`(Renderer) — Submits RenderJob payloads to the private MI300X worker's POST /render
-  - `close(self) -> None`
-  - `check_health(self) -> dict[str, Any]`
-  - `check_capacity(self) -> dict[str, Any]`
-  - `submit_render(self, payload: dict[str, Any]) -> dict[str, Any]`
-  - `get_render_status(self, worker_job_id: str) -> dict[str, Any]` — Poll the authenticated ``GET /render/{job_id}`` status endpoint
-  - `download_render(self, worker_job_id: str, dest_path: str | Path, *, expected_sha256: str | None=None, timeout_seconds: int | None=None) -> dict[str, Any]` — Stream ``GET /render/{job_id}/download`` to disk without RAM load
-  - `download_by_name(self, output_name: str, dest_path: str | Path, *, expected_sha256: str | None=None, timeout_seconds: int | None=None) -> dict[str, Any]` — Stream the observed ``GET /video/{output_name}`` worker shape
-  - `download_url(self, url: str, dest_path: str | Path, *, expected_sha256: str | None=None, timeout_seconds: int | None=None) -> dict[str, Any]` — Stream an absolute http(s) output URL to disk (same guards)
-- `get_renderer(name: str, **kwargs: Any) -> Renderer` — Return the submitter for a renderer tag. Only hunyuan has a worker
-- `qa_render_output(path: str | Path, *, expected_frames: int | None=None, expected_fps: int | None=None, frame_tolerance: float=FRAME_COUNT_TOLERANCE, frame_shortfall_base: int=FRAME_SHORTFALL_BASE) -> dict[str, Any]` — Validate a worker MP4. Raises RenderQAError with a useful reason
-- const `CONTROL_PLANE_WORKER_ID`
-- `worker_status() -> dict[str, Any]` — Failure-tolerant health/capacity snapshot (never raises)
-- `submit_hunyuan_job(job_id: str, *, timeout_seconds: int | None=None) -> dict[str, Any]` — Submit one queued hunyuan job to the MI300X worker
-
-### `services/review.py`
-
-- `technical_review(path: str | Path, job: dict[str, Any]) -> dict[str, Any]` — Deterministic technical review of one rendered artifact
-- `ai_visual_review(artifact_path: str | Path, shot: dict[str, Any]) -> dict[str, Any]` — Vision-model review of one render. SKIPPED without a configured model
-- `continuity_review(shots: list[dict[str, Any]], artifacts: dict[str, dict[str, Any]] | None=None) -> dict[str, Any]` — Deterministic cross-shot continuity check (codecs, fps, style chain)
-
 ### `services/sales_service.py`
 
 - const `RESEND_SEND_URL`
@@ -633,15 +651,15 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `import_hunter_domain(domain: str, limit: int=5) -> list[dict]`
 - `import_apollo_domain(domain: str, limit: int=5) -> list[dict]`
 - `research_prospeo_leads(*, job_title: str, service_keywords: list[str] | None=None, location: str | None=None, company_size: str | None=None, limit: int=5) -> list[dict]`
-- `research_prospeo_market_leads(*, industry: str, location: str | None=None, limit: int=5) -> list[dict]` — Company candidates for an ICP, relaxed rather than failed on first refusal
+- `research_prospeo_market_leads(*, industry: str, location: str | None=None, limit: int=5, widen: bool=False) -> list[dict]` — Company candidates for exactly the industry (and location) requested
 - `research_prospeo_suggestions(*, kind: str, query: str) -> list[str]`
 - `research_lusha_suggestions(*, kind: str, query: str) -> list[str]`
 - `research_lusha_leads(*, job_title: str | None=None, service_keywords: list[str] | None=None, location: str | None=None, company_size: str | None=None, limit: int=5) -> list[dict]`
 - `research_lusha_market_leads(*, industry: str, location: str | None=None, limit: int=5) -> list[dict]`
 - `research_apollo_market_leads(*, industry: str, location: str | None=None, limit: int=5) -> list[dict]`
 - const `COMPANY_SEARCH_ORDER`
-- `research_market_leads(*, industry: str, location: str | None=None, limit_per_provider: int=5) -> dict[str, Any]`
-- `waterfall_company_search(*, industry: str, location: str | None=None, target: int=10, limit_per_provider: int=5, order: list[str] | None=None) -> dict[str, Any]` — Company search that stops when it has enough
+- `research_market_leads(*, industry: str, location: str | None=None, limit_per_provider: int=5, org_id: int=0) -> dict[str, Any]`
+- `waterfall_company_search(*, industry: str, location: str | None=None, target: int=10, limit_per_provider: int=5, order: list[str] | None=None, org_id: int=0) -> dict[str, Any]` — Company search that stops when it has enough
 - `import_domain(domain: str, limit: int=5, provider: str='hunter') -> list[dict]`
 - `pull_inbound_leads() -> dict`
 - `resolve_company_profile(lead_id: str, provider: str='auto', force: bool=False) -> dict[str, Any]`
@@ -657,37 +675,17 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `maybe_auto_contact_lead(lead_id: str, *, created: bool) -> dict | None`
 - `verify_resend_webhook(payload: str, headers: dict[str, str]) -> dict`
 - `ingest_resend_event(payload: dict) -> dict`
+- `sync_received_emails(*, limit: int=25, to: str | None=None) -> dict` — Mirror a Resend receiving inbox into inbound replies
 - class `ResendAmbiguousError`(RuntimeError) — The provider may or may not have accepted the message
 - class `ResendIdempotencyConflictError`(RuntimeError) — The idempotency key was already used with a different payload
+- `send_booking_request(lead_id: str, slots: list[str], note: str | None=None) -> dict[str, Any]` — Email the contact a public booking page holding the founder's offered
 - `send_approved(draft_id: str) -> dict`
 - `reconcile_sending_drafts() -> dict` — Recover drafts stranded in 'sending' after a crash or restart
 - `ingest_inbound_email(payload: dict) -> dict`
 
-### `services/service_prospecting.py`
-
-- `search_service_contacts(*, keywords: list[str], buyer_titles: list[str], market: str | None, desired_contacts: int) -> dict[str, Any]` — Search providers once each, then save at most the requested contact previews
-
-### `services/visual_bible.py`
-
-- const `REQUIRED_SECTIONS`
-- `default_bible(*, brand_name: str='InDataFlow', colors: list[str] | None=None, style: str='restrained blue and indigo, premium commercial cinematography') -> dict[str, Any]`
-- `validate_bible(bible: dict[str, Any]) -> None`
-- `adapt_bible(bible: dict[str, Any], brief_text: str) -> dict[str, Any]` — Adapt the default bible environment to the brief's domain
-- `inherit_for_shot(bible: dict[str, Any], shot: dict[str, Any]) -> dict[str, str]` — Render the bible sections a shot prompt needs as short strings
-
 ### `services/workflow_actions.py`
 
-- const `HYPOTHESIS_FIELDS`
 - const `VALIDATION_EVENT_NAMES`
-- const `G1_OBJECTIVES`
-- const `DEFAULT_G1_OBJECTIVE`
-- `hypotheses_from_g1(result: dict[str, Any]) -> list[dict[str, Any]]` — Map the existing G1 ``concepts`` (exactly three) into experiment hypotheses
-- `evaluate_hypotheses(hypotheses: list[dict[str, Any]], metrics: dict[str, Any], *, selected_id: str | None) -> dict[str, Any]` — Deterministic v1 evaluation: seed the feedback loop, no optimizer yet
-- `g1_strategy(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Create a Company Core campaign record and run the existing G1 strategy
-- `generate_assets(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Run the existing G2 media pipeline and record the ready assets
-- `publish(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Hand the selected asset to the existing G3 draft-publishing pipeline
-- `collect_results(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Collect available campaign + sales outcomes from the existing stores
-- `evaluate(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Score the hypotheses and store the winner for the evolution loop
 - `simulate_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Simulate one validation outreach step. Nothing leaves this process
 - `draft_outreach(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Create real outreach drafts for the plan's targets. Nothing is sent
 - `research_prospects(context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]` — Research named companies through the provider ladder. Reads only
@@ -713,145 +711,56 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `discard(repo: str, task_id: str, branch: str) -> None`
 - `apply_patch(repo: str, patch_path: str) -> dict`
 
-## Video pipeline package
+## Publisher adapters
 
-### `services/video/__init__.py`
+### `services/publishers/__init__.py`
 
-- (no public module-level names)
+- `get_publisher(name: str | None=None) -> Publisher`
+- `webhook_configured(org_id: int | None=None) -> bool`
+- `list_publishers(org_id: int | None=None) -> list[Publisher]`
+- `capabilities_dict(publisher: Publisher) -> dict`
+- `catalog(org_id: int | None=None) -> list[dict]`
 
-### `services/video/assembly.py`
+### `services/publishers/base.py`
 
-- class `AssemblyError`(RuntimeError) — Raised when a full video cannot be assembled from its chunks
-- `has_ffmpeg() -> bool`
-- `chunk_order(job: dict[str, Any]) -> int` — Zero-based position of a chunk job, from its persisted shot id
-- `plan_chunks(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]` — Return the chunk jobs for a plan, ordered for concatenation
-- `completed_chunk_paths(jobs: list[dict[str, Any]]) -> list[Path]` — Local MP4 paths of the completed chunks, in assembly order
-- `probe_frame_count(path: str | Path) -> int | None` — Count decodable frames with ffprobe, or None if it cannot be read
-- `probe_stream(path: str | Path) -> dict[str, Any]` — Codec, size, frame rate and duration of a file's first video stream
-- `assemble_full_video(jobs: list[dict[str, Any]], destination: str | Path) -> dict[str, Any]` — Concatenate completed chunks into ``destination`` and describe the result
+- class `PublisherCapabilities`
+- class `PublisherAccount`
+- class `PublisherError`(Exception) — A publisher failure that maps directly onto an HTTP response
+- class `Publisher`(Protocol)
+  - `capabilities(self) -> PublisherCapabilities`
+  - `accounts(self) -> list[PublisherAccount]`
+  - `draft(self, post: dict[str, Any], account: str | None=None) -> dict[str, Any]`
+  - `schedule(self, post: dict[str, Any], *, account: str | None=None, mode: str='queue', due_at: str | None=None) -> dict[str, Any]`
+  - `confirm(self, post: dict[str, Any]) -> dict[str, Any]`
+  - `insights(self, post: dict[str, Any], post_id: str) -> dict[str, Any]`
 
-### `services/video/defs.py`
+### `services/publishers/buffer.py`
 
-- `invalid(errors: list[str]) -> None`
-- const `HUNYUAN_DEFAULT_PROFILE`
-- const `FORMAT_SIZES`
-- const `GRAPHIC_STYLE_DIRECTION`
-- const `GRAPHIC_MOTION_DIRECTION`
-- const `HOUSE_STYLES`
-- const `DEFAULT_HOUSE_STYLE`
-- const `DEFAULT_NEGATIVE_PROMPT`
-- const `VISUAL_TYPES`
-- const `RENDERER_FOR_TYPE`
-- const `ROUTE_KEYWORDS`
-- const `INFO_DISPLAY_CUES`
-- const `MIXED_RENDERER_PRECEDENCE`
+- class `BufferPublisher`
+  - `capabilities(self) -> PublisherCapabilities`
+  - `accounts(self) -> list[PublisherAccount]`
+  - `draft(self, post: dict[str, Any], account: str | None=None) -> dict[str, Any]`
+  - `schedule(self, post: dict[str, Any], *, account: str | None=None, mode: str='queue', due_at: str | None=None) -> dict[str, Any]`
+  - `confirm(self, post: dict[str, Any]) -> dict[str, Any]`
+  - `insights(self, post: dict[str, Any], post_id: str) -> dict[str, Any]`
 
-### `services/video/ingest.py`
+### `services/publishers/webhook.py`
 
-- const `MEDIA_SUFFIXES`
-- const `PACK_SUFFIXES`
-- const `MAX_MEDIA_BYTES`
-- const `MAX_PACK_BYTES`
-- class `IngestError`(RuntimeError) — Raised when an upload cannot be accepted
-- `workspace_root() -> Path` — Root that all uploaded media must stay inside
-- `ingest_dir(project_id: str) -> Path` — Per-project ingest directory, created on demand
-- `probe_media(path: Path) -> dict[str, Any]` — Read duration, resolution and codec from a media file
-- `store_pack(project_id: str, filename: str, data: bytes) -> dict[str, Any]` — Store an uploaded pack and parse it. Returns the parsed concepts
-- `store_media(project_id: str, filename: str, data: bytes, tag: str | None=None) -> dict[str, Any]` — Store an uploaded media file, validate it, and describe it for the UI
-
-### `services/video/job_builder.py`
-
-- const `MAX_FRAMES_PER_RENDER`
-- const `GRAPHIC_STYLE`
-- `build_render_jobs(spec: dict[str, Any], plan: dict[str, Any], *, priority: int=100, render_mode: str='shots', bible: dict[str, Any] | None=None, recipe: dict[str, Any] | None=None) -> list[dict[str, Any]]` — Build RenderJob dicts (unsaved) in the requested render mode
-- `validate_jobs(spec: dict[str, Any], plan: dict[str, Any], jobs: list[dict[str, Any]], *, render_mode: str='shots') -> None`
-
-### `services/video/md_pack.py`
-
-- const `TIMED_HEADER_RE`
-- const `BEAT_HEADER_RE`
-- const `FIELD_RE`
-- const `CONCEPT_RE`
-- const `DURATION_RE`
-- const `GENERATED_TYPE_CUES`
-- const `NOT_NEEDED`
-- class `PackError`(ValueError) — Raised when a pack cannot be parsed or fails structural validation
-- const `TIMESTAMP_RE`
-- `parse_timestamp(value: str) -> float` — `0:06` or `1:02:03` -> seconds. Raises PackError on bad input
-- `format_timestamp(seconds: float) -> str` — Seconds -> `M:SS`, the pack's own timestamp spelling
-- class `Beat` — One timed beat: the caption to show and how to source the picture
-  - `duration(self) -> float`
-  - `as_dict(self) -> dict[str, Any]`
-- class `Concept` — One `## N.` section of a pack: a title, a buyer and its beats
-  - `as_dict(self) -> dict[str, Any]`
-- `parse_pack(text: str) -> list[Concept]` — Parse pack markdown into concepts. Raises PackError on any defect
-- `beats_json(concepts: list[Concept]) -> dict[str, Any]` — The single source of truth the compose stage consumes
-- `load_pack(path: str | Path) -> list[Concept]` — Read and parse a pack file
-
-### `services/video/pipeline.py`
-
-- class `CreativeBriefResponse`(BaseModel)
-- class `StoryboardBeat`(BaseModel)
-- class `StoryboardOutline`(BaseModel)
-- `assign_durations(beats: list[StoryboardBeat], runtime_seconds: float) -> list[float]` — Split the runtime across beats proportional to narration weight
-- `plan_video(script_path: str | Path, *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, use_ai: bool=True, extra_assets: list[dict[str, Any]] | None=None, style: str=DEFAULT_HOUSE_STYLE) -> dict[str, Any]` — Parse a script file, validate, plan and persist spec + shot plan
-- const `LETTERING_CUES`
-- `validate_storyboard_generatable(outline: StoryboardOutline) -> str | None` — Require a renderable, typography-free storyboard
-- `direct_brief(brief: str, *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, runtime_seconds: int | None=None, style: str=DEFAULT_HOUSE_STYLE) -> dict[str, Any]` — Direct a video from a human creative brief (template-4 phase 20)
-- `store_spec_payload(spec: dict[str, Any]) -> dict[str, Any]`
-- `queue_shot_plan(plan_id: str, *, priority: int=100, render_mode: str='shots') -> dict[str, Any]` — Enqueue RenderJobs for a planned shot plan in the requested render mode
-- `store_job_rows(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]`
-- `job_counts(jobs: list[dict[str, Any]], plan: dict[str, Any] | None=None) -> dict[str, Any]`
-- `hunyuan_profile() -> dict[str, Any]` — The default MI300X render profile (prompt.md section 9)
-- `worker_env_example() -> dict[str, str]`
-- `reference_asset(path: str | Path) -> dict[str, Any]` — Build a product-reference registry entry for a user-supplied file
-- `assemble_plan(plan_id: str, destination: str | Path | None=None) -> dict[str, Any]` — Concatenate a plan's completed render chunks into one full video
-- `launch(*, brief: str | None=None, script_path: str | Path | None=None, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, references: list[str | Path] | None=None, submit: bool=True, timeout_seconds: int | None=None, render_mode: str='full', runtime_seconds: int | None=None, style: str=DEFAULT_HOUSE_STYLE) -> dict[str, Any]` — Run the product-launch pipeline end to end (motion-designer.md)
-
-### `services/video/qa_gate.py`
-
-- const `DURATION_TOLERANCE_SECONDS`
-- const `SHEET_COLUMNS`
-- class `QAGateError`(RuntimeError) — Raised when the QA gate cannot run at all (missing ffmpeg, bad input)
-- `has_ffmpeg() -> bool`
-- `probe_clip(path: str | Path) -> dict[str, Any]` — ffprobe one clip: codec, geometry, frame rate, duration, audio
-- `extract_frame(clip: str | Path, at_seconds: float, destination: str | Path) -> Path` — Grab one frame from a clip for the contact sheet
-- `build_contact_sheet(frames: list[Path], destination: str | Path, *, columns: int=SHEET_COLUMNS, label: str='') -> Path` — Tile per-beat frames into one review image
-- `check_caption_grounding(beats: list[dict[str, Any]], source_text: str) -> list[str]` — Every caption line must appear in the source pack byte for byte
-- `run_qa_gate(shots: list[dict[str, Any]], *, canvas: tuple[int, int], source_text: str, output_dir: str | Path, require_audio: bool=False) -> dict[str, Any]` — Run every check. Returns a report; ``passed`` is only true if all pass
-
-### `services/video/script_parser.py`
-
-- const `TIMESTAMP_RE`
-- const `BEAT_HEADER_RE`
-- const `VISUAL_FIELD_RE`
-- const `META_FIELD_RE`
-- `parse_timestamp(value: str) -> float`
-- `parse_beat_range(value: str) -> tuple[float, float]`
-- `format_timestamp(seconds: float) -> str`
-- `parse_script(text: str, source_name: str='script') -> dict[str, Any]` — Parse a prepared script into title, metadata and timed visual beats
-
-### `services/video/shot_planner.py`
-
-- `route_visual(beat_text: str, visual: dict[str, Any]) -> tuple[str, str, list[str]]` — Return (visual_type, renderer, matched_families) for one beat
-- `primary_renderer(families: list[str]) -> str`
-- `decide_hunyuan_mode(families: list[str], reference_assets: list[str]) -> str` — T2V/I2V decision policy: exact identity needs an image reference
-- `select_reference_assets(assets: list[dict[str, Any]], families: list[str], visual: dict[str, Any]) -> list[str]` — Resolve registry assets relevant to one shot (deterministic)
-- `compile_hunyuan_prompt(bible: dict[str, Any], recipe: dict[str, Any], shot: dict[str, Any]) -> tuple[str, str]` — Compile Subject + Motion + Scene + ShotType + Camera + Lighting + Style
-- `plan_shots(spec: dict[str, Any], context: dict[str, Any] | None=None, use_ai: bool=True, bible: dict[str, Any] | None=None, recipe: dict[str, Any] | None=None) -> tuple[dict[str, Any], dict[str, Any]]` — Build an (unsaved) ShotPlan dict. Returns (plan, ai_report)
-- `validate_plan(spec: dict[str, Any], plan: dict[str, Any]) -> None`
-- `validate_claims(spec: dict[str, Any], plan: dict[str, Any], context: dict[str, Any] | None=None) -> None` — Enforce product-boundary and source-reference rules (prompt.md section 12)
-- class `AIEnhancedShot`(BaseModel)
-- class `AIPlanEnhancement`(BaseModel)
-
-### `services/video/spec_builder.py`
-
-- const `KNOWLEDGE_DIR`
-- `load_indataflow_context() -> dict[str, Any]` — Load brand/product/CTA guardrails from the existing G1 knowledge files
-- `forbidden_phrases(context: dict[str, Any]) -> list[str]`
-- `forbidden_patterns(context: dict[str, Any]) -> list['re.Pattern[str]']`
-- `build_spec(parsed: dict[str, Any], *, project_id: str, campaign_id: str | None=None, aspect_ratio: str='9:16', fps: int=24, source_path: str | None=None, context: dict[str, Any] | None=None, style: str='noir') -> dict[str, Any]` — Build an (unsaved) VideoSpec dict from parsed script beats
-- `validate_spec(spec: dict[str, Any]) -> None` — Raise ValueError unless the spec satisfies prompt.md section 12
+- const `SCHEMA`
+- const `DEFAULT_PLATFORMS`
+- class `WebhookConfig`
+  - `configured(self) -> bool`
+- `load_config(org_id: int | None=None) -> WebhookConfig`
+- `asset_token(post_id: str, index: int, expires_at: int, org_id: int | None=None) -> str`
+- `verify_asset_token(post_id: str, index: int, expires_at: int, token: str, org_id: int | None=None) -> None`
+- `public_asset(post_id: str, index: int, expires_at: int, token: str) -> tuple[Path, str, str]` — Resolve a signed public asset link. Used by the unauthenticated route
+- class `WebhookPublisher`
+  - `capabilities(self) -> PublisherCapabilities`
+  - `accounts(self) -> list[PublisherAccount]`
+  - `draft(self, post: dict[str, Any], account: str | None=None) -> dict[str, Any]`
+  - `schedule(self, post: dict[str, Any], *, account: str | None=None, mode: str='queue', due_at: str | None=None) -> dict[str, Any]`
+  - `confirm(self, post: dict[str, Any]) -> dict[str, Any]`
+  - `insights(self, post: dict[str, Any], post_id: str) -> dict[str, Any]`
 
 ## Agents
 
@@ -942,12 +851,6 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - class `FounderDecision`(BaseModel)
 - `async run_founder(message: str)`
 
-### `agents/growth.py`
-
-- class `CampaignBrief`(BaseModel)
-- const `PROMPT`
-- `async prepare_campaign_brief(request: str, brand: str | None=None) -> CampaignBrief`
-
 ### `agents/hermes.py`
 
 - const `PROMPT_DIR`
@@ -962,8 +865,8 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - class `HermesOutputError`(HermesError) — The model returned something that is not a valid structured plan
 - class `HermesPlanResult`(BaseModel) — A plan plus the provenance needed to judge where it came from
 - `load_prompt_template() -> str` — Read the versioned prompt file. Prompts are data, not Python strings
-- `build_instructions(context: CompanyContext, method_hint: str | None=None, channel_hint: str | None=None) -> str` — Render the base prompt with the canonical context substituted in
-- `async plan_market_validation(context: CompanyContext, method_hint: str | None=None, channel_hint: str | None=None) -> HermesPlanResult` — Run one market-validation pass and return a validated, grounded plan
+- `build_instructions(context: CompanyContext, method_hint: str | None=None, channel_hint: str | None=None, plan_input: dict | None=None) -> str` — Render the base prompt with the canonical context substituted in
+- `async plan_market_validation(context: CompanyContext, method_hint: str | None=None, channel_hint: str | None=None, plan_input: dict | None=None) -> HermesPlanResult` — Run one market-validation pass and return a validated, grounded plan
 
 ### `agents/linkedin.py`
 
@@ -1002,6 +905,9 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 
 ### `app/api.py`
 
+- `async website_session(request: Request, call_next)` — Bind a verified website session to this request's org
+- `async security_headers(request: Request, call_next)`
+- `async cache_headers(request: Request, call_next)` — Cache policy stated by the app, not only by the proxy
 - `home(request: Request)`
 - `operations(request: Request)`
 - `operations_sales(request: Request)`
@@ -1017,8 +923,25 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `async meet(request: Request)`
 - `async calendar_page(request: Request)`
 - `async health()`
+- `public_manual_post_asset(post_id: str, index: int, exp: int, token: str)` — Short-lived signed media link for an external webhook scheduler
 - `ui_app(request: Request)`
 - `missing_page(path: str, request: Request)`
+
+### `app/auth_api.py`
+
+- `session_cookie_name() -> str`
+- const `SESSION_COOKIE`
+- class `SignupPayload`(BaseModel)
+- class `LoginPayload`(BaseModel)
+- class `VerifyPayload`(BaseModel)
+- class `ResendPayload`(BaseModel)
+- `clear_session_cookie(response: Response, request: Request) -> None`
+- `signup(payload: SignupPayload, request: Request)` [router.post('/signup', dependencies=[Depends(rate_limit_auth)])]
+- `login(payload: LoginPayload, request: Request, response: Response)` [router.post('/login', dependencies=[Depends(rate_limit_auth)])]
+- `verify(payload: VerifyPayload, request: Request, response: Response)` [router.post('/verify', dependencies=[Depends(rate_limit_auth)])]
+- `resend(payload: ResendPayload)` [router.post('/resend', dependencies=[Depends(rate_limit_auth)])]
+- `logout(request: Request, response: Response)` [router.post('/logout')]
+- `me()` [router.get('/me')]
 
 ### `app/commercial_api.py`
 
@@ -1034,6 +957,10 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `list_icps() -> list[dict]` [router.get('/icps')]
 - const `SUGGEST_FIELDS`
 - `suggest_criteria() -> dict` [router.get('/icps/suggest-criteria')] — Propose ICP criteria mined from the founder's own records
+- `world_benchmarks(sends: int=Query(100, ge=1, le=100000), industry: str | None=Query(None, max_length=120)) -> dict` [router.get('/benchmarks')] — World-data predictions for this company's industry. Read-only
+- class `NetworkContributionIn`(BaseModel)
+- `network_stats() -> dict` [router.get('/network-stats')] — This tenant's anonymized contribution payload. Read-only
+- `network_contribution(payload: NetworkContributionIn) -> dict` [router.post('/network-contribution', dependencies=[Depends(verify_founder_action)])] — Opt the anonymized counts in or out of the future pool. Default out
 - `get_icp(rid: str) -> dict` [router.get('/icps/{rid}')]
 - `create_icp(payload: ICPIn) -> dict` [router.post('/icps', dependencies=[Depends(verify_founder_action)])]
 - `update_icp(rid: str, payload: dict) -> dict` [router.patch('/icps/{rid}', dependencies=[Depends(verify_founder_action)])]
@@ -1088,12 +1015,14 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - class `CompaniesPage`(BaseModel)
 - class `CompanyDetail`(CompanySummary)
 - `companies(page: int=Query(default=1, ge=1), page_size: int=Query(default=10, ge=1, le=100), q: str=Query(default='', max_length=200), industry: str=Query(default='', max_length=100), country: str=Query(default='', max_length=100), view: CompanyView='all', sort: CompanySort='recent')` [router.get('', response_model=CompaniesPage)]
+- class `CompanyVerification`(BaseModel)
+- `verify_company(domain: str=Query(default='', max_length=253), name: str=Query(default='', max_length=200))` [router.get('/verify/lookup', response_model=CompanyVerification)] — Free verification state for a prospect company. Read-only, no writes
 - `company(company_id: str)` [router.get('/{company_id:path}', response_model=CompanyDetail)]
 
 ### `app/company_context_api.py`
 
 - class `CompanyContextView`(RouteState) — The founder's canonical context plus the route resolved from its state
-- `load_company_context() -> CompanyContext` — Return the stored context, backfilling from an already-confirmed program
+- `load_company_context() -> CompanyContext`
 - `read_company_context()` [router.get('/context', response_model=CompanyContextView)]
 - `replace_company_context(payload: CompanyContextSections)` [router.put('/context', response_model=CompanyContextView, dependencies=[Depends(verify_founder_action)])] — Replace the canonical context with the submitted sections
 
@@ -1126,45 +1055,64 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `contacts(page: int=Query(default=1, ge=1), page_size: int=Query(default=10, ge=1, le=100), stage: Stage | None=None, q: str=Query(default='', max_length=200), sort: Sort='recent')` [router.get('', response_model=ContactsPage)]
 - `contact(contact_id: str)` [router.get('/{contact_id}', response_model=ContactDetail)]
 
+### `app/forms_api.py`
+
+- `hosted_form(slug: str, request: Request, sent: int=0)` [public_router.get('/f/{slug}', response_class=HTMLResponse)]
+- `async hosted_form_submit(slug: str, request: Request)` [public_router.post('/f/{slug}', response_class=HTMLResponse, dependencies=[Depends(rate_limit_intake)])]
+- `booking_page(lead_id: str, request: Request)` [public_router.get('/book/{lead_id}', response_class=HTMLResponse)]
+- `async booking_confirm(lead_id: str, request: Request)` [public_router.post('/book/{lead_id}', response_class=HTMLResponse, dependencies=[Depends(rate_limit_intake)])]
+- `async external_form_intake(request: Request, x_company_core_lead_secret: str | None=Header(default=None, alias='X-Company-Core-Lead-Secret'))` [intake_router.post('/leads/form', dependencies=[Depends(rate_limit_intake)])] — Shared submission endpoint for external form tools
+- class `FormFieldPayload`(BaseModel)
+- class `FormCreatePayload`(BaseModel)
+- class `FormUpdatePayload`(BaseModel)
+- `intake_config() -> dict[str, Any]` [router.get('/config')] — Everything an external form tool needs, on one screen
+- `list_forms()` [router.get('')]
+- `create_form(payload: FormCreatePayload)` [router.post('', dependencies=[Depends(verify_founder_action)])]
+- `update_form(slug: str, payload: FormUpdatePayload)` [router.patch('/{slug}', dependencies=[Depends(verify_founder_action)])]
+
 ### `app/marketing_api.py`
 
+- `get_manual_post(post_id: str)` — Read a post inside the request's org boundary
 - const `ROOT`
-- class `CampaignLaunchRequest`(BaseModel)
 - class `ManualPostSessionRequest`(BaseModel)
-- class `AssetPackRequest`(BaseModel)
+- class `ManualPostPreviewRequest`(BaseModel)
 - class `BufferScheduleRequest`(BaseModel)
+- class `PublishRequest`(BaseModel)
 - class `BufferAccountInfo`(BaseModel)
 - class `BufferAccountsView`(BaseModel)
 - class `BufferMetric`(BaseModel)
 - class `BufferInsightsView`(BaseModel)
-- class `AssetPackActionRecord`(BaseModel)
-- class `AssetPackCreateResult`(BaseModel)
-- class `CampaignActionRecord`(BaseModel)
-- class `CampaignCreateResult`(BaseModel)
-- class `CampaignTransitionResult`(BaseModel)
 - class `MarketingOrgActionRecord`(BaseModel)
 - class `MarketingOrgCreateResult`(BaseModel)
 - class `MarketingOrgActiveResult`(BaseModel)
 - class `OrgCapabilitiesResult`(BaseModel)
 - class `ManualPostActionRecord`(BaseModel)
 - class `ManualPostCreateResult`(BaseModel)
+- class `ManualPostPreviewView`(BaseModel) — What a manual post will look like before anything is persisted
 - class `BufferScheduleResult`(BaseModel)
+- class `BufferSendConfirmation`(BaseModel)
+- class `BufferConfirmResult`(BaseModel)
 - const `BUFFER_ACCOUNT_RE`
 - const `MAX_BUFFER_ACCOUNTS`
 - const `PROJECTS_ROOT`
-- const `MAX_ARTIFACT_BYTES`
-- const `VOICE_UPLOAD_EXTENSIONS`
 - `doctor()` [router.get('/doctor')]
-- `list_asset_packs(*, project_slug: str, limit: int=20) -> list[dict[str, Any]]`
-- `create_asset_pack(payload: AssetPackRequest)` [router.post('/asset-packs', response_model=AssetPackCreateResult)]
-- `asset_packs(limit: int=20)` [router.get('/asset-packs')]
-- `asset_pack_file(pack_id: str, relative_path: str)` [router.get('/asset-packs/{pack_id}/files/{relative_path:path}')]
+- const `R2_MEDIA_KEYS`
+- `preview_manual_post(payload: ManualPostPreviewRequest)` [router.post('/manual-posts/preview', response_model=ManualPostPreviewView)] — Preview the caption and tracking link a manual post will receive
 - `create_manual_post_session(payload: ManualPostSessionRequest)` [router.post('/manual-posts/session')]
 - `async upload_manual_post_asset(post_record_id: str, asset: UploadFile=File(...))` [router.post('/manual-posts/{post_record_id}/assets')]
 - `finalize_manual_post(post_record_id: str)` [router.post('/manual-posts/{post_record_id}/finalize')]
-- `async create_manual_post_from_ui(platform: str=Form(...), post_type: str=Form(default='carousel'), destination_url: str | None=Form(default=None), link_label: str | None=Form(default=None), org_id: int | None=Form(default=None), assets: list[UploadFile]=File(default=[]))` [router.post('/manual-posts', response_model=ManualPostCreateResult)]
+- `async create_manual_post_from_ui(platform: str=Form(...), post_type: str=Form(default='carousel'), destination_url: str | None=Form(default=None), link_label: str | None=Form(default=None), org_id: int | None=Form(default=None), buffer_account: str | None=Form(default=None), publisher: str | None=Form(default=None), assets: list[UploadFile]=File(default=[]))` [router.post('/manual-posts', response_model=ManualPostCreateResult)]
+- `publishers()` [router.get('/publishers')]
+- `publisher_accounts(publisher: str | None=None)` [router.get('/publisher-accounts')]
+- `publish_manual_post(post_record_id: str, payload: PublishRequest)` [router.post('/manual-posts/{post_record_id}/publish', dependencies=[Depends(verify_founder_action)])] — Schedule a finalized manual post through its configured publisher
+- `queue_manual_post_publish(post_record_id: str, payload: PublishRequest, background_tasks: BackgroundTasks)` [router.post('/manual-posts/{post_record_id}/publish/async', status_code=202, dependencies=[Depends(verify_founder_action)])] — Queue a provider schedule so Cloudflare's ~125s edge timeout cannot
+- `get_publish_job_status(job_id: str)` [router.get('/publish-jobs/{job_id}')]
+- `draft_manual_post(post_record_id: str, payload: PublishRequest)` [router.post('/manual-posts/{post_record_id}/publish/draft')] — Create a provider draft. Buffer supports this; the webhook does not
+- `confirm_manual_post_publish(post_record_id: str)` [router.post('/manual-posts/{post_record_id}/publish/confirm', dependencies=[Depends(verify_founder_action)])] — Ask the configured publisher for the fate of every saved provider post
+- `manual_post_publish_insights(post_record_id: str, post_id: str | None=None)` [router.get('/manual-posts/{post_record_id}/publish/insights')]
 - `buffer_accounts()` [router.get('/buffer-accounts', response_model=BufferAccountsView)] — Named Buffer accounts configured in g3.env (keys never leave the server)
 - `manual_post_buffer_insights(post_record_id: str, post_id: str | None=None)` [router.get('/manual-posts/{post_record_id}/buffer-insights', response_model=BufferInsightsView)] — Read one saved Buffer post's provider state and optional personal-key metrics
+- `confirm_manual_post_send(post_record_id: str)` [router.post('/manual-posts/{post_record_id}/buffer-confirm', response_model=BufferConfirmResult, dependencies=[Depends(verify_founder_action)])] — Ask Buffer for the fate of every scheduled post ID and persist the verdict
 - `create_manual_post_buffer_draft(post_record_id: str, buffer_account: str | None=None)` [router.post('/manual-posts/{post_record_id}/buffer-draft')]
 - `schedule_manual_post_buffer(post_record_id: str, payload: BufferScheduleRequest, buffer_account: str | None=None)` [router.post('/manual-posts/{post_record_id}/buffer-schedule', response_model=BufferScheduleResult, dependencies=[Depends(verify_founder_action)])]
 - `marketing_orgs()` [router.get('/orgs')]
@@ -1181,50 +1129,6 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `generate_manual_post_ai_caption(post_record_id: str)` [router.post('/manual-posts/{post_record_id}/ai-caption')]
 - `manual_posts(limit: int=50)` [router.get('/manual-posts')]
 - `manual_post_asset(post_record_id: str, asset_index: int)` [router.get('/manual-posts/{post_record_id}/assets/{asset_index}')]
-- `create_campaign_from_ui(payload: CampaignLaunchRequest)` [router.post('/campaigns', response_model=CampaignCreateResult)]
-- `campaigns(limit: int=20)` [router.get('/campaigns')]
-- `campaign(campaign_id: str)` [router.get('/campaigns/{campaign_id}')]
-- `campaign_voice_handoff(campaign_id: str)` [router.get('/campaigns/{campaign_id}/voice-handoff')]
-- `async upload_campaign_voice_recording(campaign_id: str, recording: UploadFile=File(...))` [router.post('/campaigns/{campaign_id}/voice-recording')]
-- `variant_video(campaign_id: str, variant_id: str)` [router.get('/campaigns/{campaign_id}/variants/{variant_id}/video')]
-- `select_variant(campaign_id: str, variant_id: str)` [router.post('/campaigns/{campaign_id}/variants/{variant_id}/select', dependencies=[Depends(verify_founder_action)])]
-- `create_drafts(campaign_id: str)` [router.post('/campaigns/{campaign_id}/drafts', dependencies=[Depends(verify_founder_action)])]
-- `approve_script(campaign_id: str)` [router.post('/campaigns/{campaign_id}/approve-script', response_model=CampaignTransitionResult, dependencies=[Depends(verify_founder_action)])]
-- `regenerate_script(campaign_id: str, payload: dict=Body(default={}))` [router.post('/campaigns/{campaign_id}/regenerate-script', dependencies=[Depends(verify_founder_action)])]
-- `retry_campaign(campaign_id: str)` [router.post('/campaigns/{campaign_id}/retry', response_model=CampaignTransitionResult, dependencies=[Depends(verify_founder_action)])]
-
-### `app/onboarding_api.py`
-
-- class `CompanyStart`(BaseModel)
-- class `CompanyConfirm`(BaseModel) — Founder-confirmed company answers from the research/confirm step
-- class `Icp`(BaseModel)
-- class `StrategyInput`(BaseModel)
-- class `AiIcp`(Icp)
-- class `AiStrategyDraft`(StrategyInput) — Require a complete model draft; the founder may then edit the suggestions
-- class `ApprovalPolicy`(BaseModel)
-- class `ProviderLimits`(BaseModel)
-- class `Feedback`(BaseModel)
-- class `FeedbackEntry`(Feedback)
-- class `CalibrationInput`(BaseModel)
-- class `RefinementProposal`(BaseModel)
-- class `RefinementDecision`(BaseModel)
-- class `BuyerRequest`(BaseModel)
-- class `DraftRequest`(BaseModel)
-- class `ProgramState`(BaseModel)
-- class `CalibrationCandidate`(BaseModel)
-- class `OnboardingView`(RouteState) — The onboarding projection plus the initial route from the saved context
-- `onboarding_view()` [read_router.get('/onboarding', response_model=OnboardingView)]
-- `start_company(payload: CompanyStart)` [write_router.post('/company', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `research_company()` [write_router.post('/research-company', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `confirm_company(payload: CompanyConfirm)` [write_router.post('/company/confirm', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `async suggest_strategy()` [write_router.post('/strategy/draft', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `confirm_strategy(payload: StrategyInput)` [write_router.post('/strategy', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `first_search()` [write_router.post('/search', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `record_calibration(payload: CalibrationInput)` [write_router.post('/calibration', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `decide_refinement(payload: RefinementDecision)` [write_router.post('/refinement', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `resolve_buyer(payload: BuyerRequest)` [write_router.post('/buyer', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `async create_first_draft(payload: DraftRequest)` [write_router.post('/draft', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
-- `activate_program()` [write_router.post('/activate', response_model=OnboardingView, dependencies=[Depends(verify_founder_action)])]
 
 ### `app/ratelimit.py`
 
@@ -1234,6 +1138,7 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `enabled() -> bool`
 - `client_ip(request: Request) -> str`
 - `rate_limit_intake(request: Request) -> None` — Router dependency for /integrations routes: webhooks and form intake
+- `rate_limit_auth(request: Request) -> None` — Coarse per-IP budget for public signup, login, verify, and resend
 - `check_auth_failure(request: Request) -> None` — Count failed dashboard sign-ins per IP (separate bucket, counts only
 
 ### `app/sales_api.py`
@@ -1285,25 +1190,18 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `list_reconcile_drafts()` [router.get('/drafts/reconcile')] — Drafts whose send outcome is unknown and need an operator decision
 - `reconcile_draft(draft_id: str, payload: SendReconcilePayload)` [action_router.post('/drafts/{draft_id}/reconcile', dependencies=[Depends(verify_founder_action)])]
 - `schedule_meeting(lead_id: str, payload: MeetingScheduledPayload)` [action_router.post('/leads/{lead_id}/schedule-meeting', response_model=MeetingActionResult, dependencies=[Depends(verify_founder_action)])]
+- class `MeetingRequestPayload`(BaseModel)
+- class `MeetingRequestResult`(BaseModel)
+- `request_meeting(lead_id: str, payload: MeetingRequestPayload)` [action_router.post('/leads/{lead_id}/meeting-request', response_model=MeetingRequestResult, dependencies=[Depends(verify_founder_action)])] — Founder action: offer slots to the contact by email. The request is
 - `suppress(lead_id: str, reason: str='founder_request')` [action_router.post('/leads/{lead_id}/suppress', dependencies=[Depends(verify_founder_action)])]
+- class `InboxSyncPayload`(BaseModel)
+- `sync_inbox(payload: InboxSyncPayload)` [action_router.post('/inbox/sync', dependencies=[Depends(verify_founder_action)])] — Founder action: mirror recent Resend received emails into inbound replies
 - `hunter_account()` [router.get('/hunter/account')]
 
 ### `app/security.py`
 
-- `authenticate(request: Request, credentials: HTTPBasicCredentials=Depends(security)) -> str`
-
-### `app/service_discovery_api.py`
-
-- class `ServiceInput`(BaseModel)
-- class `ServiceSearchPlan`(BaseModel)
-- class `ServiceTargetEdit`(BaseModel)
-- class `ServiceRun`(BaseModel)
-- class `ServiceContact`(BaseModel)
-- class `ServiceRunView`(ServiceRun)
-- class `ServiceDiscoveryView`(BaseModel)
-- `service_discovery()` [read_router.get('/service-discovery', response_model=ServiceDiscoveryView)]
-- `async start_service_search(payload: ServiceInput)` [write_router.post('/search', response_model=ServiceDiscoveryView, dependencies=[Depends(verify_founder_action)])]
-- `retarget_service_search(run_id: str, payload: ServiceTargetEdit)` [write_router.post('/{run_id}/search', response_model=ServiceDiscoveryView, dependencies=[Depends(verify_founder_action)])]
+- `require_operator() -> None` — Deployment-level engineering/monitor routes are not tenant features
+- `authenticate(request: Request, credentials: HTTPBasicCredentials | None=Depends(security)) -> str`
 
 ### `app/setup_api.py`
 
@@ -1316,6 +1214,17 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `get_setup_step_route()` [router.get('/step')]
 - class `SetupStepPayload`(BaseModel)
 - `set_setup_step_route(payload: SetupStepPayload, _: None=Depends(verify_founder_action))` [router.post('/step')]
+- class `BufferAccountView`(BaseModel)
+- class `BufferSetupAccountsView`(BaseModel)
+- class `BufferChannelView`(BaseModel)
+- class `BufferOrganizationView`(BaseModel)
+- class `BufferDiscoveryView`(BaseModel)
+- class `BufferDiscoverPayload`(BaseModel)
+- class `BufferConnectPayload`(BaseModel)
+- class `BufferConnectResult`(BaseModel)
+- `buffer_setup_accounts()` [router.get('/buffer/accounts', response_model=BufferSetupAccountsView)]
+- `discover_buffer_channels(payload: BufferDiscoverPayload, _: None=Depends(verify_founder_action))` [router.post('/buffer/discover', response_model=BufferDiscoveryView)]
+- `connect_buffer_account(payload: BufferConnectPayload, _: None=Depends(verify_founder_action))` [router.post('/buffer/connect', response_model=BufferConnectResult)]
 
 ### `app/validation_api.py`
 
@@ -1328,7 +1237,6 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `read_validation_plan()` [router.get('/plan', response_model=ValidationPlanRecord)] — The most recent plan, or 404 when none has been generated yet
 - `read_evidence() -> dict` [automation_router.get('/evidence')] — Everything the business has told or shown us, in one place
 - `suggest_next_runs() -> dict` [automation_router.post('/suggest')] — Rank the next governed runs from evidence. Advisory only
-- `suggest_campaign_move() -> dict` [automation_router.post('/suggest-campaign')] — Propose the marketing move from evidence. Advisory only
 - `read_workflows_validation_plan()` [automation_router.get('/plan', response_model=ValidationPlanRecord)] — Canonical automation name for reading the latest plan
 - `read_governance()` [router.get('/workflow', response_model=GovernanceRecord, deprecated=True)] — Legacy name. Prefer GET /company/automation/governance
 - `read_workflows_governance()` [automation_router.get('/governance', response_model=GovernanceRecord)] — The latest governance decision and the lifecycle it has reached
@@ -1341,55 +1249,20 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - class `AutomationWorkflowView`(BaseModel) — One governed workflow with its decision, plan link, and engine state
 - `list_automation_workflows(limit: int=20)` [automation_router.get('/workflows', response_model=list[AutomationWorkflowView])] — All governed workflows, newest first, each with its engine document
 
-### `app/video_api.py`
-
-- class `SpecCreate`(BaseModel)
-- class `PlanCreate`(BaseModel)
-- class `JobComplete`(BaseModel)
-- class `JobFail`(BaseModel)
-- `list_specs(limit: int=Query(default=50, ge=1, le=200)) -> dict[str, Any]` [router.get('/specs')]
-- `read_spec(spec_id: str) -> dict[str, Any]` [router.get('/specs/{spec_id}')]
-- `list_plans(spec_id: str | None=None) -> dict[str, Any]` [router.get('/plans')]
-- `read_plan(plan_id: str) -> dict[str, Any]` [router.get('/plans/{plan_id}')]
-- `list_render_jobs(shot_plan_id: str | None=None, status: str | None=None, renderer: str | None=None) -> dict[str, Any]` [router.get('/jobs')]
-- `read_job(job_id: str) -> dict[str, Any]` [router.get('/jobs/{job_id}')]
-- `read_queue_stats() -> dict[str, Any]` [router.get('/queue/stats')]
-- `read_hunyuan_profile() -> dict[str, Any]` [router.get('/hunyuan/profile')]
-- `create_spec(payload: SpecCreate) -> dict[str, Any]` [action_router.post('/specs', dependencies=[Depends(verify_founder_action)])]
-- `create_plan(payload: PlanCreate) -> dict[str, Any]` [action_router.post('/plans', dependencies=[Depends(verify_founder_action)])]
-- `queue_plan(plan_id: str, render_mode: str=Query(default='shots', max_length=16)) -> dict[str, Any]` [action_router.post('/plans/{plan_id}/queue', dependencies=[Depends(verify_founder_action)])]
-- `retry_render_job(job_id: str) -> dict[str, Any]` [action_router.post('/jobs/{job_id}/retry', dependencies=[Depends(verify_founder_action)])]
-- `cancel_render_job(job_id: str) -> dict[str, Any]` [action_router.post('/jobs/{job_id}/cancel', dependencies=[Depends(verify_founder_action)])]
-- class `PackUpload`(BaseModel)
-- class `MediaUpload`(BaseModel)
-- `async ingest_pack(payload: PackUpload, pack: UploadFile=File(...)) -> dict[str, Any]` [action_router.post('/ingest/pack', dependencies=[Depends(verify_founder_action)])] — Store and parse an uploaded scenario pack
-- `async ingest_media(payload: MediaUpload, media: UploadFile=File(...)) -> dict[str, Any]` [action_router.post('/ingest/media', dependencies=[Depends(verify_founder_action)])] — Store and validate an uploaded media asset
-- `list_ingest(project_id: str) -> dict[str, Any]` [router.get('/ingest/{project_id}')] — What a project has uploaded, so the UI can show pack and assets
-- `lease_next_render_job(worker_id: str=Query(min_length=1, max_length=120), renderer: str | None=Query(default=None, max_length=32)) -> dict[str, Any]` [worker_router.get('/render-jobs/next')]
-- `heartbeat_render_job(job_id: str, worker_id: str=Query(min_length=1, max_length=120)) -> dict[str, Any]` [worker_router.post('/render-jobs/{job_id}/heartbeat')]
-- `complete_render_job(job_id: str, payload: JobComplete, worker_id: str=Query(min_length=1, max_length=120)) -> dict[str, Any]` [worker_router.post('/render-jobs/{job_id}/complete')]
-- `fail_render_job(job_id: str, payload: JobFail, worker_id: str=Query(min_length=1, max_length=120)) -> dict[str, Any]` [worker_router.post('/render-jobs/{job_id}/fail')]
-
 ### `app/workflow_views_api.py`
 
 - class `ReplyItem`(BaseModel)
 - class `RepliesPage`(BaseModel)
-- `replies_view(page: int=Query(1, ge=1), page_size: int=Query(10, ge=1, le=50), q: str=Query('', max_length=200), view: Literal['all', 'latest', 'suppressed']='all', sort: Literal['recent', 'oldest', 'company']='recent')` [router.get('/replies', response_model=RepliesPage)]
+- `replies_view(page: int=Query(1, ge=1), page_size: int=Query(10, ge=1, le=50), q: str=Query('', max_length=200), view: Literal['all', 'latest', 'submissions', 'suppressed']='all', sort: Literal['recent', 'oldest', 'company']='recent')` [router.get('/replies', response_model=RepliesPage)]
 - `reply_detail(reply_id: int)` [router.get('/replies/{reply_id}', response_model=ReplyItem)]
 - class `MeetingMarker`(BaseModel)
 - class `MeetingsPage`(BaseModel)
-- `meetings_view(page: int=Query(1, ge=1), page_size: int=Query(10, ge=1, le=50), q: str=Query('', max_length=200), view: Literal['all', 'dated', 'undated']='all', sort: Literal['recent', 'oldest', 'company']='recent')` [router.get('/meetings', response_model=MeetingsPage)]
+- `meetings_view(page: int=Query(1, ge=1), page_size: int=Query(10, ge=1, le=50), q: str=Query('', max_length=200), view: Literal['all', 'dated', 'undated', 'awaiting']='all', sort: Literal['recent', 'oldest', 'company']='recent')` [router.get('/meetings', response_model=MeetingsPage)]
 - `meeting_detail(lead_id: str)` [router.get('/meetings/{lead_id}', response_model=MeetingMarker)]
 - class `OutreachItem`(BaseModel)
 - class `OutreachPage`(BaseModel)
 - `outreach_view(page: int=Query(1, ge=1), page_size: int=Query(10, ge=1, le=50), q: str=Query('', max_length=200), status: str=Query('', max_length=40), sort: Literal['recent', 'oldest', 'company']='recent')` [router.get('/outreach', response_model=OutreachPage)]
 - `outreach_detail(draft_id: str)` [router.get('/outreach/{draft_id}', response_model=OutreachItem)]
-- class `CampaignItem`(BaseModel)
-- class `CampaignVariant`(BaseModel)
-- class `CampaignDetail`(CampaignItem)
-- class `CampaignsPage`(BaseModel)
-- `campaigns_view(page: int=Query(1, ge=1), page_size: int=Query(10, ge=1, le=50), q: str=Query('', max_length=200), status: str=Query('', max_length=40), org_id: int | None=Query(None, ge=1), sort: Literal['recent', 'oldest', 'name']='recent')` [router.get('/campaigns', response_model=CampaignsPage)]
-- `campaign_detail(campaign_id: str)` [router.get('/campaigns/{campaign_id}', response_model=CampaignDetail)]
 - class `ContentItem`(BaseModel)
 - class `ContentView`(BaseModel)
 - `content_view()` [router.get('/content', response_model=ContentView)]
@@ -1415,6 +1288,7 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - const `GROUP_CATEGORIES`
 - const `GROUP_CAPABILITIES`
 - class `ConnectionSummary`(BaseModel) — A canonical connection row, sans secrets. The registry owns state;
+- class `ProviderAccountSummary`(BaseModel) — One named Buffer account, masked. Channels are the bound platforms
 - class `ProviderGroup`(BaseModel)
 - class `IntegrationsView`(BaseModel)
 - `integrations_view()` [router.get('/integrations', response_model=IntegrationsView)]
@@ -1422,6 +1296,17 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - class `PublicLink`(BaseModel)
 - class `SettingsView`(BaseModel)
 - `settings_view()` [router.get('/settings', response_model=SettingsView)]
+- class `GovernanceLimitsView`(BaseModel)
+- class `GovernanceLimitsPayload`(BaseModel)
+- `limits_view()` [router.get('/limits', response_model=GovernanceLimitsView)]
+- `save_limits(payload: GovernanceLimitsPayload)` [router.put('/limits', response_model=GovernanceLimitsView, dependencies=[Depends(verify_founder_action)])]
+- class `QuotaItem`(BaseModel)
+- class `QuotasView`(BaseModel)
+- `quotas_view()` [router.get('/quotas', response_model=QuotasView)]
+- class `WebhookConnectionPayload`(BaseModel)
+- `publisher_connections_view()` [router.get('/publishers')]
+- `save_webhook_connection(payload: WebhookConnectionPayload)` [router.put('/publishers/webhook', dependencies=[Depends(verify_founder_action)])]
+- `delete_webhook_connection()` [router.delete('/publishers/webhook', dependencies=[Depends(verify_founder_action)])]
 
 ## Operations scripts
 
@@ -1502,17 +1387,22 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `arrow(start, end, *, label=None, dashed=False, color='#1e1e1e', elbow=None, points=None, label_at=None)`
 - `free_text(x, y, w, paragraphs, *, color='#1e1e1e', size=16, center=False)`
 
-### `scripts/launch_batch.py`
+### `scripts/ingest_worlddata.py`
 
 - const `ROOT`
-- `plan_one(key: str, project_id: str, submit: bool, timeout: int | None) -> dict`
+- `ingest_edgar(limit: int) -> int`
+- `ingest_commoncrawl(domains: list[str]) -> tuple[int, str]`
+- `ingest_companieshouse(queries: list[str]) -> int`
 - `main(argv: list[str] | None=None) -> int`
 
-### `scripts/launch_briefs.py`
+### `scripts/publisher_webhook_dev.py`
 
-- const `RUNTIME_SECONDS`
-- const `BRIEFS`
-- const `RENDER_MODE`
+- const `SECRET`
+- const `PORT`
+- const `PATH`
+- class `Handler`(BaseHTTPRequestHandler)
+  - `do_POST(self) -> None`
+  - `log_message(self, format: str, *args) -> None`
 
 ### `scripts/restore.py`
 
@@ -1563,19 +1453,6 @@ Plus 231 HTTP routes, 39 database tables and 8 CLI subcommands, listed at the en
 - `verify_archive(archive_path: Path) -> tuple[list[str], list[str]]`
 - `main(argv: list[str] | None=None) -> int`
 
-### `scripts/video.py`
-
-- const `REPO`
-- `command_plan(args: argparse.Namespace) -> int`
-- `command_queue(args: argparse.Namespace) -> int`
-- `command_profile(_args: argparse.Namespace) -> int`
-- `command_submit(args: argparse.Namespace) -> int`
-- `command_assemble(args: argparse.Namespace) -> int`
-- `command_worker_status(_args: argparse.Namespace) -> int`
-- `command_launch(args: argparse.Namespace) -> int`
-- `command_direct(args: argparse.Namespace) -> int`
-- `main(argv: list[str] | None=None) -> int`
-
 ## HTTP routes
 
 Extracted from route decorators, so a path served by two routers is listed once per router. The authoritative operation count is the OpenAPI contract (`/openapi.json`), which collapses these to unique path+method pairs.
@@ -1583,27 +1460,22 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | route | module |
 |---|---|
 | `DELETE /accounts/{rid}` | `app/commercial_api.py` |
+| `DELETE /publishers/webhook` | `app/workspace_api.py` |
 | `GET /` | `app/api.py` |
 | `GET /accounts/{rid}` | `app/commercial_api.py` |
 | `GET /accounts` | `app/commercial_api.py` |
-| `GET /asset-packs/{pack_id}/files/{relative_path:path}` | `app/marketing_api.py` |
-| `GET /asset-packs` | `app/marketing_api.py` |
+| `GET /benchmarks` | `app/commercial_api.py` |
+| `GET /book/{lead_id}` | `app/forms_api.py` |
 | `GET /buffer-accounts` | `app/marketing_api.py` |
+| `GET /buffer/accounts` | `app/setup_api.py` |
 | `GET /calendar` | `app/api.py` |
-| `GET /campaigns/` | `app/api.py` |
-| `GET /campaigns/{campaign_id}/variants/{variant_id}/video` | `app/marketing_api.py` |
-| `GET /campaigns/{campaign_id}/voice-handoff` | `app/marketing_api.py` |
-| `GET /campaigns/{campaign_id}` | `app/marketing_api.py` |
-| `GET /campaigns/{campaign_id}` | `app/workflow_views_api.py` |
-| `GET /campaigns` | `app/api.py` |
-| `GET /campaigns` | `app/marketing_api.py` |
-| `GET /campaigns` | `app/workflow_views_api.py` |
 | `GET /coding/tasks/{task_id}` | `app/company_ops_api.py` |
 | `GET /coding/tasks` | `app/company_ops_api.py` |
 | `GET /commercial/` | `app/api.py` |
 | `GET /commercial` | `app/api.py` |
 | `GET /companies/` | `app/api.py` |
 | `GET /companies` | `app/api.py` |
+| `GET /config` | `app/forms_api.py` |
 | `GET /contacts/` | `app/api.py` |
 | `GET /contacts` | `app/api.py` |
 | `GET /content/` | `app/api.py` |
@@ -1614,13 +1486,13 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /doctor` | `app/sales_api.py` |
 | `GET /drafts/reconcile` | `app/sales_api.py` |
 | `GET /evidence` | `app/validation_api.py` |
+| `GET /f/{slug}` | `app/forms_api.py` |
 | `GET /governance` | `app/validation_api.py` |
 | `GET /health` | `app/api.py` |
 | `GET /home/` | `app/api.py` |
 | `GET /home` | `app/api.py` |
 | `GET /home` | `app/workflow_views_api.py` |
 | `GET /hunter/account` | `app/sales_api.py` |
-| `GET /hunyuan/profile` | `app/video_api.py` |
 | `GET /icp-templates` | `app/commercial_api.py` |
 | `GET /icps/suggest-criteria` | `app/commercial_api.py` |
 | `GET /icps/{rid}` | `app/commercial_api.py` |
@@ -1628,13 +1500,10 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /imports` | `app/commercial_api.py` |
 | `GET /incidents/{incident_id}` | `app/company_ops_api.py` |
 | `GET /incidents` | `app/company_ops_api.py` |
-| `GET /ingest/{project_id}` | `app/video_api.py` |
 | `GET /integrations/` | `app/api.py` |
 | `GET /integrations` | `app/api.py` |
 | `GET /integrations` | `app/commercial_api.py` |
 | `GET /integrations` | `app/workspace_api.py` |
-| `GET /jobs/{job_id}` | `app/video_api.py` |
-| `GET /jobs` | `app/video_api.py` |
 | `GET /leads/{lead_id}` | `app/sales_api.py` |
 | `GET /leads` | `app/sales_api.py` |
 | `GET /legacy/operations/marketing/assets` | `app/api.py` |
@@ -1642,19 +1511,22 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /legacy/operations/marketing` | `app/api.py` |
 | `GET /legacy/operations/sales/email` | `app/api.py` |
 | `GET /legacy/operations` | `app/api.py` |
+| `GET /limits` | `app/workspace_api.py` |
 | `GET /manual-posts/{post_record_id}/assets/{asset_index}` | `app/marketing_api.py` |
 | `GET /manual-posts/{post_record_id}/buffer-insights` | `app/marketing_api.py` |
+| `GET /manual-posts/{post_record_id}/publish/insights` | `app/marketing_api.py` |
 | `GET /manual-posts` | `app/marketing_api.py` |
+| `GET /me` | `app/auth_api.py` |
 | `GET /meet` | `app/api.py` |
 | `GET /meetings/` | `app/api.py` |
 | `GET /meetings/{lead_id}` | `app/workflow_views_api.py` |
 | `GET /meetings` | `app/api.py` |
 | `GET /meetings` | `app/workflow_views_api.py` |
+| `GET /network-stats` | `app/commercial_api.py` |
 | `GET /offers` | `app/commercial_api.py` |
 | `GET /onboarding-sessions` | `app/commercial_api.py` |
 | `GET /onboarding/` | `app/api.py` |
 | `GET /onboarding` | `app/api.py` |
-| `GET /onboarding` | `app/onboarding_api.py` |
 | `GET /operations/history` | `app/api.py` |
 | `GET /operations/marketing/assets` | `app/api.py` |
 | `GET /operations/marketing/campaigns` | `app/api.py` |
@@ -1675,11 +1547,13 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /outreach` | `app/workflow_views_api.py` |
 | `GET /pipelines` | `app/commercial_api.py` |
 | `GET /plan` | `app/validation_api.py` |
-| `GET /plans/{plan_id}` | `app/video_api.py` |
-| `GET /plans` | `app/video_api.py` |
 | `GET /providers` | `app/setup_api.py` |
-| `GET /queue/stats` | `app/video_api.py` |
-| `GET /render-jobs/next` | `app/video_api.py` |
+| `GET /public/manual-posts/{post_id}/assets/{index}` | `app/api.py` |
+| `GET /publish-jobs/{job_id}` | `app/marketing_api.py` |
+| `GET /publisher-accounts` | `app/marketing_api.py` |
+| `GET /publishers` | `app/marketing_api.py` |
+| `GET /publishers` | `app/workspace_api.py` |
+| `GET /quotas` | `app/workspace_api.py` |
 | `GET /replies/` | `app/api.py` |
 | `GET /replies/{reply_id}` | `app/workflow_views_api.py` |
 | `GET /replies` | `app/api.py` |
@@ -1687,14 +1561,14 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `GET /research/` | `app/api.py` |
 | `GET /research` | `app/api.py` |
 | `GET /rules` | `app/commercial_api.py` |
-| `GET /service-discovery` | `app/service_discovery_api.py` |
 | `GET /session` | `app/workspace_api.py` |
 | `GET /settings/` | `app/api.py` |
 | `GET /settings` | `app/api.py` |
 | `GET /settings` | `app/workspace_api.py` |
-| `GET /specs/{spec_id}` | `app/video_api.py` |
-| `GET /specs` | `app/video_api.py` |
 | `GET /step` | `app/setup_api.py` |
+| `GET /validation/` | `app/api.py` |
+| `GET /validation` | `app/api.py` |
+| `GET /verify/lookup` | `app/companies_api.py` |
 | `GET /workflow` | `app/validation_api.py` |
 | `GET /workflows/` | `app/api.py` |
 | `GET /workflows` | `app/api.py` |
@@ -1710,31 +1584,22 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `PATCH /offers/{rid}` | `app/commercial_api.py` |
 | `PATCH /onboarding-sessions/{rid}` | `app/commercial_api.py` |
 | `PATCH /pipelines/{rid}` | `app/commercial_api.py` |
+| `PATCH /{slug}` | `app/forms_api.py` |
 | `POST /accounts/suggest` | `app/commercial_api.py` |
 | `POST /accounts/{rid}/qualify` | `app/commercial_api.py` |
 | `POST /accounts` | `app/commercial_api.py` |
-| `POST /activate` | `app/onboarding_api.py` |
 | `POST /activities` | `app/commercial_api.py` |
-| `POST /asset-packs` | `app/marketing_api.py` |
-| `POST /buyer` | `app/onboarding_api.py` |
-| `POST /calibration` | `app/onboarding_api.py` |
-| `POST /campaigns/{campaign_id}/approve-script` | `app/marketing_api.py` |
-| `POST /campaigns/{campaign_id}/drafts` | `app/marketing_api.py` |
-| `POST /campaigns/{campaign_id}/regenerate-script` | `app/marketing_api.py` |
-| `POST /campaigns/{campaign_id}/retry` | `app/marketing_api.py` |
-| `POST /campaigns/{campaign_id}/variants/{variant_id}/select` | `app/marketing_api.py` |
-| `POST /campaigns/{campaign_id}/voice-recording` | `app/marketing_api.py` |
-| `POST /campaigns` | `app/marketing_api.py` |
+| `POST /book/{lead_id}` | `app/forms_api.py` |
+| `POST /buffer/connect` | `app/setup_api.py` |
+| `POST /buffer/discover` | `app/setup_api.py` |
 | `POST /coding/tasks/{task_id}/apply` | `app/company_ops_api.py` |
 | `POST /coding/tasks` | `app/company_ops_api.py` |
-| `POST /company/confirm` | `app/onboarding_api.py` |
-| `POST /company` | `app/onboarding_api.py` |
-| `POST /draft` | `app/onboarding_api.py` |
 | `POST /drafts/{draft_id}/approve` | `app/sales_api.py` |
 | `POST /drafts/{draft_id}/reconcile` | `app/sales_api.py` |
 | `POST /drafts/{draft_id}/send` | `app/sales_api.py` |
 | `POST /drafts/{draft_id}/update` | `app/sales_api.py` |
 | `POST /email/sales` | `app/sales_api.py` |
+| `POST /f/{slug}` | `app/forms_api.py` |
 | `POST /governance/approve` | `app/validation_api.py` |
 | `POST /governance/run` | `app/validation_api.py` |
 | `POST /governance` | `app/validation_api.py` |
@@ -1743,15 +1608,13 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `POST /icps` | `app/commercial_api.py` |
 | `POST /imports/preview` | `app/commercial_api.py` |
 | `POST /imports/{rid}/commit` | `app/commercial_api.py` |
-| `POST /ingest/media` | `app/video_api.py` |
-| `POST /ingest/pack` | `app/video_api.py` |
+| `POST /inbox/sync` | `app/sales_api.py` |
 | `POST /integrations/{provider}/connect` | `app/commercial_api.py` |
 | `POST /integrations/{provider}/disconnect` | `app/commercial_api.py` |
 | `POST /integrations/{provider}/sync` | `app/commercial_api.py` |
-| `POST /jobs/{job_id}/cancel` | `app/video_api.py` |
-| `POST /jobs/{job_id}/retry` | `app/video_api.py` |
 | `POST /keys/test` | `app/setup_api.py` |
 | `POST /keys` | `app/setup_api.py` |
+| `POST /leads/form` | `app/forms_api.py` |
 | `POST /leads/tally` | `app/sales_api.py` |
 | `POST /leads/website` | `app/sales_api.py` |
 | `POST /leads/{lead_id}/discover-linkedin` | `app/sales_api.py` |
@@ -1760,21 +1623,31 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `POST /leads/{lead_id}/enrich` | `app/sales_api.py` |
 | `POST /leads/{lead_id}/linkedin-draft` | `app/sales_api.py` |
 | `POST /leads/{lead_id}/linkedin-preview` | `app/sales_api.py` |
+| `POST /leads/{lead_id}/meeting-request` | `app/sales_api.py` |
 | `POST /leads/{lead_id}/resolve-company` | `app/sales_api.py` |
 | `POST /leads/{lead_id}/resolve-contact` | `app/sales_api.py` |
 | `POST /leads/{lead_id}/schedule-meeting` | `app/sales_api.py` |
 | `POST /leads/{lead_id}/suppress` | `app/sales_api.py` |
 | `POST /leads` | `app/sales_api.py` |
+| `POST /login` | `app/auth_api.py` |
+| `POST /logout` | `app/auth_api.py` |
+| `POST /manual-posts/preview` | `app/marketing_api.py` |
 | `POST /manual-posts/session` | `app/marketing_api.py` |
 | `POST /manual-posts/{post_record_id}/ai-caption` | `app/marketing_api.py` |
 | `POST /manual-posts/{post_record_id}/assets` | `app/marketing_api.py` |
+| `POST /manual-posts/{post_record_id}/buffer-confirm` | `app/marketing_api.py` |
 | `POST /manual-posts/{post_record_id}/buffer-draft` | `app/marketing_api.py` |
 | `POST /manual-posts/{post_record_id}/buffer-schedule` | `app/marketing_api.py` |
 | `POST /manual-posts/{post_record_id}/finalize` | `app/marketing_api.py` |
 | `POST /manual-posts/{post_record_id}/org` | `app/marketing_api.py` |
+| `POST /manual-posts/{post_record_id}/publish/async` | `app/marketing_api.py` |
+| `POST /manual-posts/{post_record_id}/publish/confirm` | `app/marketing_api.py` |
+| `POST /manual-posts/{post_record_id}/publish/draft` | `app/marketing_api.py` |
+| `POST /manual-posts/{post_record_id}/publish` | `app/marketing_api.py` |
 | `POST /manual-posts` | `app/marketing_api.py` |
 | `POST /monitor/run/{service}` | `app/company_ops_api.py` |
 | `POST /monitor/run` | `app/company_ops_api.py` |
+| `POST /network-contribution` | `app/commercial_api.py` |
 | `POST /offers` | `app/commercial_api.py` |
 | `POST /onboarding-sessions` | `app/commercial_api.py` |
 | `POST /opportunities/{rid}/move` | `app/commercial_api.py` |
@@ -1784,51 +1657,35 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `POST /orgs` | `app/marketing_api.py` |
 | `POST /pipelines` | `app/commercial_api.py` |
 | `POST /plan` | `app/validation_api.py` |
-| `POST /plans/{plan_id}/queue` | `app/video_api.py` |
-| `POST /plans` | `app/video_api.py` |
 | `POST /prospect/domain` | `app/sales_api.py` |
-| `POST /refinement` | `app/onboarding_api.py` |
-| `POST /render-jobs/{job_id}/complete` | `app/video_api.py` |
-| `POST /render-jobs/{job_id}/fail` | `app/video_api.py` |
-| `POST /render-jobs/{job_id}/heartbeat` | `app/video_api.py` |
-| `POST /research-company` | `app/onboarding_api.py` |
 | `POST /research/leads` | `app/sales_api.py` |
 | `POST /research/suggestions` | `app/sales_api.py` |
 | `POST /resend/sales` | `app/sales_api.py` |
+| `POST /resend` | `app/auth_api.py` |
 | `POST /rules` | `app/commercial_api.py` |
-| `POST /search` | `app/onboarding_api.py` |
-| `POST /search` | `app/service_discovery_api.py` |
-| `POST /specs` | `app/video_api.py` |
+| `POST /signup` | `app/auth_api.py` |
 | `POST /step` | `app/setup_api.py` |
-| `POST /strategy/draft` | `app/onboarding_api.py` |
-| `POST /strategy` | `app/onboarding_api.py` |
-| `POST /suggest-campaign` | `app/validation_api.py` |
 | `POST /suggest` | `app/validation_api.py` |
+| `POST /verify` | `app/auth_api.py` |
 | `POST /workflow/approve` | `app/validation_api.py` |
 | `POST /workflow/run` | `app/validation_api.py` |
 | `POST /workflow` | `app/validation_api.py` |
-| `POST /{run_id}/search` | `app/service_discovery_api.py` |
 | `POST /{workflow_id}/pause` | `app/workflows_api.py` |
 | `POST /{workflow_id}/run` | `app/workflows_api.py` |
 | `PUT /context` | `app/company_context_api.py` |
+| `PUT /limits` | `app/workspace_api.py` |
+| `PUT /publishers/webhook` | `app/workspace_api.py` |
 
 ## CLI verbs
 
 | verb | module |
 |---|---|
-| `assemble` | `scripts/video.py` |
-| `direct` | `scripts/video.py` |
-| `launch` | `scripts/video.py` |
-| `plan` | `scripts/video.py` |
-| `profile` | `scripts/video.py` |
-| `queue` | `scripts/video.py` |
-| `submit` | `scripts/video.py` |
-| `worker-status` | `scripts/video.py` |
 
 ## Database tables
 
 | table | declared in |
 |---|---|
+| `auth_sessions` | `core/auth_store.py` |
 | `buffer_org_accounts` | `core/state.py` |
 | `buffer_orgs` | `core/state.py` |
 | `coding_tasks` | `core/ops_store.py` |
@@ -1836,8 +1693,11 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `commercial_activities` | `core/commercial_store.py` |
 | `commercial_opportunities` | `core/commercial_store.py` |
 | `commercial_pipelines` | `core/commercial_store.py` |
+| `company_context_org` | `core/company_context.py` |
 | `company_context` | `core/company_context.py` |
 | `csv_imports` | `core/commercial_store.py` |
+| `email_verifications` | `core/auth_store.py` |
+| `form_definitions` | `core/form_store.py` |
 | `icp_profiles` | `core/commercial_store.py` |
 | `incidents` | `core/ops_store.py` |
 | `integration_connections` | `core/commercial_store.py` |
@@ -1850,24 +1710,26 @@ Extracted from route decorators, so a path served by two routers is listed once 
 | `offer_profiles` | `core/commercial_store.py` |
 | `onboarding_sessions` | `core/commercial_store.py` |
 | `org_capabilities` | `core/state.py` |
+| `org_memberships` | `core/auth_store.py` |
+| `plan_inputs` | `core/plan_input.py` |
+| `publish_jobs` | `core/jobs_store.py` |
+| `publisher_connections` | `core/publishers_store.py` |
 | `qualification_rules` | `core/commercial_store.py` |
+| `sales_company_profiles_org` | `core/sales_store.py` |
 | `sales_company_profiles` | `core/sales_store.py` |
 | `sales_drafts` | `core/sales_store.py` |
 | `sales_events` | `core/sales_store.py` |
 | `sales_interactions` | `core/sales_store.py` |
 | `sales_leads` | `core/sales_store.py` |
-| `service_discovery_runs` | `core/state.py` |
 | `service_provider_requests` | `core/state.py` |
 | `settings` | `core/state.py` |
 | `tasks` | `core/state.py` |
+| `usage_events` | `core/quotas.py` |
+| `users` | `core/auth_store.py` |
 | `validation_plans` | `core/validation_plan.py` |
 | `validation_workflows` | `core/plan_governance.py` |
-| `video_assets` | `core/video_store.py` |
-| `video_render_jobs` | `core/video_store.py` |
-| `video_shot_plans` | `core/video_store.py` |
-| `video_specs` | `core/video_store.py` |
-| `video_visual_bibles` | `core/video_store.py` |
 | `workflows` | `core/workflow_store.py` |
+| `world_records` | `core/worlddata_store.py` |
 
 ## Regenerate
 

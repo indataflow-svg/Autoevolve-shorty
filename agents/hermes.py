@@ -69,6 +69,7 @@ def build_instructions(
     context: CompanyContext,
     method_hint: str | None = None,
     channel_hint: str | None = None,
+    plan_input: dict | None = None,
 ) -> str:
     """Render the base prompt with the canonical context substituted in.
 
@@ -97,6 +98,15 @@ def build_instructions(
         )
     if requests:
         instructions += "\n\nFOUNDER REQUEST\n\n" + "\n".join(requests) + "\n"
+    if plan_input is not None:
+        instructions += (
+            "\n\nPLAN INPUT (evidence digest, last run, constraints)\n\n"
+            "Use this as the only measured evidence. It is not permission to "
+            "invent facts. Unknown stays unknown. Prefer the last run's observed "
+            "result over an assumption; never turn an unobserved metric into zero.\n\n"
+            + json.dumps(plan_input, ensure_ascii=False, indent=2)
+            + "\n"
+        )
     return instructions
 
 
@@ -104,6 +114,7 @@ async def plan_market_validation(
     context: CompanyContext,
     method_hint: str | None = None,
     channel_hint: str | None = None,
+    plan_input: dict | None = None,
 ) -> HermesPlanResult:
     """Run one market-validation pass and return a validated, grounded plan."""
     require_model_configured()
@@ -111,7 +122,11 @@ async def plan_market_validation(
 
     model = cloud_model(MODEL_ROUTE)
     # Built per call so a key or route change takes effect without a reload.
-    hermes = Agent(model, instructions=build_instructions(context, method_hint, channel_hint), output_type=ValidationPlan)
+    hermes = Agent(
+        model,
+        instructions=build_instructions(context, method_hint, channel_hint, plan_input),
+        output_type=ValidationPlan,
+    )
     try:
         result = await asyncio.wait_for(hermes.run(REQUEST), timeout=PLAN_TIMEOUT_SECONDS)
     except asyncio.TimeoutError as exc:
@@ -127,7 +142,7 @@ async def plan_market_validation(
     plan, grounding = enforce_grounding(plan, context)
     return HermesPlanResult(
         plan=plan,
-        provenance=_provenance(context, model, method_hint, channel_hint),
+        provenance=_provenance(context, model, method_hint, channel_hint, plan_input),
         grounding=grounding,
     )
 
@@ -151,6 +166,7 @@ def _provenance(
     model: Any,
     method_hint: str | None = None,
     channel_hint: str | None = None,
+    plan_input: dict | None = None,
 ) -> PlanProvenance:
     """Record the prompt version and the model actually used, when available."""
     return PlanProvenance(
@@ -164,4 +180,6 @@ def _provenance(
         model_provider=PROVIDER_NAME,
         method_hint=(method_hint or None),
         channel_hint=(channel_hint or None),
+        input_hash=(plan_input or {}).get("input_hash"),
+        input_schema_version=(plan_input or {}).get("schema"),
     )

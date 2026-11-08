@@ -9,11 +9,10 @@ Recommended tiers:
 - Tier 0 (UI only): no keys. Confirm `make doctor` shows `required secrets: ready`
   and `make dev` serves `/health`.
 - Tier 1 (AI): `OMNIROUTE_*` (+ `CODING_*` for coding). Needed for drafts,
-  research, campaign briefs, scene planning.
+  research and drafting.
 - Tier 2 (prospecting): `PROSPEO_API_KEY` + `PDL_API_KEY` or `CE_API_KEY`.
 - Tier 3 (sending): `SALES_RESEND_*` with a verified domain.
-- Tier 4 (media/publishing): `PEXELS/PIXABAY/COVERR`, `LORDICON_API_TOKEN`,
-  plus `engines/g3/config/g3.env` for Buffer/R2.
+- Tier 4 (publishing): `engines/g3/config/g3.env` for Buffer/R2.
 
 After any edit: `make doctor`, then restart `make dev` (or the container).
 
@@ -126,42 +125,13 @@ with 5 results per provider.
 3. `SALES_FROM_EMAIL` must use the verified domain. Keep auto-contact off
    until a test send to an address you control succeeds.
 
-## Media + publishing (Tier 4)
+## Publishing (Tier 4)
 
-Stock keys live in root `.env` (G2 inherits them). Buffer lives in the
-ignored file `engines/g3/config/g3.env` (created by `make setup` from
-`g3.env.example`). The R2_* variables in the same file are pipeline
-infrastructure for the asset pipeline, not a connectable integration:
-engines/g3 reads them directly and they no longer appear in the setup
-key groups.
-
-```dotenv
-# root .env
-PEXELS_API_KEY=<pexels.com/api>
-PIXABAY_API_KEY=<pixabay.com/api/docs>
-COVERR_API_KEY=<coverr.co/api, video-only>
-LORDICON_API_TOKEN=<optional>
-OMNIROUTE_IMAGE_MODEL=<optional image model for G2>
-```
-
-### MI300X render worker (Tier 4, phase-1 synchronous submit)
-
-```dotenv
-# root .env — Tailscale-only private address. Never expose it publicly,
-# never commit a real one outside .env, and never add credentials here:
-# the worker API takes none.
-RENDER_WORKER_URL=http://100.126.189.74:8000
-# Bearer token once the worker protects /render + status + download
-# (empty while the worker is unauthenticated). Never commit a real token.
-RENDER_WORKER_API_TOKEN=
-RENDER_WORKER_TIMEOUT_SECONDS=1800
-RENDER_WORKER_POLL_INTERVAL_SECONDS=15
-RENDER_OUTPUT_DIR=data/renders
-```
-
-Check `make video-worker-status` (health + capacity, no render started).
-The renderer reads only `RENDER_WORKER_URL`, so the worker IP changes
-without code edits. See `docs/video-pipeline.md`.
+Buffer lives in the ignored file `engines/g3/config/g3.env` (created by
+`make setup` from `g3.env.example`). The R2_* variables in the same file are
+pipeline infrastructure: G3 uploads manual-post media there before handing
+Buffer public URLs. They are not a connectable integration and do not appear
+in the setup key groups.
 
 ```dotenv
 # engines/g3/config/g3.env
@@ -183,6 +153,24 @@ R2_BUCKET=company-core-social-media
 R2_PUBLIC_BASE_URL=https://media.your-domain.example
 ```
 
+### Optional webhook scheduler
+
+Buffer is always the default. A second scheduler can be connected without
+changing G3 by setting these in the root `.env`:
+
+```dotenv
+PUBLISHER_WEBHOOK_URL=https://scheduler.example/hook
+PUBLISHER_WEBHOOK_SECRET=<long-random-shared-secret>
+PUBLISHER_WEBHOOK_ACCOUNT=webhook
+PUBLISHER_WEBHOOK_LABEL=Webhook scheduler
+PUBLISHER_WEBHOOK_PLATFORMS=instagram,x,linkedin
+PUBLIC_BASE_URL=https://your-public-host.example
+```
+
+The app signs every request with `X-Publisher-Signature` and exposes media via
+short-lived signed URLs. The full request/response contract is in
+[publishers.md](publishers.md). Leave the URL empty to hide the scheduler.
+
 Buffer tokens are per Buffer user: grab each one at
 `publish.buffer.com/account/api` while logged in as that user, then list
 channel IDs with `company-core-g3 channels` (or `--account <name> channels`).
@@ -195,11 +183,6 @@ engines/g3/.venv/bin/company-core-g3 account
 engines/g3/.venv/bin/company-core-g3 channels
 engines/g3/.venv/bin/company-core-g3 doctor --require instagram --require x
 ```
-
-Showcase/outro placeholders (`replace-with-your-showcase.mp4`,
-`replace-with-your-outro.png`) intentionally do not exist. Point
-`MARKETING_G2_SHOWCASE` / `MARKETING_G2_OUTRO` to owned files before
-publishing.
 
 ## Quick verify checklist
 

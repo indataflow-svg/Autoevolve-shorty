@@ -122,42 +122,36 @@ class RoutingApiTests(unittest.TestCase):
         state.DB_PATH = self.old_state
         self.temporary.cleanup()
 
-    def onboarding(self, suffix: str, payload: dict | None = None):
-        return self.client.post(
-            f"/company/setup/onboarding/{suffix}", auth=self.auth, headers=self.headers, json=payload,
-        )
+    def context_payload(self) -> dict:
+        return {
+            "company": {"name": "Example Studio", "website": "https://studio.test", "description": "Example Studio builds operations tools."},
+            "product": {"name": "Ops Audit", "description": "A guided operations workflow."},
+            "customer": {"ideal_customer": "Midmarket operations teams"},
+            "market": {"problem": "Handoffs are manual", "market": "United States"},
+            "objective": {"primary_goal": "Get first customers"},
+            "state": {"marketing_stage": "starting_from_zero"},
+        }
 
     def confirm_onboarding(self, **extra):
-        started = self.onboarding("company", {
-            "name": "Example Studio", "website": "https://studio.test",
-            "objective": "Get first customers", "market": "United States",
-        })
-        self.assertEqual(started.status_code, 200, started.text)
-        payload = {
-            "name": "Example Studio", "website": "https://studio.test",
-            "description": "Example Studio builds operations tools.",
-            "industry": "Software", "positioning": "Operations teams get clear records.",
-            "offer_summary": "A guided operations workflow.",
-            "product_name": "Ops Audit", "ideal_customer": "Midmarket operations teams",
-            "problem": "Handoffs are manual", "marketing_stage": "starting_from_zero",
-        } | extra
-        return self.onboarding("company/confirm", payload)
+        payload = self.context_payload()
+        payload.update(extra)
+        return self.client.put("/company/context", auth=self.auth, headers=self.headers, json=payload)
 
-    def test_before_onboarding_there_is_no_route(self):
+    def test_before_context_there_is_no_route(self):
         body = self.client.get("/company/context", auth=self.auth).json()
         self.assertEqual(body["status"], "context_incomplete")
         self.assertIsNone(body["marketing_stage"])
         self.assertIsNone(body["next_stage"])
         self.assertIsNone(body["routing_error"])
 
-    def test_confirming_onboarding_exposes_the_resolved_route(self):
+    def test_confirming_context_exposes_the_resolved_route(self):
         confirmed = self.confirm_onboarding()
         self.assertEqual(confirmed.status_code, 200, confirmed.text)
         body = confirmed.json()
         self.assertEqual(body["marketing_stage"], "starting_from_zero")
         self.assertEqual(body["next_stage"], "market_validation")
         self.assertEqual(body["route_label"], "Market Validation")
-        self.assertFalse(body["onboarding_complete"])  # not activated yet
+        self.assertEqual(body["status"], "context_complete")
 
         read = self.client.get("/company/context", auth=self.auth).json()
         self.assertEqual(read["status"], "context_complete")
@@ -165,28 +159,10 @@ class RoutingApiTests(unittest.TestCase):
         self.assertEqual(read["next_stage"], "market_validation")
         self.assertEqual(read["context"]["state"]["marketing_stage"], "starting_from_zero")
 
-    def test_completed_onboarding_reports_complete_and_the_route(self):
+    def test_completed_context_marks_home_ready(self):
         self.confirm_onboarding()
-        program = {
-            "id": "program_routing", "status": "activated", "activated_at": "2026-01-01T00:00:00+00:00",
-            "company": {"name": "Example Studio", "website": "https://studio.test",
-                        "objective": "Get first customers", "market": "United States"},
-            "company_context": {
-                "name": "Example Studio", "website": "https://studio.test",
-                "description": "Example Studio builds operations tools.",
-                "industry": "Software", "positioning": "Operations teams get clear records.",
-                "offer_summary": "A guided operations workflow.",
-            },
-        }
-        state.save_onboarding_program(program)
-        view = self.client.get("/company/ui/onboarding", auth=self.auth).json()
-        self.assertTrue(view["onboarding_complete"])
-        self.assertEqual(view["next_step"], "home")
-        self.assertEqual(view["marketing_stage"], "starting_from_zero")
-        self.assertEqual(view["next_stage"], "market_validation")
-
         home = self.client.get("/company/ui/home", auth=self.auth).json()
-        self.assertEqual(home["onboarding_status"], "activated")
+        self.assertTrue(home["onboarding_ready"])
         self.assertEqual(home["marketing_stage"], "starting_from_zero")
         self.assertEqual(home["next_stage"], "market_validation")
         self.assertEqual(home["route_label"], "Market Validation")

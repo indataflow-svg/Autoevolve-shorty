@@ -1,9 +1,9 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.marketing_api import _public_asset_pack, _public_campaign, _public_manual_post, doctor as marketing_doctor, list_asset_packs
+from app.marketing_api import _public_manual_post, doctor as marketing_doctor
 from app.sales_api import doctor as sales_doctor, verify_founder_action
-from core.marketing_store import list_campaigns, list_events as list_marketing_events, list_manual_posts
+from core.marketing_store import list_manual_posts
 from core.sales_store import list_events as list_sales_events, list_interactions, list_leads, summary
 from core.state import get_active_org
 from pydantic import BaseModel
@@ -88,21 +88,10 @@ def _history_summary(payload: dict) -> str:
     return ""
 
 
-def _operations_history(campaigns: list[dict], leads: list[dict]) -> list[dict]:
+def _operations_history(leads: list[dict], org_id: int = 0) -> list[dict]:
     lead_labels = {item["id"]: item.get("full_name") or item.get("company") or item.get("email") or item["id"] for item in leads}
     history = []
-    for campaign in campaigns:
-        for event in list_marketing_events(campaign["id"])[-8:]:
-            history.append({
-                "domain": "marketing",
-                "entity_id": campaign["id"],
-                "entity_label": campaign.get("topic") or campaign["id"],
-                "event": event["event"],
-                "payload": event.get("payload") or {},
-                "summary": _history_summary(event.get("payload") or {}),
-                "created_at": event["created_at"],
-            })
-    for event in list_sales_events(limit=40):
+    for event in list_sales_events(limit=40, org_id=org_id):
         history.append({
             "domain": "sales",
             "entity_id": event.get("lead_id"),
@@ -112,7 +101,7 @@ def _operations_history(campaigns: list[dict], leads: list[dict]) -> list[dict]:
             "summary": _history_summary(event.get("payload") or {}),
             "created_at": event["created_at"],
         })
-    for interaction in list_interactions(limit=30):
+    for interaction in list_interactions(limit=30, org_id=org_id):
         history.append({
             "domain": "sales",
             "entity_id": interaction.get("lead_id"),
@@ -129,19 +118,15 @@ def _operations_history(campaigns: list[dict], leads: list[dict]) -> list[dict]:
 @router.get("/operations/overview")
 def operations_overview():
     active_org = get_active_org()
-    org_id = active_org["id"] if active_org else None
-    campaigns = list_campaigns(limit=12, org_id=org_id)
+    org_id = int(active_org["id"]) if active_org else 0
     manual_posts = list_manual_posts(limit=24, org_id=org_id)
-    asset_packs = list_asset_packs(project_slug=active_org["slug"], limit=24) if active_org else []
-    leads = list_leads(limit=24)
+    leads = list_leads(limit=24, org_id=org_id)
     return {
         "active_org": active_org,
         "marketing_doctor": marketing_doctor(),
         "sales_doctor": sales_doctor(),
-        "marketing_campaigns": [_public_campaign(item) for item in campaigns],
-        "sales_summary": summary(),
+        "sales_summary": summary(org_id),
         "sales_leads": leads,
         "manual_posts": [_public_manual_post(item) for item in manual_posts],
-        "asset_packs": [_public_asset_pack(item) for item in asset_packs],
-        "history": _operations_history(campaigns, leads),
+        "history": _operations_history(leads, org_id),
     }

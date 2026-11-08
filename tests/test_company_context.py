@@ -11,8 +11,6 @@ from fastapi.testclient import TestClient
 import core.state as state
 from app.api import app
 from core.company_context import (
-    clear_company_context,
-    context_from_onboarding,
     get_company_context,
     normalize_company_context,
     save_company_context,
@@ -132,34 +130,10 @@ class CompanyContextCoreTests(unittest.TestCase):
         self.assertIsNone(replaced.company.name)  # a replacement never keeps stale claims
         self.assertIn("company", replaced.missing)
 
-    def test_onboarding_projection_uses_confirmed_answers_only(self):
-        context = context_from_onboarding(
-            start={"name": "Example Studio", "objective": "Get first customers", "market": "United States"},
-            confirm={
-                "name": "Example Studio", "website": "https://studio.test",
-                "description": "Builds operations tools.", "industry": "Software",
-                "positioning": "Operations teams get clear records.",
-                "offer_summary": "A guided operations workflow.",
-                "ideal_customer": "Midmarket operations teams",
-                "product_name": "Ops Audit",
-                "problem": "Handoffs are manual",
-                "pricing": "$2k per month",
-                "marketing_stage": "starting_from_zero",
-            },
-        )
-        self.assertEqual(context.market.market, "United States")
-        self.assertEqual(context.objective.primary_goal, "Get first customers")
-        self.assertEqual(context.product.value_proposition, "Operations teams get clear records.")
-        self.assertEqual(context.offer.description, "A guided operations workflow.")
-        self.assertEqual(context.offer.pricing, "$2k per month")
-        self.assertEqual(context.customer.industry, "Software")
-        self.assertEqual(context.status, "context_complete")
-        self.assertEqual(context.evidence.traction, [])  # never answered, never filled
-        self.assertIsNone(context.resources.budget)
 
 
 class CompanyContextApiTests(unittest.TestCase):
-    """Onboarding writes the canonical context; the API reads and replaces it."""
+    """The canonical context API stores, reads, and replaces founder answers."""
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -180,48 +154,34 @@ class CompanyContextApiTests(unittest.TestCase):
         state.DB_PATH = self.old_state
         self.temporary.cleanup()
 
-    def post(self, suffix: str, payload: dict):
-        return self.client.post(
-            f"/company/setup/onboarding/{suffix}", auth=self.auth,
-            headers=self.headers, json=payload,
-        )
-
-    def start_company(self):
-        response = self.post("company", {
-            "name": "Example Studio", "website": "https://studio.test",
-            "objective": "Get first customers", "market": "United States",
-        })
-        self.assertEqual(response.status_code, 200, response.text)
-
-    def confirm(self, **extra):
-        payload = {
-            "name": "Example Studio", "website": "https://studio.test",
-            "description": "Example Studio builds operations tools.",
-            "industry": "Software", "positioning": "Operations teams get clear records.",
-            "offer_summary": "A guided operations workflow.",
-        } | extra
-        response = self.post("company/confirm", payload)
-        self.assertEqual(response.status_code, 200, response.text)
+    def put(self, payload: dict):
+        return self.client.put("/company/context", auth=self.auth, headers=self.headers, json=payload)
 
     def context(self, *, anonymous: bool = False):
-        auth = None if anonymous else self.auth
-        return self.client.get("/company/context", auth=auth)
+        return self.client.get("/company/context", auth=None if anonymous else self.auth)
 
     def stored_context(self, **kwargs) -> dict:
-        """The canonical sections as the founder confirmed them."""
-        body = self.context(**kwargs).json()
-        return body["context"]
+        return self.context(**kwargs).json()["context"]
 
-    def test_onboarding_stores_the_canonical_context(self):
+    def full_payload(self) -> dict:
+        return {
+            "company": {
+                "name": "Example Studio", "website": "https://studio.test",
+                "description": "Example Studio builds operations tools.",
+            },
+            "product": {"name": "Ops Audit", "description": "A guided operations workflow."},
+            "customer": {"ideal_customer": "Midmarket operations teams"},
+            "market": {"problem": "Handoffs are manual", "market": "United States"},
+            "objective": {"primary_goal": "Get first customers"},
+            "state": {"marketing_stage": "starting_from_zero"},
+            "evidence": {"existing_customers": ["Acme Systems"]},
+        }
+
+    def test_context_api_stores_the_canonical_context(self):
         self.assertEqual(self.context(anonymous=True).status_code, 401)
         self.assertEqual(self.context().json()["status"], "context_incomplete")
-        self.start_company()
-        self.confirm(
-            product_name="Ops Audit", ideal_customer="Midmarket operations teams",
-            problem="Handoffs are manual", existing_customers="Acme Systems",
-            testimonials="Operations Director, Acme Systems",
-            marketing_stage="starting_from_zero",
-        )
+        response = self.put(self.full_payload())
+        self.assertEqual(response.status_code, 200, response.text)
         stored = self.stored_context()
         self.assertEqual(stored["status"], "context_complete")
         self.assertEqual(stored["missing"], [])
@@ -236,47 +196,35 @@ class CompanyContextApiTests(unittest.TestCase):
         self.assertEqual(stored["state"]["marketing_stage"], "starting_from_zero")
         self.assertEqual(stored["schema_version"], 1)
         self.assertIsNotNone(stored["updated_at"])
-
-        # The stored record survives reload and a fresh API process state.
         self.assertEqual(get_company_context().product.name, "Ops Audit")
 
-    def test_minimal_onboarding_marks_the_context_incomplete(self):
-        self.start_company()
-        self.confirm()
+    def test_partial_context_marks_the_context_incomplete(self):
+        response = self.put({"company": {"name": "Example Studio"}})
+        self.assertEqual(response.status_code, 200, response.text)
         stored = self.stored_context()
         self.assertEqual(stored["status"], "context_incomplete")
-        self.assertEqual(stored["missing"], ["product", "customer", "problem"])
+        self.assertEqual(
+            stored["missing"], ["product", "customer", "problem", "objective", "marketing_stage"]
+        )
         self.assertIsNone(stored["product"]["name"])
-        self.assertEqual(stored["state"]["marketing_stage"], "starting_from_zero")
-        self.assertEqual(stored["company"]["description"], "Example Studio builds operations tools.")
 
     def test_unknown_values_are_never_filled_in(self):
-        self.start_company()
-        self.confirm(product_name="   ", problem="", testimonials=[" ", ""])
+        response = self.put({
+            "company": {"name": "Example Studio"},
+            "product": {"name": "   "},
+            "market": {"problem": ""},
+            "evidence": {"testimonials": [" ", ""]},
+        })
+        self.assertEqual(response.status_code, 200, response.text)
         stored = self.stored_context()
         self.assertIsNone(stored["product"]["name"])
         self.assertIsNone(stored["market"]["problem"])
         self.assertEqual(stored["evidence"]["testimonials"], [])
         self.assertIn("product", stored["missing"])
 
-    def test_existing_confirmed_program_is_projected_into_the_context(self):
-        self.start_company()
-        self.confirm(product_name="Ops Audit", problem="Handoffs are manual")
-        # Simulate a program confirmed before the canonical context existed:
-        # the record is gone, the founder's confirmed answers are not.
-        clear_company_context()
-        self.assertIsNone(get_company_context())
-        projected = self.stored_context()
-        self.assertEqual(projected["company"]["name"], "Example Studio")
-        self.assertEqual(projected["objective"]["primary_goal"], "Get first customers")
-        self.assertEqual(projected["company"]["description"], "Example Studio builds operations tools.")
-        self.assertEqual(projected["product"]["name"], "Ops Audit")
-        self.assertIsNotNone(get_company_context().updated_at)  # projected once, then stored
-
     def test_api_update_replaces_the_stored_context(self):
-        self.start_company()
-        self.confirm(product_name="Ops Audit", problem="Handoffs are manual")
-        updated = self.client.put("/company/context", auth=self.auth, headers=self.headers, json={
+        self.assertEqual(self.put(self.full_payload()).status_code, 200)
+        updated = self.put({
             "company": {"name": "Example Studio Renamed", "website": "https://studio.test/"},
             "state": {"marketing_stage": "Starting from zero"},
         })
@@ -287,65 +235,37 @@ class CompanyContextApiTests(unittest.TestCase):
         self.assertEqual(body["state"]["marketing_stage"], "starting_from_zero")
         self.assertEqual(self.stored_context()["company"]["name"], "Example Studio Renamed")
 
-    def test_an_existing_company_can_correct_its_confirmed_answers(self):
-        self.start_company()
-        self.confirm(product_name="Ops Audit", ideal_customer="Midmarket ops teams", pricing="$2,000 per month")
-        self.confirm(
-            product_name="Ops Audit Plus", ideal_customer="Midmarket ops teams",
-            problem="Handoffs are manual", pricing="$3,000 per month",
-        )
+    def test_api_can_correct_existing_answers(self):
+        self.assertEqual(self.put(self.full_payload()).status_code, 200)
+        payload = self.full_payload()
+        payload["product"]["name"] = "Ops Audit Plus"
+        payload["offer"] = {"pricing": "$3,000 per month"}
+        self.assertEqual(self.put(payload).status_code, 200)
         stored = self.stored_context()
         self.assertEqual(stored["product"]["name"], "Ops Audit Plus")
         self.assertEqual(stored["offer"]["pricing"], "$3,000 per month")
         self.assertEqual(stored["status"], "context_complete")
-        self.assertEqual(get_company_context().product.name, "Ops Audit Plus")
 
     def test_api_validation_errors_and_authorization(self):
-        denied = self.client.put("/company/context", auth=self.auth, json={
-            "company": {"name": "Example Studio"},
-        })
+        denied = self.client.put("/company/context", auth=self.auth, json={"company": {"name": "Example Studio"}})
         self.assertEqual(denied.status_code, 403)
         empty = self.client.put("/company/context", auth=self.auth, headers=self.headers, json={})
         self.assertEqual(empty.status_code, 422)
         self.assertIn("at least one company context fact", empty.json()["detail"])
-        bad_stage = self.client.put("/company/context", auth=self.auth, headers=self.headers, json={
-            "company": {"name": "Example Studio"}, "state": {"marketing_stage": "already running ads"},
+        bad_stage = self.put({
+            "company": {"name": "Example Studio"},
+            "state": {"marketing_stage": "already running ads"},
         })
         self.assertEqual(bad_stage.status_code, 422)
         self.assertIn("marketing stage", str(bad_stage.json()["detail"]).lower())
-        bad_site = self.client.put("/company/context", auth=self.auth, headers=self.headers, json={
-            "company": {"website": "https://user:secret@studio.test"},
-        })
+        bad_site = self.put({"company": {"website": "https://user:secret@studio.test"}})
         self.assertEqual(bad_site.status_code, 422)
         self.assertIsNone(get_company_context())
 
     def test_api_never_returns_credentials_from_stored_urls(self):
-        self.start_company()
-        self.confirm()
-        response = self.client.put("/company/context", auth=self.auth, headers=self.headers, json={
+        response = self.put({
             "company": {"name": "Example Studio", "website": "https://studio.test/?access_token=secret"},
         })
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["context"]["company"]["website"], "https://studio.test")
         self.assertNotIn("secret", response.text)
-
-    def test_frontend_shaped_save_preserves_everything_it_did_not_touch(self):
-        # The UI spreads the fetched view (computed keys included) plus the
-        # edited sections. The replacement must keep every untouched value.
-        self.start_company()
-        self.confirm()
-        view = self.client.get("/company/context", auth=self.auth).json()["context"]
-        payload = dict(view)
-        payload["product"] = dict(view["product"], description="Card-written product line")
-        payload["market"] = dict(view["market"], problem="Card-written problem line")
-        response = self.client.put("/company/context", auth=self.auth, headers=self.headers, json=payload)
-        self.assertEqual(response.status_code, 200, response.text)
-        stored = self.client.get("/company/context", auth=self.auth).json()["context"]
-        self.assertEqual(stored["product"]["description"], "Card-written product line")
-        self.assertEqual(stored["market"]["problem"], "Card-written problem line")
-        self.assertEqual(stored["company"]["name"], "Example Studio")
-        self.assertEqual(stored["customer"]["ideal_customer"], view["customer"]["ideal_customer"])
-
-
-if __name__ == "__main__":
-    unittest.main()

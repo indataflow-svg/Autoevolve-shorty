@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ form.name }} · {{ company_name }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: #d9e1ec;
+      --accent: #5E6AD2;
+      --accent-dark: #4957c6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #ffffff 0%, var(--bg) 55%, #edf2fa 100%);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 40px 20px 56px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 32px;
+      box-shadow: 0 20px 60px rgba(17, 24, 39, 0.08);
+    }
+    .brand { width: 168px; max-width: 100%; height: auto; display: block; margin-bottom: 24px; }
+    .eyebrow {
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    h1 { margin: 0 0 14px; font-size: 32px; line-height: 1.15; }
+    p.intro { margin: 0 0 22px; color: var(--muted); font-size: 16px; line-height: 1.7; }
+    .field { display: block; margin-bottom: 18px; }
+    .field > span { display: block; font-size: 13px; font-weight: 700; margin-bottom: 7px; }
+    .field .req { color: #b42318; }
+    input, select, textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      font-size: 15px;
+      font-family: inherit;
+      background: #fff;
+      color: var(--text);
+    }
+    input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+    textarea { min-height: 110px; resize: vertical; }
+    .check { display: flex; gap: 10px; align-items: flex-start; }
+    .check input { width: auto; margin-top: 3px; }
+    .check span { font-size: 14px; color: var(--muted); font-weight: 400; }
+    .hp { position: absolute; left: -9999px; opacity: 0; height: 0; overflow: hidden; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 13px 22px; border: 0; border-radius: 12px;
+      background: var(--accent); color: #fff; font-weight: 700; font-size: 15px;
+      cursor: pointer;
+    }
+    .btn:hover { background: var(--accent-dark); }
+    .error {
+      background: #fef3f2; border: 1px solid #fecdca; color: #b42318;
+      border-radius: 12px; padding: 12px 14px; margin-bottom: 18px; font-size: 14px;
+    }
+    .success { text-align: center; padding: 18px 0 6px; }
+    .success h2 { margin: 0 0 10px; font-size: 26px; }
+    .success p { color: var(--muted); font-size: 16px; line-height: 1.7; margin: 0 auto; max-width: 460px; }
+    footer { margin-top: 20px; text-align: center; color: var(--muted); font-size: 13px; }
+    @media (max-width: 560px) {
+      .wrap { padding: 22px 14px 40px; }
+      .card { padding: 22px 18px; border-radius: 18px; }
+      h1 { font-size: 26px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="card">
+      <img class="brand" src="{{ company_logo_url }}" alt="{{ company_name }}">
+      {% if sent %}
+      <div class="success">
+        <h2>Thank you — it's in.</h2>
+        <p>Your answers were received. {{ company_name }} will follow up at the email you provided, usually within one business day.</p>
+      </div>
+      {% else %}
+      <p class="eyebrow">{{ company_name }}</p>
+      <h1>{{ form.name }}</h1>
+      {% if form.description %}<p class="intro">{{ form.description }}</p>{% endif %}
+      {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+      <form method="post" action="/f/{{ form.slug }}">
+        {% for field in form.fields %}
+        {% if field.type == 'hidden' %}
+        <input class="hp" type="text" name="{{ field.key }}" tabindex="-1" autocomplete="off" value="{{ values.get(field.key, '') }}">
+        {% elif field.type == 'textarea' %}
+        <label class="field"><span>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}</span>
+          <textarea name="{{ field.key }}" {% if field.required %}required{% endif %}>{{ values.get(field.key, '') }}</textarea></label>
+        {% elif field.type == 'select' %}
+        <label class="field"><span>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}</span>
+          <select name="{{ field.key }}" {% if field.required %}required{% endif %}>
+            <option value="">Choose an option</option>
+            {% for option in field.get('options', []) %}
+            <option value="{{ option }}" {% if values.get(field.key) == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select></label>
+        {% elif field.type == 'checkbox' %}
+        <label class="field check"><input type="checkbox" name="{{ field.key }}" value="yes" {% if values.get(field.key) %}checked{% endif %}>
+          <span>{{ field.label }}</span></label>
+        {% else %}
+        <label class="field"><span>{{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}</span>
+          <input type="{{ field.type }}" name="{{ field.key }}" {% if field.required %}required{% endif %} value="{{ values.get(field.key, '') }}"></label>
+        {% endif %}
+        {% endfor %}
+        <div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+        <button class="btn" type="submit">Submit</button>
+      </form>
+      {% endif %}
+    </div>
+    <footer>Sent securely to {{ company_name }}. Your answers are used only to respond to this request.</footer>
+  </main>
+</body>
+</html>

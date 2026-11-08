@@ -7,69 +7,52 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from fastapi.responses import FileResponse
 from PIL import Image
 
 from core.marketing_store import (
-    add_event,
-    clear_variants,
     create_manual_post,
-    get_campaign,
-    get_manual_post,
-    get_variant,
-    list_events,
-    list_campaigns,
+    get_manual_post as _get_manual_post,
     list_manual_posts,
-    update_campaign,
     update_manual_post,
 )
+
+
+def get_manual_post(post_id: str):
+    """Read a post inside the request's org boundary.
+
+    Basic-auth/operator requests have no scoped org and keep the legacy
+    behavior. A website session can only resolve its own organization's posts.
+    """
+    post = _get_manual_post(post_id)
+    if post and _scoped_org_id() and int(post.get("org_id") or 0) != _scoped_org_id():
+        return None
+    return post
 from core.marketing_config import MarketingConfig
 from core.branding import company_forms_url
-from core.state import now_iso, update_task_status
+from core.state import now_iso
 from dotenv import dotenv_values
 from app.sales_api import verify_founder_action
 from services.caption_variants import build_short_caption_variants, enrich_platform_copy, _buyer_label
-from services.marketing_worker import _last_json, _run, spawn
-from services.asset_pack_builder import build_pack_title
-from services.asset_pack_worker import spawn_asset_pack
+from services.g3_cli import last_json as _last_json, run as _run
+from services.publishers import (
+    PublisherError,
+    capabilities_dict,
+    catalog as publisher_catalog,
+    get_publisher,
+)
 from core.sales_store import connect as sales_connect
 
 
 router = APIRouter(prefix="/company/marketing", tags=["marketing"])
 ROOT = Path(__file__).parent.parent.resolve()
-
-
-class CampaignLaunchRequest(BaseModel):
-    objective: str = Field(min_length=3, max_length=80)
-    brief: str = Field(min_length=10, max_length=500)
-    social_platforms: list[str] = Field(min_length=1, max_length=4)
-    video_platform: str = Field(min_length=2, max_length=40)
-    voice_mode: str = Field(default="tts", min_length=3, max_length=20)
-    voice_transcript: str | None = Field(default=None, max_length=6000)
-
-    @field_validator("brief", "voice_transcript", mode="before")
-    @classmethod
-    def _clean_text_fields(cls, value: object) -> object:
-        if value is None:
-            return None
-        text = str(value).strip()
-        return text or None
-
-    @field_validator("voice_mode", mode="before")
-    @classmethod
-    def _normalize_voice_mode(cls, value: object) -> str:
-        text = str(value or "tts").strip().lower()
-        if text not in {"tts", "real_voice"}:
-            raise ValueError("voice_mode must be tts or real_voice")
-        return text
 
 
 class ManualPostSessionRequest(BaseModel):
@@ -79,6 +62,7 @@ class ManualPostSessionRequest(BaseModel):
     link_label: str | None = Field(default=None, max_length=80)
     org_id: int | None = Field(default=None, ge=1)
     buffer_account: str | None = Field(default=None, max_length=40)
+    publisher: str | None = Field(default=None, max_length=40)
 
     @field_validator("platform", "post_type", mode="before")
     @classmethod
@@ -111,19 +95,6 @@ class ManualPostPreviewRequest(BaseModel):
         return text or None
 
 
-class AssetPackRequest(BaseModel):
-    script: str = Field(min_length=20, max_length=12000)
-    objective: str = Field(default="awareness", min_length=3, max_length=80)
-
-    @field_validator("script", "objective", mode="before")
-    @classmethod
-    def _clean_value(cls, value: object) -> object:
-        if value is None:
-            return None
-        text = str(value).strip()
-        return text or None
-
-
 class BufferScheduleRequest(BaseModel):
     mode: str = Field(default="queue", min_length=3, max_length=20)
     due_at: str | None = Field(default=None, max_length=100)
@@ -139,6 +110,27 @@ class BufferScheduleRequest(BaseModel):
     @field_validator("due_at", mode="before")
     @classmethod
     def _clean_due_at(cls, value: object) -> object:
+        text = str(value or "").strip()
+        return text or None
+
+
+class PublishRequest(BaseModel):
+    action: Literal["draft", "schedule"] = "schedule"
+    mode: str = Field(default="queue", min_length=3, max_length=20)
+    due_at: str | None = Field(default=None, max_length=100)
+    account: str | None = Field(default=None, max_length=40)
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _normalize_mode(cls, value: object) -> object:
+        text = str(value or "queue").strip().lower()
+        if text not in {"queue", "next", "timed"}:
+            raise ValueError("mode must be queue, next, or timed")
+        return text
+
+    @field_validator("due_at", "account", mode="before")
+    @classmethod
+    def _clean_optional(cls, value: object) -> object:
         text = str(value or "").strip()
         return text or None
 
@@ -172,45 +164,6 @@ class BufferInsightsView(BaseModel):
     metrics: list[BufferMetric] | None
     metrics_updated_at: str | None
     experimental: bool = True
-
-
-class AssetPackActionRecord(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    id: str
-    title: str
-    status: str
-    objective: str
-
-
-class AssetPackCreateResult(BaseModel):
-    ok: bool
-    pack: AssetPackActionRecord
-    message: str
-
-
-class CampaignActionRecord(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    id: str
-    status: str
-    current_stage: str
-    g3_status: str
-
-
-class CampaignCreateResult(BaseModel):
-    ok: bool
-    campaign: CampaignActionRecord
-    message: str
-
-
-class CampaignTransitionResult(BaseModel):
-    ok: bool
-    campaign_id: str
-    status: str | None = None
-    next_stage: str | None = None
-    resume_stage: str | None = None
-    g3_status: str | None = None
 
 
 class MarketingOrgActionRecord(BaseModel):
@@ -314,197 +267,11 @@ def _g3_account_args(account: str) -> list[str]:
 
 
 PROJECTS_ROOT = (ROOT / "projects").resolve()
-MAX_ARTIFACT_BYTES = 5 * 1024 * 1024
-VOICE_UPLOAD_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".webm", ".mp4", ".mov"}
-
-
-def _safe_json(path_value: str | None) -> Any:
-    if not path_value:
-        return None
-    path = Path(path_value).resolve()
-    try:
-        path.relative_to(PROJECTS_ROOT)
-    except ValueError:
-        return None
-    if not path.is_file() or path.stat().st_size > MAX_ARTIFACT_BYTES:
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-
-
-def _text(value: Any, limit: int = 4000) -> str:
-    if isinstance(value, str):
-        return value.strip()[:limit]
-    if isinstance(value, list):
-        parts = [_text(item, limit) for item in value]
-        return "\n".join(part for part in parts if part)[:limit]
-    if isinstance(value, dict):
-        for key in ("transcript", "voiceover", "narration", "script", "text", "body", "copy"):
-            if key in value:
-                found = _text(value[key], limit)
-                if found:
-                    return found
-    return ""
-
-
-def _scene_summary(item: Any, index: int) -> dict:
-    if not isinstance(item, dict):
-        return {"number": index + 1, "text": _text(item, 800)}
-    return {
-        "number": item.get("scene") or item.get("number") or item.get("slide") or index + 1,
-        "time": item.get("time") or item.get("timing") or item.get("duration"),
-        "headline": _text(item.get("headline") or item.get("title"), 240),
-        "text": _text(item, 1000),
-        "visual": _text(item.get("visual_concept") or item.get("visual") or item.get("action"), 700),
-    }
-
-
-def _resolved_buyer(campaign: dict, package: dict[str, Any] | None = None, transcript: str = "", platform_copy: dict[str, Any] | None = None) -> str:
-    package = package or {}
-    buyer = _text(package.get("buyer") or campaign.get("buyer"), 120)
-    topic = _text(package.get("title") or package.get("topic") or campaign.get("topic"), 240)
-    return _buyer_label(buyer, topic, transcript, platform_copy or {})
-
-
-def _artifact_summary(campaign: dict) -> dict:
-    package = _safe_json(campaign.get("g1_output_path"))
-    media = _safe_json(campaign.get("media_search_path"))
-    manifest = _safe_json(campaign.get("asset_manifest_path"))
-    artifacts: dict[str, Any] = {}
-    if isinstance(package, dict):
-        scenes = package.get("scenes") or package.get("slides") or []
-        transcript = _text(
-            campaign.get("voice_transcript")
-            or package.get("transcript")
-            or package.get("video_script")
-            or package.get("script")
-            or package.get("narration"),
-        )
-        if not transcript and isinstance(scenes, list):
-            transcript = "\n\n".join(
-                part for part in (_text(scene, 1000) for scene in scenes) if part
-            )[:4000]
-        platform_copy = enrich_platform_copy(package.get("platform_copy") if isinstance(package.get("platform_copy"), dict) else {})
-        resolved_buyer = _resolved_buyer(campaign, package, transcript, platform_copy)
-        artifacts["script"] = {
-            "title": _text(package.get("title") or package.get("topic"), 240),
-            "transcript": transcript,
-            "voice_mode": campaign.get("voice_mode") or "tts",
-            "voice_handoff_ready": bool(campaign.get("voice_handoff_path")),
-            "voice_recording_uploaded": bool(campaign.get("voice_recording_path")),
-            "scenes": [_scene_summary(item, index) for index, item in enumerate(scenes[:12])]
-            if isinstance(scenes, list) else [],
-            "platform_copy": platform_copy,
-            "short_caption_variants": build_short_caption_variants(
-                topic=_text(package.get("title") or package.get("topic"), 240),
-                buyer=resolved_buyer,
-                transcript=transcript,
-                platform_copy=platform_copy,
-            ),
-            "status": package.get("status"),
-        }
-    if media is not None:
-        scenes = media.get("scenes", []) if isinstance(media, dict) else []
-        artifacts["media"] = {
-            "status": media.get("status") if isinstance(media, dict) else None,
-            "scene_count": len(scenes) if isinstance(scenes, list) else 0,
-            "scenes": [_scene_summary(item, index) for index, item in enumerate(scenes[:12])]
-            if isinstance(scenes, list) else [],
-            "assets_acquired": manifest is not None,
-        }
-    if manifest is not None:
-        if isinstance(manifest, list):
-            asset_count = len(manifest)
-        elif isinstance(manifest, dict):
-            assets = manifest.get("assets") or manifest.get("scenes") or manifest.get("items") or []
-            asset_count = len(assets) if isinstance(assets, list) else 0
-        else:
-            asset_count = 0
-        artifacts.setdefault("media", {})["asset_count"] = asset_count
-    if campaign.get("g3_result") is not None:
-        artifacts["drafts"] = campaign["g3_result"]
-    return artifacts
-
-
-def _progress(campaign: dict) -> dict:
-    stage = campaign.get("current_stage") or "growth_intake"
-    base = {
-        "growth_intake": 5, "retry_queued": 5, "g1_queued": 8, "g1_campaign": 18, "g1_review": 28,
-        "media_queued": 32,
-        "media_search": 38, "media_acquisition": 50, "voice_handoff": 58, "voice_render_queued": 62, "variant_rendering": 68,
-        "founder_variant_review": 90, "founder_draft_approval": 93,
-        "g3_queued": 95, "g3_draft_creation": 97, "buffer_review": 100,
-    }.get(stage, 3)
-    variants = campaign.get("variants") or []
-    if stage == "variant_rendering" and variants:
-        finished = sum(item.get("status") in {"ready", "failed"} for item in variants)
-        base = 58 + round(30 * finished / len(variants))
-    if campaign.get("status") == "drafted":
-        base = 100
-    labels = {
-        "growth_intake": "Campaign accepted", "g1_queued": "Script regeneration queued",
-        "g1_campaign": "Writing campaign and script", "media_queued": "Approved script queued for media",
-        "g1_review": "Campaign needs review", "media_search": "Finding scene media",
-        "media_acquisition": "Downloading selected media", "voice_handoff": "Transcript and scene package ready for real voice",
-        "voice_render_queued": "Uploaded narration queued for final render", "variant_rendering": "Rendering video variants",
-        "founder_variant_review": "Choose a video variant", "founder_draft_approval": "Ready for draft approval",
-        "g3_queued": "Draft creation queued", "g3_draft_creation": "Creating Buffer drafts",
-        "buffer_review": "Drafts ready in Buffer", "retry_queued": "Retry queued",
-    }
-    return {"percent": base, "label": labels.get(stage, stage.replace("_", " "))}
-
-
 @router.get("/doctor")
 def doctor():
     config = MarketingConfig.load()
     checks = config.diagnostics()
-    g2 = config.g2_bin
-    if checks["g2_bin"]["ok"]:
-        try:
-            probe = subprocess.run(
-                [str(g2), "--help"], text=True, capture_output=True, timeout=5,
-            )
-            output = f"{probe.stdout}\n{probe.stderr}"
-            required = ["search-media", "acquire-media", "render-mixed-video"]
-            missing = [command for command in required if command not in output]
-            checks["g2_contract"] = {
-                "ok": probe.returncode == 0 and not missing,
-                "required_commands": required,
-                "missing_commands": missing,
-            }
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            checks["g2_contract"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-        g2_python = g2.parent / "python"
-        edge_cli = g2.parent / "edge-tts"
-        try:
-            voice_probe = subprocess.run(
-                [
-                    str(g2_python), "-c",
-                    "import importlib.metadata as m; import edge_tts; print(m.version('edge-tts'))",
-                ],
-                text=True,
-                capture_output=True,
-                timeout=5,
-            )
-            checks["g2_edge_voice"] = {
-                "ok": voice_probe.returncode == 0 and edge_cli.is_file() and edge_cli.stat().st_mode & 0o111 != 0,
-                "package_importable": voice_probe.returncode == 0,
-                "version": voice_probe.stdout.strip() if voice_probe.returncode == 0 else None,
-                "cli_path": str(edge_cli),
-                "cli_executable": edge_cli.is_file() and edge_cli.stat().st_mode & 0o111 != 0,
-                "error": voice_probe.stderr.strip()[-500:] if voice_probe.returncode else None,
-            }
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            checks["g2_edge_voice"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     return {"ok": all(item["ok"] for item in checks.values()), "checks": checks, "draft_only": True}
-
-
-def _slug(value: str, *, fallback: str) -> str:
-    cleaned = "".join(ch.lower() if ch.isalnum() else "-" for ch in str(value or "").strip())
-    normalized = "-".join(part for part in cleaned.split("-") if part)
-    return normalized[:80] or fallback
 
 
 def _forms_base_url() -> str:
@@ -548,102 +315,6 @@ def _generated_utm_campaign(platform: str, post_type: str = "carousel") -> str:
 
 def _manual_post_asset_root(project_slug: str, post_id: str) -> Path:
     return PROJECTS_ROOT / project_slug / "marketing" / "manual_posts" / post_id
-
-
-def _asset_pack_root(project_slug: str, pack_id: str) -> Path:
-    return PROJECTS_ROOT / project_slug / "marketing" / "asset_packs" / pack_id
-
-
-def _asset_pack_index_path(root: Path) -> Path:
-    return root / "asset_pack.json"
-
-
-def _read_asset_pack(root: Path) -> dict[str, Any] | None:
-    path = _asset_pack_index_path(root)
-    if not path.is_file():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    data["root"] = str(root)
-    return data
-
-
-def list_asset_packs(*, project_slug: str, limit: int = 20) -> list[dict[str, Any]]:
-    base = PROJECTS_ROOT / project_slug / "marketing" / "asset_packs"
-    if not base.is_dir():
-        return []
-    roots = sorted((item for item in base.iterdir() if item.is_dir()), key=lambda item: item.name, reverse=True)[: max(1, min(limit, 100))]
-    result = []
-    for item in roots:
-        record = _read_asset_pack(item)
-        if record:
-            result.append(record)
-    return result
-
-
-def _asset_entries(asset_root: Path) -> list[dict[str, Any]]:
-    if not asset_root.is_dir():
-        return []
-    entries = []
-    for item in sorted(asset_root.rglob("*")):
-        if not item.is_file():
-            continue
-        if item.suffix.lower() in {".json", ".log", ".txt"}:
-            continue
-        entries.append({
-            "name": item.name,
-            "relative_path": str(item.relative_to(asset_root)),
-            "size_bytes": item.stat().st_size,
-            "content_type": "video/mp4" if item.suffix.lower() == ".mp4" else "image/jpeg" if item.suffix.lower() in {".jpg", ".jpeg"} else "image/png" if item.suffix.lower() == ".png" else "application/octet-stream",
-        })
-    return entries
-
-
-def _public_asset_pack(record: dict[str, Any]) -> dict[str, Any]:
-    root = Path(record.get("root") or record.get("pack_root") or "").resolve()
-    asset_root = Path(record.get("asset_root") or root / "downloads").resolve()
-    assets = []
-    for item in _asset_entries(asset_root):
-        asset = dict(item)
-        asset["asset_url"] = f"/company/marketing/asset-packs/{record['id']}/files/{item['relative_path']}"
-        assets.append(asset)
-    return {
-        "id": record.get("id"),
-        "title": record.get("title") or record.get("id"),
-        "status": record.get("status") or "ready",
-        "objective": record.get("objective") or "awareness",
-        "video_platform": record.get("video_platform") or "shorts",
-        "scene_count": int(record.get("scene_count") or 0),
-        "source_excerpt": str(record.get("source_excerpt") or "")[:360],
-        "download_path": str(asset_root),
-        "package_path": str(record.get("package_path") or ""),
-        "search_path": str(record.get("search_path") or ""),
-        "asset_manifest_path": str(record.get("asset_manifest_path") or ""),
-        "created_at": record.get("created_at"),
-        "updated_at": record.get("updated_at"),
-        "assets": assets,
-        "scenes": record.get("scenes") or [],
-        "error": record.get("error"),
-        "planning_source": record.get("planning_source"),
-        "planner_error": record.get("planner_error"),
-        "input_word_count": record.get("input_word_count"),
-        "input_paragraph_count": record.get("input_paragraph_count"),
-        "target_duration_seconds": record.get("target_duration_seconds"),
-        "duration_source": record.get("duration_source"),
-        "target_scene_count": record.get("target_scene_count"),
-        "returned_scene_count": record.get("returned_scene_count"),
-    }
-
-
-def _write_asset_pack_record(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
-    payload = dict(payload)
-    payload["pack_root"] = str(root)
-    path = _asset_pack_index_path(root)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    payload["root"] = str(root)
-    return payload
 
 
 def _manual_post_status(post: dict) -> str:
@@ -915,6 +586,12 @@ def _public_manual_post(post: dict) -> dict:
     value["preferred_buffer_account"] = metadata.get("preferred_buffer_account")
     value["workflow_status"] = _manual_post_status(post)
     value["buffer_status"] = _manual_post_buffer_status(post)
+    value["publisher"] = metadata.get("publisher") or "buffer"
+    value["publisher_status"] = metadata.get("publisher_status") or value["buffer_status"]
+    value["publisher_post_ids"] = metadata.get("publisher_post_ids") or metadata.get("buffer_post_ids") or []
+    value["publisher_account"] = metadata.get("publisher_account") or metadata.get("buffer_account")
+    value["publisher_scheduled_at"] = metadata.get("publisher_scheduled_at") or metadata.get("buffer_scheduled_at")
+    value["publisher_send_confirmation"] = metadata.get("publisher_send_confirmation") or metadata.get("buffer_send_confirmation")
     value["buffer_ready"] = value["workflow_status"] in {"ready", "buffer_draft", "scheduled", "published"}
     value["asset_count"] = len(post.get("assets") or [])
     value["assets"] = []
@@ -934,113 +611,6 @@ def _public_manual_post(post: dict) -> dict:
         value["org_name"] = None
         value["org_slug"] = None
     return value
-
-
-def _public_campaign(campaign: dict) -> dict:
-    resolved_buyer = _resolved_buyer(campaign)
-    value = {
-        key: campaign.get(key)
-        for key in (
-            "id", "org_id", "task_id", "objective", "buyer", "topic",
-            "social_platforms", "video_platform", "voice_mode", "voice_transcript", "status", "current_stage",
-            "g1_campaign_id", "selected_variant_id", "g3_status", "g3_result", "voice_handoff_path", "voice_recording_path",
-            "g1_approved_at", "g1_revision_instruction",
-            "error", "created_at", "updated_at",
-        )
-    }
-    value["buyer"] = resolved_buyer
-    value["variants"] = []
-    for variant in campaign.get("variants", []):
-        item = {
-            key: variant.get(key)
-            for key in (
-                "id", "platform", "voice", "speed", "status", "sha256",
-                "duration_seconds", "error", "created_at", "updated_at",
-            )
-        }
-        if variant.get("status") == "ready":
-            item["video_url"] = f"/company/marketing/campaigns/{campaign['id']}/variants/{variant['id']}/video"
-        value["variants"].append(item)
-    if campaign.get("voice_handoff_path"):
-        value["voice_handoff_url"] = f"/company/marketing/campaigns/{campaign['id']}/voice-handoff"
-    value["voice_recording_uploaded"] = bool(campaign.get("voice_recording_path"))
-    value["progress"] = _progress(campaign)
-    value["artifacts"] = _artifact_summary(campaign)
-    value["events"] = list_events(campaign["id"])[-12:]
-    return value
-
-
-@router.post("/asset-packs", response_model=AssetPackCreateResult)
-def create_asset_pack(payload: AssetPackRequest):
-    from core.state import get_active_org
-
-    org = get_active_org()
-    if not org:
-        raise HTTPException(409, "set an active org before creating an asset pack")
-    pack_id = f"assets_{now_iso().replace('-', '').replace(':', '').replace('T', '_')[:15]}"
-    root = _asset_pack_root(org["slug"], pack_id)
-    root.mkdir(parents=True, exist_ok=True)
-    created_at = now_iso()
-    script_path = root / "source_script.txt"
-    script_path.write_text(payload.script.strip() + "\n", encoding="utf-8")
-    package_path = root / "scene_plan.json"
-    search_path = root / "media_search.json"
-    asset_root = root / "downloads"
-    record = _write_asset_pack_record(root, {
-        "id": pack_id,
-        "title": build_pack_title(payload.script),
-        "status": "queued",
-        "objective": payload.objective,
-        "scene_count": 0,
-        "source_excerpt": payload.script[:1200],
-        "source_script_path": str(script_path),
-        "package_path": str(package_path),
-        "search_path": str(search_path),
-        "asset_root": str(asset_root),
-        "asset_manifest_path": str(asset_root / "asset_manifest.json"),
-        "created_at": created_at,
-        "updated_at": created_at,
-        "scenes": [],
-    })
-    spawn_asset_pack(org["slug"], pack_id)
-    return {
-        "ok": True,
-        "pack": _public_asset_pack(record),
-        "message": "Asset pack queued. Images will appear in the org folder when ready.",
-    }
-
-
-@router.get("/asset-packs")
-def asset_packs(limit: int = 20):
-    from core.state import get_active_org
-
-    org = get_active_org()
-    org_slug = org["slug"] if org else None
-    packs = list_asset_packs(project_slug=org_slug, limit=limit) if org_slug else []
-    return {"packs": [_public_asset_pack(item) for item in packs]}
-
-
-@router.get("/asset-packs/{pack_id}/files/{relative_path:path}")
-def asset_pack_file(pack_id: str, relative_path: str):
-    from core.state import get_active_org
-
-    org = get_active_org()
-    if not org:
-        raise HTTPException(404, "asset pack not found")
-    root = _asset_pack_root(org["slug"], pack_id).resolve()
-    record = _read_asset_pack(root)
-    if not record:
-        raise HTTPException(404, "asset pack not found")
-    asset_root = Path(record.get("asset_root") or root / "downloads").resolve()
-    path = (asset_root / relative_path).resolve()
-    try:
-        path.relative_to(asset_root)
-    except ValueError as exc:
-        raise HTTPException(403, "asset path is outside the company workspace") from exc
-    if not path.is_file():
-        raise HTTPException(404, "asset file not found")
-    media_type = "video/mp4" if path.suffix.lower() == ".mp4" else "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "image/png" if path.suffix.lower() == ".png" else "application/octet-stream"
-    return FileResponse(path, media_type=media_type, filename=path.name)
 
 
 @router.post("/manual-posts/preview", response_model=ManualPostPreviewView)
@@ -1087,12 +657,17 @@ def preview_manual_post(payload: ManualPostPreviewRequest):
 def create_manual_post_session(payload: ManualPostSessionRequest):
     from core.state import get_active_org, get_org
 
-    if payload.org_id is not None:
+    from core.auth_context import current_org_id
+
+    scoped_org = current_org_id.get()
+    if scoped_org and payload.org_id is not None and int(payload.org_id) != int(scoped_org):
+        raise HTTPException(404, "org not found")
+    if payload.org_id is not None and not scoped_org:
         org = get_org(payload.org_id)
         if not org:
             raise HTTPException(404, "org not found")
     else:
-        org = get_active_org()
+        org = get_org(int(scoped_org)) if scoped_org else get_active_org()
         if not org:
             raise HTTPException(409, "set an active org before saving a manual post")
     clean_platform = payload.platform.strip().lower()
@@ -1101,11 +676,24 @@ def create_manual_post_session(payload: ManualPostSessionRequest):
     post_type = payload.post_type.strip().lower()
     if post_type not in {"carousel", "video"}:
         raise HTTPException(422, "post_type must be carousel or video")
+    is_free = (org.get("plan") or "paid") == "free"
+    publisher_name = (payload.publisher or ("webhook" if is_free else "buffer")).strip().lower()
+    if is_free and publisher_name != "webhook":
+        raise HTTPException(403, "free workspaces publish through their own webhook connection")
     try:
-        from services.buffer_setup import normalize_account_name
-        preferred_buffer_account = normalize_account_name(payload.buffer_account or "default")
-    except ValueError as exc:
+        selected_publisher = get_publisher(publisher_name)
+    except PublisherError as exc:
         raise HTTPException(422, str(exc)) from exc
+    if publisher_name != "buffer" and not selected_publisher.accounts():
+        raise HTTPException(409, f"{publisher_name} publisher is not configured")
+    if publisher_name == "buffer":
+        try:
+            from services.buffer_setup import normalize_account_name
+            preferred_account = normalize_account_name(payload.buffer_account or "default")
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    else:
+        preferred_account = (payload.buffer_account or "").strip() or None
     clean_post_id = _generated_post_id(clean_platform, post_type)
     generated_campaign_id = _generated_campaign_id(clean_platform, post_type)
     generated_source_detail = _generated_source_detail(clean_platform, post_type)
@@ -1148,8 +736,11 @@ def create_manual_post_session(payload: ManualPostSessionRequest):
                 "post_type": post_type,
                 "link_label": link_label,
                 "workflow_status": "uploading",
+                "publisher": publisher_name,
+                "publisher_status": "not_started",
+                "publisher_account": preferred_account,
                 "buffer_status": "not_started",
-                "preferred_buffer_account": preferred_buffer_account,
+                "preferred_buffer_account": preferred_account if publisher_name == "buffer" else None,
             },
         )
     except Exception as exc:
@@ -1236,7 +827,8 @@ def finalize_manual_post(post_record_id: str):
         title=generated_title,
         metadata_json=json.dumps(metadata, ensure_ascii=False),
     )
-    return {"ok": True, "post": _public_manual_post(updated), "message": f"{post_type.title()} saved locally and marked ready for Buffer handoff."}
+    publisher_name = str(metadata.get("publisher") or "buffer")
+    return {"ok": True, "post": _public_manual_post(updated), "message": f"{post_type.title()} saved locally and marked ready for {publisher_name} handoff."}
 
 
 @router.post("/manual-posts", response_model=ManualPostCreateResult)
@@ -1247,6 +839,7 @@ async def create_manual_post_from_ui(
     link_label: str | None = Form(default=None),
     org_id: int | None = Form(default=None),
     buffer_account: str | None = Form(default=None),
+    publisher: str | None = Form(default=None),
     assets: list[UploadFile] = File(default=[]),
 ):
     session = create_manual_post_session(ManualPostSessionRequest(
@@ -1256,6 +849,7 @@ async def create_manual_post_from_ui(
         link_label=link_label,
         org_id=org_id,
         buffer_account=buffer_account,
+        publisher=publisher,
     ))
     post = session["post"]
     for upload in assets:
@@ -1264,9 +858,218 @@ async def create_manual_post_from_ui(
     return {"ok": True, "post": finalized["post"], "message": "Manual post saved with backend-generated tracking and caption."}
 
 
+def _scoped_org_id() -> int:
+    from core.auth_context import current_org_id
+
+    return int(current_org_id.get() or 0)
+
+
+def _ensure_org_scope(org_id: int) -> None:
+    scoped = _scoped_org_id()
+    if scoped and int(org_id) != scoped:
+        raise HTTPException(404, "org not found")
+
+
+def _block_free_buffer() -> None:
+    from core.state import get_org
+
+    scoped = _scoped_org_id()
+    if scoped and (get_org(scoped) or {}).get("plan") == "free":
+        raise HTTPException(403, "free workspaces use their own publisher webhook")
+
+
+def _publisher_for_post(post: dict[str, Any]):
+    from core.auth_context import current_org_id
+    from core.state import get_org
+
+    name = str((post.get("metadata") or {}).get("publisher") or "buffer").strip().lower()
+    scoped = current_org_id.get()
+    if scoped and int(post.get("org_id") or 0) != int(scoped):
+        raise HTTPException(404, "manual post not found")
+    if scoped:
+        org = get_org(int(scoped))
+        if org and (org.get("plan") or "paid") == "free" and name != "webhook":
+            raise HTTPException(403, "free workspaces publish through their own webhook connection")
+    try:
+        return get_publisher(name)
+    except PublisherError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+
+
+def _publisher_http_error(exc: PublisherError) -> HTTPException:
+    return HTTPException(exc.status_code, str(exc))
+
+
+@router.get("/publishers")
+def publishers():
+    return {"publishers": publisher_catalog()}
+
+
+@router.get("/publisher-accounts")
+def publisher_accounts(publisher: str | None = None):
+    from core.auth_context import current_org_id
+    from core.state import get_org
+
+    scoped = current_org_id.get()
+    if scoped:
+        org = get_org(int(scoped))
+        if org and (org.get("plan") or "paid") == "free" and (publisher or "buffer") == "buffer":
+            raise HTTPException(403, "free workspaces do not use the shared Buffer account")
+    try:
+        selected = get_publisher(publisher)
+        accounts = selected.accounts()
+    except PublisherError as exc:
+        raise _publisher_http_error(exc) from exc
+    return {
+        "publisher": selected.name,
+        "label": selected.label,
+        "capabilities": capabilities_dict(selected),
+        "error": next((account.details.get("error") for account in accounts if account.details.get("error")), None),
+        "accounts": [
+            {
+                "name": account.name,
+                "label": account.label,
+                "platforms": list(account.platforms),
+                "details": account.details,
+            }
+            for account in accounts
+        ],
+    }
+
+
+@router.post("/manual-posts/{post_record_id}/publish", dependencies=[Depends(verify_founder_action)])
+def publish_manual_post(post_record_id: str, payload: PublishRequest):
+    """Schedule a finalized manual post through its configured publisher."""
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    selected = _publisher_for_post(post)
+    try:
+        if payload.action == "draft":
+            return selected.draft(post, payload.account)
+        return selected.schedule(
+            post,
+            account=payload.account,
+            mode=payload.mode,
+            due_at=payload.due_at,
+        )
+    except PublisherError as exc:
+        raise _publisher_http_error(exc) from exc
+
+
+@router.post("/manual-posts/{post_record_id}/publish/async", status_code=202, dependencies=[Depends(verify_founder_action)])
+def queue_manual_post_publish(post_record_id: str, payload: PublishRequest, background_tasks: BackgroundTasks):
+    """Queue a provider schedule so Cloudflare's ~125s edge timeout cannot
+    turn a completed provider call into an ambiguous 524 response."""
+    from core.jobs_store import create_publish_job
+    from core.quotas import org_plan
+
+    if payload.action != "schedule":
+        raise HTTPException(422, "async publish currently supports schedule only")
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    selected = _publisher_for_post(post)
+    org_id = int(post.get("org_id") or 0)
+    if org_plan(org_id) == "free" and selected.name != "webhook":
+        raise HTTPException(403, "free workspaces publish through their own webhook connection")
+    job = create_publish_job(org_id, post_record_id)
+    background_tasks.add_task(
+        _run_publish_job,
+        job["id"],
+        post_record_id,
+        payload.model_dump(mode="json"),
+    )
+    return {"ok": True, "job": job}
+
+
+def _run_publish_job(job_id: str, post_record_id: str, payload: dict[str, Any]) -> None:
+    from core.jobs_store import update_publish_job
+    from core.quotas import org_plan
+
+    update_publish_job(job_id, status="running")
+    try:
+        post = _get_manual_post(post_record_id)
+        if not post:
+            raise PublisherError("manual post no longer exists", 404)
+        org_id = int(post.get("org_id") or 0)
+        selected = _publisher_for_post(post)
+        if org_plan(org_id) == "free" and selected.name != "webhook":
+            raise PublisherError("free workspaces publish through their own webhook connection", 403)
+        result = selected.schedule(
+            post,
+            account=payload.get("account"),
+            mode=str(payload.get("mode") or "queue"),
+            due_at=payload.get("due_at"),
+        )
+        update_publish_job(job_id, status="completed", result=result)
+    except Exception as exc:  # noqa: BLE001 - job status must record any provider failure
+        update_publish_job(job_id, status="failed", error=str(exc)[:1000])
+
+
+@router.get("/publish-jobs/{job_id}")
+def get_publish_job_status(job_id: str):
+    from core.jobs_store import get_publish_job
+    from core.state import get_active_org
+
+    active = get_active_org()
+    if not active:
+        raise HTTPException(409, "no active org")
+    job = get_publish_job(job_id, int(active["id"]))
+    if not job:
+        raise HTTPException(404, "publish job not found")
+    return job
+
+
+@router.post("/manual-posts/{post_record_id}/publish/draft")
+def draft_manual_post(post_record_id: str, payload: PublishRequest):
+    """Create a provider draft. Buffer supports this; the webhook does not."""
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    selected = _publisher_for_post(post)
+    try:
+        return selected.draft(post, payload.account)
+    except PublisherError as exc:
+        raise _publisher_http_error(exc) from exc
+
+
+@router.post("/manual-posts/{post_record_id}/publish/confirm", dependencies=[Depends(verify_founder_action)])
+def confirm_manual_post_publish(post_record_id: str):
+    """Ask the configured publisher for the fate of every saved provider post."""
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    selected = _publisher_for_post(post)
+    try:
+        return selected.confirm(post)
+    except PublisherError as exc:
+        raise _publisher_http_error(exc) from exc
+
+
+@router.get("/manual-posts/{post_record_id}/publish/insights")
+def manual_post_publish_insights(post_record_id: str, post_id: str | None = None):
+    post = get_manual_post(post_record_id)
+    if not post:
+        raise HTTPException(404, "manual post not found")
+    selected = _publisher_for_post(post)
+    selected_id = post_id
+    if not selected_id:
+        metadata = post.get("metadata") or {}
+        saved = metadata.get("publisher_post_ids") or metadata.get("buffer_post_ids") or []
+        selected_id = str(saved[0]) if saved else ""
+    if not selected_id:
+        raise HTTPException(409, "this manual post has no saved provider post ID")
+    try:
+        return selected.insights(post, selected_id)
+    except PublisherError as exc:
+        raise _publisher_http_error(exc) from exc
+
+
 @router.get("/buffer-accounts", response_model=BufferAccountsView)
 def buffer_accounts():
     """Named Buffer accounts configured in g3.env (keys never leave the server)."""
+    _block_free_buffer()
     try:
         from core.sales_store import connect as _connect
         with _connect() as connection:
@@ -1353,6 +1156,7 @@ def _classify_provider_status(raw: object) -> str:
 @router.get("/manual-posts/{post_record_id}/buffer-insights", response_model=BufferInsightsView)
 def manual_post_buffer_insights(post_record_id: str, post_id: str | None = None):
     """Read one saved Buffer post's provider state and optional personal-key metrics."""
+    _block_free_buffer()
     post = get_manual_post(post_record_id)
     if not post:
         raise HTTPException(404, "manual post not found")
@@ -1400,6 +1204,7 @@ def confirm_manual_post_send(post_record_id: str):
     """
     from core.state import now_iso
 
+    _block_free_buffer()
     post = get_manual_post(post_record_id)
     if not post:
         raise HTTPException(404, "manual post not found")
@@ -1466,6 +1271,7 @@ def confirm_manual_post_send(post_record_id: str):
 
 @router.post("/manual-posts/{post_record_id}/buffer-draft")
 def create_manual_post_buffer_draft(post_record_id: str, buffer_account: str | None = None):
+    _block_free_buffer()
     accounts = _clean_buffer_accounts(buffer_account)
     post = get_manual_post(post_record_id)
     if not post:
@@ -1523,6 +1329,7 @@ def create_manual_post_buffer_draft(post_record_id: str, buffer_account: str | N
 
 @router.post("/manual-posts/{post_record_id}/buffer-schedule", response_model=BufferScheduleResult, dependencies=[Depends(verify_founder_action)])
 def schedule_manual_post_buffer(post_record_id: str, payload: BufferScheduleRequest, buffer_account: str | None = None):
+    _block_free_buffer()
     accounts = _clean_buffer_accounts(buffer_account)
     post = get_manual_post(post_record_id)
     if not post:
@@ -1533,6 +1340,13 @@ def schedule_manual_post_buffer(post_record_id: str, payload: BufferScheduleRequ
         raise HTTPException(409, "Buffer scheduling is already running for this post")
     if payload.mode == "timed" and not payload.due_at:
         raise HTTPException(422, "timed scheduling requires due_at")
+    from core.quotas import QuotaExceeded, enforce_quota, record_usage, retry_after_seconds
+
+    org_id = int(post.get("org_id") or 0)
+    try:
+        enforce_quota(org_id, "publishes")
+    except QuotaExceeded as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(retry_after_seconds(exc))}) from exc
     config = MarketingConfig.load()
     if not config.g3_bin.is_file():
         raise HTTPException(409, f"G3 command not found: {config.g3_bin}")
@@ -1587,6 +1401,7 @@ def schedule_manual_post_buffer(post_record_id: str, payload: BufferScheduleRequ
         completed_metadata.pop("buffer_error", None)
     completed_metadata["workflow_status"] = "scheduled"
     updated = update_manual_post(post_record_id, metadata_json=json.dumps(completed_metadata, ensure_ascii=False))
+    record_usage(org_id, "publishes", f"{post_record_id}:{','.join(scheduled_ids) or '-'}")
     when = f" for {payload.due_at}" if payload.mode == "timed" else " in the Buffer queue"
     names = ", ".join(accounts)
     return {"ok": True, "post": _public_manual_post(updated), "result": outputs, "message": f"Buffer post scheduled{when} (accounts: {names})."}
@@ -1594,12 +1409,15 @@ def schedule_manual_post_buffer(post_record_id: str, payload: BufferScheduleRequ
 
 @router.get("/orgs")
 def marketing_orgs():
-    from core.state import get_org_capabilities, list_orgs
+    from core.state import get_org, get_org_capabilities, list_orgs
     from engines.g3.g3_runtime.accounts import list_accounts
 
-    env_accounts = list_accounts()
+    scoped = _scoped_org_id()
+    env_accounts = [] if scoped and (get_org(scoped) or {}).get("plan") == "free" else list_accounts()
     orgs = []
-    for org in list_orgs():
+    for org in ([get_org(scoped)] if scoped else list_orgs()):
+        if not org:
+            continue
         prefix = (org.get("env_prefix") or "BUFFER_").upper()
         accounts = []
         for acct in env_accounts:
@@ -1638,6 +1456,8 @@ class MarketingOrgCreateRequest(BaseModel):
 
 @router.post("/orgs", response_model=MarketingOrgCreateResult)
 def create_marketing_org(payload: MarketingOrgCreateRequest):
+    if _scoped_org_id():
+        raise HTTPException(403, "additional organizations are not available on this account")
     import re
     from core.state import (
         create_org,
@@ -1698,6 +1518,7 @@ class OrgCapabilitiesRequest(BaseModel):
 def get_org_capabilities_route(org_id: int):
     from core.state import get_org, get_org_capabilities
 
+    _ensure_org_scope(org_id)
     if not get_org(org_id):
         raise HTTPException(404, "org not found")
     return {"org_id": org_id, "capabilities": get_org_capabilities(org_id)}
@@ -1707,6 +1528,7 @@ def get_org_capabilities_route(org_id: int):
 def set_org_capabilities_route(org_id: int, payload: OrgCapabilitiesRequest):
     from core.state import get_org, set_org_capabilities, VALID_CAPABILITIES
 
+    _ensure_org_scope(org_id)
     if not get_org(org_id):
         raise HTTPException(404, "org not found")
     try:
@@ -1720,6 +1542,7 @@ def set_org_capabilities_route(org_id: int, payload: OrgCapabilitiesRequest):
 def set_active(payload: ManualPostOrgRequest):
     from core.state import get_org, set_active_org
 
+    _ensure_org_scope(payload.org_id)
     org = get_org(payload.org_id)
     if not org:
         raise HTTPException(404, "org not found")
@@ -1738,6 +1561,8 @@ def assign_manual_post_org(post_record_id: str, payload: ManualPostOrgRequest):
     post = get_manual_post(post_record_id)
     if not post:
         raise HTTPException(404, "manual post not found")
+    _ensure_org_scope(int(post.get("org_id") or 0))
+    _ensure_org_scope(payload.org_id)
     org = get_org(payload.org_id)
     if not org:
         raise HTTPException(404, "org not found")
@@ -1893,273 +1718,3 @@ def manual_post_asset(post_record_id: str, asset_index: int):
     return FileResponse(asset_path, media_type=str(asset.get("content_type") or "application/octet-stream"))
 
 
-@router.post("/campaigns", response_model=CampaignCreateResult)
-def create_campaign_from_ui(payload: CampaignLaunchRequest):
-    from core.state import create_task, get_active_org
-    from core.marketing_store import create_campaign
-
-    org = get_active_org()
-    if not org:
-        raise HTTPException(409, "set an active org before launching a campaign")
-
-    social_platforms = list(dict.fromkeys(item.strip().lower() for item in payload.social_platforms if item.strip()))
-    if not social_platforms:
-        raise HTTPException(422, "choose at least one social platform")
-    voice_mode = payload.voice_mode.strip().lower()
-    voice_transcript = (payload.voice_transcript or "").strip() or None
-    campaign_brief = payload.brief.strip()
-    transcript_note = f" Use this approved narration transcript: {voice_transcript}" if voice_transcript else ""
-    request = (
-        f"Create a {payload.objective} marketing campaign. Infer the best buyer and topic from this direction: {campaign_brief}. "
-        f"Prepare {', '.join(social_platforms)} drafts and a {payload.video_platform} video variant using {voice_mode}.{transcript_note}"
-    )
-    task = create_task(
-        org_id=org["id"],
-        agent="growth",
-        task_type="campaign",
-        input_text=request,
-    )
-    campaign = create_campaign(
-        org_id=org["id"],
-        task_id=task["id"],
-        request=request,
-        objective=payload.objective.strip(),
-        buyer="ai_selected",
-        topic=campaign_brief,
-        social_platforms=social_platforms,
-        video_platform=payload.video_platform.strip().lower(),
-        voice_mode=voice_mode,
-        voice_transcript=voice_transcript,
-    )
-    spawn(campaign["id"], "pipeline")
-    return {
-        "ok": True,
-        "campaign": _public_campaign(campaign),
-        "message": "Campaign accepted. Growth, media, and rendering are now running in the background.",
-    }
-
-
-@router.get("/campaigns")
-def campaigns(limit: int = 20):
-    from core.state import get_active_org
-
-    org = get_active_org()
-    packs = list_asset_packs(project_slug=org["slug"], limit=limit) if org else []
-    return {
-        "campaigns": [_public_campaign(item) for item in list_campaigns(limit=limit)],
-        "manual_posts": [_public_manual_post(item) for item in list_manual_posts(limit=limit)],
-        "asset_packs": [_public_asset_pack(item) for item in packs],
-    }
-
-
-@router.get("/campaigns/{campaign_id}")
-def campaign(campaign_id: str):
-    item = get_campaign(campaign_id)
-    if not item:
-        raise HTTPException(404, "campaign not found")
-    return _public_campaign(item)
-
-
-@router.get("/campaigns/{campaign_id}/voice-handoff")
-def campaign_voice_handoff(campaign_id: str):
-    campaign = get_campaign(campaign_id)
-    if not campaign:
-        raise HTTPException(404, "campaign not found")
-    path = Path(campaign.get("voice_handoff_path") or "").resolve()
-    if not path.is_file():
-        raise HTTPException(404, "voice handoff is not ready")
-    try:
-        path.relative_to(PROJECTS_ROOT)
-    except ValueError as exc:
-        raise HTTPException(403, "voice handoff path is outside the company workspace") from exc
-    return FileResponse(path, media_type="application/json", filename=path.name)
-
-
-@router.post("/campaigns/{campaign_id}/voice-recording")
-async def upload_campaign_voice_recording(campaign_id: str, recording: UploadFile = File(...)):
-    campaign = get_campaign(campaign_id)
-    if not campaign:
-        raise HTTPException(404, "campaign not found")
-    if str(campaign.get("voice_mode") or "tts") != "real_voice":
-        raise HTTPException(409, "campaign is not using real voice mode")
-    if campaign.get("status") not in {"needs_voice_recording", "failed"}:
-        raise HTTPException(409, "campaign is not waiting for a voice recording")
-    filename = Path(recording.filename or "narration.wav").name
-    suffix = Path(filename).suffix.lower()
-    if suffix not in VOICE_UPLOAD_EXTENSIONS:
-        raise HTTPException(422, "unsupported voice recording format")
-    campaign_root = (PROJECTS_ROOT / (Path(campaign.get("g1_output_path") or "").resolve().relative_to(PROJECTS_ROOT).parts[0]) )
-    voice_dir = Path(campaign.get("g1_output_path") or "").resolve().parent / "voice"
-    try:
-        voice_dir.relative_to(PROJECTS_ROOT)
-    except ValueError as exc:
-        raise HTTPException(403, "voice recording path is outside the company workspace") from exc
-    voice_dir.mkdir(parents=True, exist_ok=True)
-    target = voice_dir / filename
-    with target.open("wb") as handle:
-        shutil.copyfileobj(recording.file, handle)
-    update_campaign(
-        campaign_id,
-        voice_recording_path=str(target),
-        status="queued",
-        current_stage="voice_render_queued",
-        error=None,
-    )
-    add_event(campaign_id, "voice.recording_uploaded", {"filename": filename, "size_bytes": target.stat().st_size})
-    spawn(campaign_id, "real_voice")
-    refreshed = get_campaign(campaign_id)
-    return {"ok": True, "campaign": _public_campaign(refreshed), "message": "Voice recording uploaded and final render queued."}
-
-
-@router.get("/campaigns/{campaign_id}/variants/{variant_id}/video")
-def variant_video(campaign_id: str, variant_id: str):
-    campaign = get_campaign(campaign_id)
-    variant = get_variant(variant_id)
-    if not campaign or not variant or variant["campaign_id"] != campaign_id:
-        raise HTTPException(404, "video variant not found")
-    path = Path(variant.get("video_path") or "").resolve()
-    expected_root = (
-        Path(__file__).parent.parent
-        / "projects"
-    ).resolve()
-    try:
-        path.relative_to(expected_root)
-    except ValueError as exc:
-        raise HTTPException(403, "video path is outside the company workspace") from exc
-    if variant.get("status") != "ready" or not path.is_file() or path.suffix.lower() != ".mp4":
-        raise HTTPException(404, "video file is not ready")
-    return FileResponse(path, media_type="video/mp4")
-
-
-@router.post("/campaigns/{campaign_id}/variants/{variant_id}/select", dependencies=[Depends(verify_founder_action)])
-def select_variant(campaign_id: str, variant_id: str):
-    campaign = get_campaign(campaign_id)
-    variant = get_variant(variant_id)
-    if not campaign or not variant or variant["campaign_id"] != campaign_id:
-        raise HTTPException(404, "video variant not found")
-    if campaign["status"] not in {"variants_ready", "selected"}:
-        raise HTTPException(409, "campaign is not ready for variant selection")
-    if variant["status"] != "ready":
-        raise HTTPException(409, "video variant is not ready")
-    update_campaign(
-        campaign_id,
-        selected_variant_id=variant_id,
-        status="selected",
-        current_stage="founder_draft_approval",
-        error=None,
-    )
-    add_event(campaign_id, "founder.variant_selected", {"variant_id": variant_id})
-    return {"ok": True, "campaign_id": campaign_id, "selected_variant_id": variant_id}
-
-
-@router.post("/campaigns/{campaign_id}/drafts", dependencies=[Depends(verify_founder_action)])
-def create_drafts(campaign_id: str):
-    campaign = get_campaign(campaign_id)
-    if not campaign:
-        raise HTTPException(404, "campaign not found")
-    if campaign["status"] != "selected" or not campaign.get("selected_variant_id"):
-        raise HTTPException(409, "select a video variant first")
-    if campaign["g3_status"] in {"queued", "running", "drafted"}:
-        raise HTTPException(409, f"G3 is already {campaign['g3_status']}")
-    update_campaign(
-        campaign_id,
-        g3_status="queued",
-        status="drafting",
-        current_stage="g3_queued",
-        error=None,
-    )
-    add_event(campaign_id, "founder.g3_drafts_approved", {"draft_only": True})
-    spawn(campaign_id, "g3")
-    return {"ok": True, "campaign_id": campaign_id, "g3_status": "queued", "publish_allowed": False}
-
-
-@router.post("/campaigns/{campaign_id}/approve-script", response_model=CampaignTransitionResult, dependencies=[Depends(verify_founder_action)])
-def approve_script(campaign_id: str):
-    campaign = get_campaign(campaign_id)
-    if not campaign:
-        raise HTTPException(404, "campaign not found")
-    if campaign["status"] != "needs_campaign_review" or not campaign.get("g1_output_path"):
-        raise HTTPException(409, "campaign is not waiting for script approval")
-    approved_at = now_iso()
-    update_task_status(int(campaign["task_id"]), "queued")
-    update_campaign(
-        campaign_id,
-        g1_approved_at=approved_at,
-        status="queued",
-        current_stage="media_queued",
-        error=None,
-    )
-    add_event(campaign_id, "founder.g1_approved", {"approved_at": approved_at})
-    spawn(campaign_id, "media")
-    return {"ok": True, "campaign_id": campaign_id, "status": "queued", "next_stage": "media_search"}
-
-
-@router.post("/campaigns/{campaign_id}/regenerate-script", dependencies=[Depends(verify_founder_action)])
-def regenerate_script(campaign_id: str, payload: dict = Body(default={})):
-    campaign = get_campaign(campaign_id)
-    if not campaign:
-        raise HTTPException(404, "campaign not found")
-    if campaign["status"] not in {"needs_campaign_review", "failed"}:
-        raise HTTPException(409, "campaign is not available for script regeneration")
-    direction = str(payload.get("direction") or "").strip()
-    if len(direction) < 10 or len(direction) > 500:
-        raise HTTPException(422, "new creative direction must be between 10 and 500 characters")
-    cleared = clear_variants(campaign_id)
-    update_task_status(int(campaign["task_id"]), "queued")
-    update_campaign(
-        campaign_id,
-        g1_approved_at=None,
-        g1_revision_instruction=direction,
-        media_search_path=None,
-        asset_root=None,
-        asset_manifest_path=None,
-        selected_variant_id=None,
-        g3_handoff_path=None,
-        g3_status="not_requested",
-        g3_result_json=None,
-        status="queued",
-        current_stage="g1_queued",
-        error=None,
-    )
-    add_event(campaign_id, "founder.g1_regeneration_requested", {
-        "direction": direction,
-        "cleared_variant_records": cleared,
-    })
-    spawn(campaign_id, "pipeline")
-    return {"ok": True, "campaign_id": campaign_id, "status": "queued", "next_stage": "g1_campaign"}
-
-
-@router.post("/campaigns/{campaign_id}/retry", response_model=CampaignTransitionResult, dependencies=[Depends(verify_founder_action)])
-def retry_campaign(campaign_id: str):
-    campaign = get_campaign(campaign_id)
-    if not campaign:
-        raise HTTPException(404, "campaign not found")
-    if campaign["status"] == "needs_campaign_review":
-        raise HTTPException(409, "approve the saved script or regenerate it with a new direction")
-    if campaign["status"] != "failed":
-        raise HTTPException(409, "only failed campaigns can be retried")
-    if campaign["g3_status"] == "failed" and campaign.get("selected_variant_id"):
-        update_campaign(
-            campaign_id,
-            status="drafting",
-            current_stage="g3_queued",
-            g3_status="queued",
-            error=None,
-        )
-        add_event(campaign_id, "founder.g3_retry", {"draft_only": True})
-        spawn(campaign_id, "g3")
-        return {"ok": True, "campaign_id": campaign_id, "g3_status": "queued"}
-    media_stages = {
-        "pipeline", "media_queued", "media_search", "media_acquisition", "variant_rendering",
-    }
-    resume_stage = "media" if campaign.get("g1_output_path") and campaign.get("current_stage") in media_stages else "pipeline"
-    update_task_status(int(campaign["task_id"]), "queued")
-    update_campaign(
-        campaign_id,
-        status="queued",
-        current_stage="media_queued" if resume_stage == "media" else "g1_queued",
-        error=None,
-    )
-    add_event(campaign_id, "founder.retry", {"resume_stage": resume_stage})
-    spawn(campaign_id, resume_stage)
-    return {"ok": True, "campaign_id": campaign_id, "status": "queued", "resume_stage": resume_stage}

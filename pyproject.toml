@@ -11,6 +11,7 @@ dependencies = [
   "beautifulsoup4>=4.12,<5",
   # Keep the OpenHands browser toolchain on the tested compatibility set.
   "browser-use==0.11.13",
+  "cryptography>=42,<51",
   "email-validator>=2.2,<3",
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
@@ -18,7 +19,8 @@ dependencies = [
   "openhands-sdk==1.42.1",
   "openhands-tools==1.42.1",
   "pydantic>=2.13.4,<2.14",
-  "pydantic-ai==2.31.1",
+  "pydantic-ai-slim==2.53.0",
+  "openai>=2.26,<3",
   "python-dotenv>=1,<2",
   "python-multipart>=0.0.18,<1",
   "trafilatura>=2,<3",

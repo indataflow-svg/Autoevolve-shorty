@@ -37,25 +37,14 @@ def main() -> int:
     for name, ready in providers.items():
         print(f"  {name}: {'configured' if ready else 'optional / disabled'}")
 
-    media_bins = ("MARKETING_G1_BIN", "MARKETING_G2_BIN", "MARKETING_G3_BIN")
-    for name in media_bins:
-        raw = os.getenv(name, "").strip()
-        path = Path(raw).expanduser() if raw else None
-        print(f"  {name}: {'ready' if path and path.is_file() else 'optional / unavailable'}")
+    raw = os.getenv("MARKETING_G3_BIN", "").strip()
+    path = Path(raw).expanduser() if raw else None
+    print(f"  MARKETING_G3_BIN: {'ready' if path and path.is_file() else 'optional / unavailable'}")
 
-    # Local toolchain needed for setup/dev/media. Non-fatal, but explicit.
+    # Local toolchain needed for setup/dev. Non-fatal, but explicit.
     print(f"  python: {sys.version.split()[0]} (need 3.12+)")
-    print(f"  ffmpeg: {'ready' if shutil.which('ffmpeg') else 'missing (install ffmpeg for G2 rendering)'}")
+    print(f"  ffmpeg: {'ready' if shutil.which('ffmpeg') else 'optional (not required for manual posts)'}")
     print(f"  node: {shutil.which('node') or 'missing (needed only for OmniRoute gateway)'}")
-
-    # Brand-asset placeholders intentionally do not exist; warn early.
-    for name in ("MARKETING_G2_SHOWCASE", "MARKETING_G2_OUTRO"):
-        raw = os.getenv(name, "").strip()
-        if not raw:
-            print(f"  {name}: not set (set to an owned file before publishing)")
-        else:
-            exists = (ROOT / raw).exists() if not Path(raw).is_absolute() else Path(raw).exists()
-            print(f"  {name}: {'ready' if exists else 'placeholder / missing file (see docs/keys.md)'}")
 
     if not providers["model router (OMNIROUTE_API_KEY)"]:
         print("  note: dashboard, /health and /docs start without OMNIROUTE_API_KEY;")

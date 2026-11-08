@@ -43,6 +43,13 @@ from core.workflow_store import create_workflow
 
 router = APIRouter(prefix="/company/marketing/validation", tags=["market-validation"])
 
+
+def _org() -> int:
+    from core.state import get_active_org
+
+    active = get_active_org()
+    return int(active["id"]) if active else 0
+
 # Canonical automation name. The /marketing/validation routes above stay working
 # so existing clients and tests keep passing; new code should use these, which
 # live under their own /company/automation root and cannot overlap with the
@@ -82,9 +89,9 @@ def _routable_context():
     if routing.routing_error:
         # The record exists but this build cannot route its state: say that first.
         raise HTTPException(409, routing.routing_error)
-    context = get_company_context()
+    context = get_company_context(_org())
     if context is None:
-        raise HTTPException(409, "no company context is stored; complete onboarding first")
+        raise HTTPException(409, "no company context is stored; complete Get Started first")
     if routing.next_stage != "market_validation":
         # Two different blocks wear the same status code: nothing recorded yet,
         # versus a recorded stage this build cannot route. Say which one it is.
@@ -142,10 +149,26 @@ async def _create_plan(hints: PlanHint | None = None) -> ValidationPlanRecord:
         raise HTTPException(422, f"channel {channel_hint!r} is not a supported validation channel")
     # Imported here so a missing optional dependency cannot break the API import.
     from agents.hermes import HermesError, HermesOutputError, plan_market_validation
+    from core.plan_input import PlanInputError, build_plan_input, save_plan_input
+
+    org = _org()
+    from core.quotas import QuotaExceeded, enforce_quota, record_usage, retry_after_seconds
 
     try:
+        enforce_quota(org, "plans")
+    except QuotaExceeded as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(retry_after_seconds(exc))}) from exc
+    try:
+        plan_input = build_plan_input(org)
+    except PlanInputError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    try:
         result = await plan_market_validation(
-            context, method_hint=method_hint or None, channel_hint=channel_hint or None)
+            context,
+            method_hint=method_hint or None,
+            channel_hint=channel_hint or None,
+            plan_input=plan_input,
+        )
     except HermesOutputError as exc:
         raise HTTPException(
             502, f"Hermes did not return a valid validation plan: {exc}"
@@ -159,9 +182,12 @@ async def _create_plan(hints: PlanHint | None = None) -> ValidationPlanRecord:
             502, f"market validation failed: {type(exc).__name__}: {exc}"
         ) from exc
 
-    record = build_plan_record(result.plan, result.provenance, result.grounding)
+    record = build_plan_record(result.plan, result.provenance, result.grounding, org_id=org)
     try:
-        return save_validation_plan(record)
+        saved = save_validation_plan(record)
+        save_plan_input(plan_input)
+        record_usage(org, "plans", saved.id)
+        return saved
     except sqlite3.Error as exc:
         # Never report a plan that is not stored.
         raise HTTPException(500, f"validation plan could not be saved: {exc}") from exc
@@ -183,7 +209,7 @@ def read_evidence() -> dict:
     """
     from core.evidence import collect_evidence
 
-    return collect_evidence()
+    return collect_evidence(_org())
 
 
 @automation_router.post("/suggest")
@@ -197,20 +223,7 @@ def suggest_next_runs() -> dict:
     """
     from core.suggest import suggest_workflows
 
-    return suggest_workflows()
-
-
-@automation_router.post("/suggest-campaign")
-def suggest_campaign_move() -> dict:
-    """Propose the marketing move from evidence. Advisory only.
-
-    Video lines carry their source fields, missing slots are listed with the
-    exact field to fill, and the campaign path and provider follow recorded
-    results. Nothing is created or queued.
-    """
-    from core.suggest import suggest_campaign
-
-    return suggest_campaign()
+    return suggest_workflows(_org())
 
 
 @automation_router.get("/plan", response_model=ValidationPlanRecord)
@@ -220,14 +233,15 @@ def read_workflows_validation_plan():
 
 
 def _read_plan() -> ValidationPlanRecord:
-    record = get_latest_validation_plan()
+    record = get_latest_validation_plan(_org())
     if record is None:
         raise HTTPException(404, "no validation plan has been generated yet")
     return record
 
 
 def _stored_plan(plan_id: str | None) -> ValidationPlanRecord:
-    record = get_validation_plan(plan_id) if plan_id else get_latest_validation_plan()
+    org = _org()
+    record = get_validation_plan(plan_id, org) if plan_id else get_latest_validation_plan(org)
     if record is None:
         raise HTTPException(404, "no validation plan has been generated yet")
     return record
@@ -238,9 +252,9 @@ def _governed_context():
     routing = stored_route_state()
     if routing.routing_error:
         raise HTTPException(409, routing.routing_error)
-    context = get_company_context()
+    context = get_company_context(_org())
     if context is None:
-        raise HTTPException(409, "no company context is stored; complete onboarding first")
+        raise HTTPException(409, "no company context is stored; complete Get Started first")
     if routing.next_stage != "market_validation":
         raise HTTPException(
             409,
@@ -270,7 +284,7 @@ def read_workflows_governance():
 
 
 def _read_governance() -> GovernanceRecord:
-    record = latest_governance()
+    record = latest_governance(_org())
     if record is None:
         raise HTTPException(404, "no plan has been validated for execution yet")
     return record
@@ -297,8 +311,8 @@ def _create_governed_workflow(payload: WorkflowFromPlan | None = None) -> Govern
 
     context = _governed_context()
     plan_record = _stored_plan(payload.plan_id if payload else None)
-    decision, _ = validate_plan(plan_record.plan, context, plan_id=plan_record.id)
-    record = save_governance(record_from_decision(decision))
+    decision, _ = validate_plan(plan_record.plan, context, plan_id=plan_record.id, org_id=_org())
+    record = save_governance(record_from_decision(decision, org_id=_org()))
     if decision.status == "blocked":
         return record
 
@@ -316,11 +330,13 @@ def _create_governed_workflow(payload: WorkflowFromPlan | None = None) -> Govern
             "config": {
                 "plan_id": plan_record.id,
                 "governance_id": record.id,
+                "org_id": _org(),
                 "validation_plan": plan_record.plan.workflow_template,
                 "simulation": True,
             },
         },
         success_metric={"type": "qualified_leads", "target": float(targets or 0)},
+        org_id=_org(),
     )
     # Governance authorizes; the workflow starts as an unexecuted draft.
     workflow.state = WorkflowState(status="draft")
@@ -340,7 +356,8 @@ def approve_workflows_governance(payload: ApprovalPayload | None = None):
 
 
 def _approve_governance(payload: ApprovalPayload | None = None) -> GovernanceRecord:
-    record = latest_governance()
+    org = _org()
+    record = latest_governance(org)
     if record is None:
         raise HTTPException(404, "no plan has been validated for execution yet")
     if record.status == "blocked":
@@ -389,7 +406,7 @@ def _runtime_limit_violations(record: GovernanceRecord, targets: list[str]) -> l
     the plan was validated.
     """
     limits = _stored_plan(record.plan_id).plan.limits
-    caps = GovernanceLimits.load()
+    caps = GovernanceLimits.load(record.org_id or 0)
     reasons: list[str] = []
 
     if limits.max_spend_usd is not None and limits.max_spend_usd > caps.max_spend_usd:
@@ -449,7 +466,8 @@ def _run_governance(payload: SimulationRun | None = None) -> GovernanceRecord:
     from services.workflow_actions import observe_validation_events
     from services.workflow_runner import run_workflow
 
-    record = latest_governance()
+    org = _org()
+    record = latest_governance(org)
     if record is None:
         raise HTTPException(404, "no plan has been validated for execution yet")
     if record.status == "blocked":
@@ -470,6 +488,12 @@ def _run_governance(payload: SimulationRun | None = None) -> GovernanceRecord:
             422,
             "the approved limits no longer cover this run: " + "; ".join(violations),
         )
+    from core.quotas import QuotaExceeded, enforce_quota, record_usage, retry_after_seconds
+
+    try:
+        enforce_quota(org, "runs")
+    except QuotaExceeded as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(retry_after_seconds(exc))}) from exc
     if targets:
         # Simulation targets are written into the existing step config; nothing
         # is resolved against a provider.
@@ -500,9 +524,11 @@ def _run_governance(payload: SimulationRun | None = None) -> GovernanceRecord:
             for item in executed.state.results
         ],
     }
-    return save_governance(record.model_copy(update={
+    saved = save_governance(record.model_copy(update={
         "executed_at": _now(), "execution": execution,
     }))
+    record_usage(org, "runs", f"{executed.id}:{saved.executed_at}")
+    return saved
 
 
 class AutomationWorkflowView(BaseModel):
@@ -528,8 +554,9 @@ def list_automation_workflows(limit: int = 20):
     init_governance_db()
     with connect() as db:
         rows = db.execute(
-            "SELECT id FROM validation_workflows ORDER BY created_at DESC, rowid DESC LIMIT ?",
-            (max(1, min(limit, 100)),),
+            "SELECT id FROM validation_workflows WHERE org_id=? "
+            "ORDER BY created_at DESC, rowid DESC LIMIT ?",
+            (_org(), max(1, min(limit, 100))),
         ).fetchall()
     from core.plan_governance import get_governance
 

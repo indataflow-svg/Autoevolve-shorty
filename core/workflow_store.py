@@ -1,6 +1,6 @@
 """Persistent workflow definitions and execution state.
 
-The workflow layer coordinates the existing G1/G2/G3/Company Core capabilities;
+The workflow layer coordinates the remaining Company Core capabilities;
 it does not re-implement any of them. This module owns only the workflow
 document, its state machine vocabulary, and durable storage.
 
@@ -32,16 +32,10 @@ StepStatus = Literal["completed", "failed", "skipped"]
 SuccessMetricType = Literal["engagement", "leads", "qualified_leads", "meetings", "conversion"]
 
 # Every action the workflow engine can run. Kept as data (not an enum) so the
-# runner can validate against it and tests can assert the exact surface. The
-# first five drive G1/G2/G3 and the existing sales store; `simulate_outreach` is
-# the only side-effect-free action, used by governance to prove a market
-# validation plan end to end without contacting anyone.
+# runner can validate against it and tests can assert the exact surface.
+# ``simulate_outreach`` is the only side-effect-free action, used by governance
+# to prove a market-validation plan end to end without contacting anyone.
 WORKFLOW_ACTIONS = (
-    "g1_strategy",
-    "generate_assets",
-    "publish",
-    "collect_results",
-    "evaluate",
     "simulate_outreach",
     "draft_outreach",
     "research_prospects",
@@ -157,6 +151,7 @@ class WorkflowState(StrictModel):
 
 class Workflow(StrictModel):
     id: str
+    org_id: int = 0
     name: str
     objective: str = ""
     trigger: WorkflowTrigger = Field(default_factory=WorkflowTrigger)
@@ -178,6 +173,7 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS workflows (
                 id TEXT PRIMARY KEY,
+                org_id INTEGER NOT NULL DEFAULT 0,
                 name TEXT NOT NULL,
                 objective TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'draft',
@@ -188,6 +184,24 @@ def init_db() -> None:
             );
             """
         )
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(workflows)").fetchall()
+        }
+        if "org_id" not in columns:
+            conn.execute(
+                "ALTER TABLE workflows ADD COLUMN org_id INTEGER NOT NULL DEFAULT 0"
+            )
+            try:
+                from core.state import get_active_org
+
+                active = get_active_org()
+                if active:
+                    conn.execute(
+                        "UPDATE workflows SET org_id = ? WHERE org_id = 0",
+                        (int(active["id"]),),
+                    )
+            except Exception:
+                pass
 
 
 def save_workflow(workflow: Workflow) -> Workflow:
@@ -198,9 +212,10 @@ def save_workflow(workflow: Workflow) -> Workflow:
     with connect() as conn:
         conn.execute(
             """
-            INSERT INTO workflows (id, name, objective, status, current_step, definition_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO workflows (id, org_id, name, objective, status, current_step, definition_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
+                org_id = excluded.org_id,
                 name = excluded.name,
                 objective = excluded.objective,
                 status = excluded.status,
@@ -210,6 +225,7 @@ def save_workflow(workflow: Workflow) -> Workflow:
             """,
             (
                 workflow.id,
+                workflow.org_id,
                 workflow.name,
                 workflow.objective,
                 workflow.state.status,
@@ -230,11 +246,13 @@ def build_workflow(
     trigger: dict[str, Any] | None = None,
     success_metric: dict[str, Any] | None = None,
     workflow_id: str | None = None,
+    org_id: int = 0,
 ) -> Workflow:
     """Construct (but do not persist) a workflow document; raises ValueError if malformed."""
     timestamp = now_iso()
     return Workflow(
         id=workflow_id or new_id(),
+        org_id=int(org_id or 0),
         name=name,
         objective=objective,
         trigger=WorkflowTrigger.model_validate(trigger or {}),
@@ -254,10 +272,11 @@ def create_workflow(
     trigger: dict[str, Any] | None = None,
     success_metric: dict[str, Any] | None = None,
     workflow_id: str | None = None,
+    org_id: int = 0,
 ) -> Workflow:
     workflow = build_workflow(
         name=name, objective=objective, steps=steps, trigger=trigger,
-        success_metric=success_metric, workflow_id=workflow_id,
+        success_metric=success_metric, workflow_id=workflow_id, org_id=org_id,
     )
     return save_workflow(workflow)
 
@@ -266,23 +285,32 @@ def get_workflow(workflow_id: str) -> Workflow | None:
     init_db()
     with connect() as conn:
         row = conn.execute(
-            "SELECT definition_json FROM workflows WHERE id = ?", (workflow_id,)
+            "SELECT definition_json, org_id FROM workflows WHERE id = ?", (workflow_id,)
         ).fetchone()
     if not row:
         return None
     try:
-        return Workflow.model_validate(json.loads(row["definition_json"]))
-    except ValidationError:
+        workflow = Workflow.model_validate(json.loads(row["definition_json"]))
+        return workflow.model_copy(update={"org_id": int(row["org_id"] or 0)})
+    except (ValidationError, KeyError, TypeError):
         return None
 
 
-def list_workflows(limit: int = 50, *, status: str | None = None) -> list[Workflow]:
+def list_workflows(
+    limit: int = 50, *, status: str | None = None, org_id: int | None = None
+) -> list[Workflow]:
     init_db()
-    query = "SELECT definition_json FROM workflows"
+    query = "SELECT definition_json, org_id FROM workflows"
     values: list[Any] = []
+    filters: list[str] = []
     if status:
-        query += " WHERE status = ?"
+        filters.append("status = ?")
         values.append(status)
+    if org_id is not None:
+        filters.append("org_id = ?")
+        values.append(int(org_id))
+    if filters:
+        query += " WHERE " + " AND ".join(filters)
     query += " ORDER BY created_at DESC, rowid DESC LIMIT ?"
     values.append(max(1, min(limit, 200)))
     with connect() as conn:
@@ -290,7 +318,8 @@ def list_workflows(limit: int = 50, *, status: str | None = None) -> list[Workfl
     workflows: list[Workflow] = []
     for row in rows:
         try:
-            workflows.append(Workflow.model_validate(json.loads(row["definition_json"])))
-        except ValidationError:
+            workflow = Workflow.model_validate(json.loads(row["definition_json"]))
+            workflows.append(workflow.model_copy(update={"org_id": int(row["org_id"] or 0)}))
+        except (ValidationError, KeyError, TypeError):
             continue
     return workflows

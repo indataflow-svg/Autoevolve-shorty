@@ -1,0 +1,24 @@
+# Scheduled maintenance. Install as:
+#   sudo cp deploy/cron.d/autoevolve /etc/cron.d/autoevolve
+#   sudo chmod 644 /etc/cron.d/autoevolve
+# Edit APP_DIR below to the checkout path on the host.
+#
+# Format: minute hour day-of-month month day-of-week user command
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+APP_DIR=/opt/autoevolve
+
+# Snapshot + verify. The database is the product; this is the safety net.
+0 2 * * * root APP_DIR=/opt/autoevolve /opt/autoevolve/deploy/daily-jobs.sh backup
+
+# Refresh the world-data store (EDGAR, CommonCrawl, GLEIF enrichment inputs).
+0 3 * * * root APP_DIR=/opt/autoevolve /opt/autoevolve/deploy/daily-jobs.sh ingest
+
+# Graceful worker replacement at a quiet hour. Replaces max_requests-style
+# recycling, which would kill multi-minute renders.
+0 4 * * * root APP_DIR=/opt/autoevolve /opt/autoevolve/deploy/daily-jobs.sh reload
+
+# TLS renewal. Certbot already schedules itself when installed via apt; this
+# line keeps renewal tied to the nginx reload that actually serves the cert.
+17 4 * * * root APP_DIR=/opt/autoevolve /opt/autoevolve/deploy/daily-jobs.sh cert

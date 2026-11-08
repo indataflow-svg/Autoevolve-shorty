@@ -474,7 +474,7 @@ class ValidationApiTests(unittest.TestCase):
         clear_company_context()
         response = self.post_plan()
         self.assertEqual(response.status_code, 409)
-        self.assertIn("onboarding", response.json()["detail"])
+        self.assertIn("Get Started", response.json()["detail"])
         self.assertIsNone(get_latest_validation_plan())
 
     def test_incomplete_context_is_refused_rather_than_invented(self):
@@ -581,32 +581,36 @@ class RoutingToValidationTests(unittest.TestCase):
         state.DB_PATH = self.old_state
         self.temporary.cleanup()
 
-    def test_onboarding_to_market_validation_to_persisted_plan(self):
-        started = self.client.post("/company/setup/onboarding/company", auth=self.auth, headers=self.headers, json={
-            "name": "Northlight Ops", "website": "https://northlight.example",
-            "objective": "Get the first ten paying customers", "market": "United States",
-        })
-        self.assertEqual(started.status_code, 200, started.text)
-        confirmed = self.client.post("/company/setup/onboarding/company/confirm", auth=self.auth, headers=self.headers, json={
-            "name": "Northlight Ops", "website": "https://northlight.example",
-            "description": "Northlight Ops runs a managed operations desk for small logistics teams.",
-            "industry": "Logistics", "positioning": "Operations teams get a clean handoff record in one week.",
-            "offer_summary": "A two-week managed operations setup plus monthly review.",
-            "product_name": "Managed Operations Desk",
-            "product_description": "A guided setup and monthly review of the customer's operations handoffs.",
-            "ideal_customer": "Logistics companies with 20-200 people running dispatch on spreadsheets",
-            "buyer_roles": ["Operations Director", "Founder"],
-            "problem": "Dispatch handoffs live in spreadsheets, so missed loads are found late.",
-            "urgency": "Missed loads are charged back within the same week.",
-            "alternatives": ["Spreadsheet templates", "Freight broker software"],
-            "existing_customers": ["Two design partners running the desk since March"],
-            "testimonials": ["Operations Director, design partner: handoffs stopped falling through"],
-            "traction": ["Two paid setups"],
-            "pricing": "$4,000 setup plus $1,500 per month",
-            "channels": ["Email", "LinkedIn"],
-            "team": ["Founder"],
-            "operational_constraints": ["Founder writes all outbound personally"],
-            "marketing_stage": "starting_from_zero",
+    def test_get_started_context_to_market_validation_to_persisted_plan(self):
+        confirmed = self.client.put("/company/context", auth=self.auth, headers=self.headers, json={
+            "company": {
+                "name": "Northlight Ops", "website": "https://northlight.example",
+                "description": "Northlight Ops runs a managed operations desk for small logistics teams.",
+            },
+            "product": {
+                "name": "Managed Operations Desk",
+                "description": "A guided setup and monthly review of the customer's operations handoffs.",
+            },
+            "customer": {
+                "ideal_customer": "Logistics companies with 20-200 people running dispatch on spreadsheets",
+                "buyer_roles": ["Operations Director", "Founder"],
+            },
+            "market": {
+                "problem": "Dispatch handoffs live in spreadsheets, so missed loads are found late.",
+                "urgency": "Missed loads are charged back within the same week.",
+                "alternatives": ["Spreadsheet templates", "Freight broker software"],
+                "market": "United States",
+            },
+            "evidence": {
+                "existing_customers": ["Two design partners running the desk since March"],
+                "testimonials": ["Operations Director, design partner: handoffs stopped falling through"],
+                "traction": ["Two paid setups"],
+            },
+            "offer": {"pricing": "$4,000 setup plus $1,500 per month"},
+            "resources": {"channels": ["Email", "LinkedIn"], "team": ["Founder"]},
+            "constraints": {"operational": ["Founder writes all outbound personally"]},
+            "objective": {"primary_goal": "Get the first ten paying customers"},
+            "state": {"marketing_stage": "starting_from_zero"},
         })
         self.assertEqual(confirmed.status_code, 200, confirmed.text)
         view = confirmed.json()
@@ -626,7 +630,6 @@ class RoutingToValidationTests(unittest.TestCase):
                 "/company/automation/plan", auth=self.auth, headers=self.headers,
             )
         self.assertEqual(planned.status_code, 200, planned.text)
-        # Hermes received exactly the persisted context, nothing else.
         supplied = generate.await_args.args[0]
         self.assertEqual(supplied.state.marketing_stage, "starting_from_zero")
         self.assertEqual(supplied.evidence.traction, ["Two paid setups"])

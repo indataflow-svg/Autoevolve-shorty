@@ -15,9 +15,10 @@ def company_public_url() -> str:
 
 
 def company_forms_url() -> str:
+    # Default to the hosted contact form (/f/contact), which is a real route.
     return (
-        os.getenv("COMPANY_FORMS_URL", f"{company_public_url()}/contact").strip()
-        or f"{company_public_url()}/contact"
+        os.getenv("COMPANY_FORMS_URL", f"{company_public_url()}/f/contact").strip()
+        or f"{company_public_url()}/f/contact"
     ).rstrip("/")
 
 

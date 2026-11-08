@@ -15,7 +15,7 @@ from html import escape, unescape
 from typing import Any
 
 from core.sales_store import (
-    add_event, claim_draft_for_send, contact_profile_for_lead, count_company_profile_attempts, create_draft, get_company_profile,
+    add_event, add_interaction, claim_draft_for_send, contact_profile_for_lead, count_company_profile_attempts, create_draft, get_company_profile,
     get_draft, get_draft_by_provider_message_id, get_lead, get_lead_by_email, list_leads, list_sending_drafts,
     mark_send_unknown, merge_lead_metadata, normalize_company_domain, mark_replied, mark_sent,
     record_contact_resolution, release_send_claim, score_lead, suppress_lead,
@@ -23,6 +23,7 @@ from core.sales_store import (
 )
 from services.apollo import ApolloClient, ApolloError
 from services.company_enrich import CompanyEnrichClient, CompanyEnrichError, company_usage_profile
+from services import gleif as gleif_service
 from services.pdl import PeopleDataLabsClient, PeopleDataLabsError
 from services.hunter import HunterClient, HunterError
 from services.prospeo import ProspeoClient, ProspeoError
@@ -750,19 +751,25 @@ def _check_hunter() -> None:
 
 
 def _company_search_steps(
-    industry: str, location: str | None, limit: int, order: list[str] | None = None,
-) -> list[tuple[str, Any, tuple[type[BaseException], ...]]]:
+    industry: str, location: str | None, limit: int,
+    order: list[str] | None = None, org_id: int = 0,
+) -> tuple[list[tuple[str, Any, tuple[type[BaseException], ...]]], list[str]]:
+    from core.quotas import claim_provider
     from services import provider_registry as registry
 
     specs = registry.providers_for("company_search", order=order or COMPANY_SEARCH_ORDER)
     steps = []
+    skipped: list[str] = []
     for spec in specs:
+        if not claim_provider(org_id, spec.name, "company_search"):
+            skipped.append(f"{spec.name}: provider quota reached or free plan")
+            continue
         assert spec.search_companies is not None
         search = spec.search_companies
         steps.append((spec.name,
                       lambda search=search: search(industry, location, limit),
                       spec.error_types))
-    return steps
+    return steps, skipped
 
 
 def _research_result_key(item: dict[str, Any]) -> str | None:
@@ -930,7 +937,10 @@ def _rank_research_results(
     ]
 
 
-def research_market_leads(*, industry: str, location: str | None = None, limit_per_provider: int = 5) -> dict[str, Any]:
+def research_market_leads(
+    *, industry: str, location: str | None = None, limit_per_provider: int = 5,
+    org_id: int = 0,
+) -> dict[str, Any]:
     normalized_industry = industry.strip()
     normalized_location = location.strip() if location else None
     if len(normalized_industry) < 2:
@@ -940,8 +950,11 @@ def research_market_leads(*, industry: str, location: str | None = None, limit_p
 
     # Same fan-out contract as always (every supplier tried, merged, deduped);
     # now driven by the registry instead of a hardcoded call list.
+    steps, skipped = _company_search_steps(
+        normalized_industry, normalized_location, limit_per_provider, org_id=org_id
+    )
     run = registry.run_waterfall(
-        _company_search_steps(normalized_industry, normalized_location, limit_per_provider),
+        steps,
         target=None,
         key_fn=_research_result_key,
         warn_fn=_provider_failure_note,
@@ -955,7 +968,7 @@ def research_market_leads(*, industry: str, location: str | None = None, limit_p
         for provider in providers:
             if provider not in known:
                 known.append(provider)
-    warnings = list(run["warnings"])
+    warnings = list(skipped) + list(run["warnings"])
     if oc_warning and oc_warning not in warnings:
         warnings.append(oc_warning)
     ranked = _rank_research_results(run["results"], sources, _research_result_key, normalized_industry, oc_notes)
@@ -972,6 +985,7 @@ def research_market_leads(*, industry: str, location: str | None = None, limit_p
 def waterfall_company_search(
     *, industry: str, location: str | None = None, target: int = 10,
     limit_per_provider: int = 5, order: list[str] | None = None,
+    org_id: int = 0,
 ) -> dict[str, Any]:
     """Company search that stops when it has enough.
 
@@ -991,8 +1005,11 @@ def waterfall_company_search(
 
     from services import provider_registry as registry
 
+    steps, skipped = _company_search_steps(
+        normalized_industry, normalized_location, limit_per_provider, order, org_id
+    )
     run = registry.run_waterfall(
-        _company_search_steps(normalized_industry, normalized_location, limit_per_provider, order),
+        steps,
         target=target,
         key_fn=_research_result_key,
         warn_fn=_provider_failure_note,
@@ -1000,7 +1017,7 @@ def waterfall_company_search(
     return {
         "results": run["results"],
         "providers": run["providers"],
-        "warnings": run["warnings"],
+        "warnings": list(skipped) + list(run["warnings"]),
         "waterfall": run["waterfall"],
         "mode": "company_first",
         "contact_enrichment": "on_demand",
@@ -1140,11 +1157,62 @@ def _ordered_company_profile_providers(requested: str) -> list[str]:
         offset = count_company_profile_attempts() % len(available)
         ordered = available[offset:] + available[:offset]
         return ordered
+    if chosen == "gleif":
+        return ["gleif"]
     if chosen not in {"companyenrich", "pdl"}:
         raise ValueError("unsupported company profile provider")
     if chosen not in available:
         raise ValueError(f"{chosen} is not configured")
     return [chosen] + [provider for provider in available if provider != chosen]
+
+
+def _resolve_gleif_identity(domain: str, lead: dict) -> tuple[dict, dict] | None:
+    """Free GLEIF identity for the lead's company name, or None.
+
+    Returns (raw_identity, summary) in ladder shape. The legal name is a
+    candidate, never a verified truth: it backfills an empty lead company
+    only, and never overwrites a stored name.
+    """
+    name = (lead.get("company") or "").strip()
+    if not name:
+        return None
+    identity = gleif_service.resolve_identity(name)
+    if not identity:
+        return None
+    location = {
+        "city": identity.get("city"),
+        "state": None,
+        "country": identity.get("country"),
+    }
+    summary = {
+        "name": identity.get("legal_name") or name,
+        "domain": domain,
+        "website": f"https://{domain}",
+        "description": None,
+        "industry": None,
+        "industries": [],
+        "categories": [],
+        "keywords": [],
+        "employee_count": None,
+        "employee_range": None,
+        "revenue_range": None,
+        "linkedin_url": None,
+        "location": location,
+        "technologies": [],
+        "specialties": [],
+        "target_markets": [],
+        "signals": {},
+        "lei": identity.get("lei"),
+        "legal_name": identity.get("legal_name"),
+        "jurisdiction": identity.get("jurisdiction"),
+        "entity_status": identity.get("entity_status"),
+        "registration_status": identity.get("registration_status"),
+        "managing_lou": identity.get("managing_lou"),
+        "direct_parent": identity.get("direct_parent"),
+        "identity_confidence": identity.get("identity_confidence"),
+        "source": "gleif",
+    }
+    return identity, summary
 
 
 def _resolve_company_profile_once(provider: str, domain: str, lead: dict) -> tuple[dict, dict]:
@@ -1169,7 +1237,8 @@ def resolve_company_profile(lead_id: str, provider: str = "auto", force: bool = 
     domain = normalize_company_domain(lead.get("company_domain"))
     if not domain:
         raise ValueError("company profile resolution requires a company domain")
-    cached = get_company_profile(domain)
+    org = int(lead.get("org_id") or 0)
+    cached = get_company_profile(domain, org)
     if cached and not force and cached.get("status") == "resolved":
         add_event(lead_id, "company_profile.cache_hit", {"provider": cached.get("provider"), "domain": domain})
         return {
@@ -1183,7 +1252,49 @@ def resolve_company_profile(lead_id: str, provider: str = "auto", force: bool = 
 
     attempts: list[dict[str, str]] = []
     last_error = "company enrichment failed"
+    requested = str(provider or "auto").strip().lower()
+    # Step zero: free GLEIF identity before any paid call. A hit short-circuits
+    # the ladder; a miss falls through silently on "auto", and is an honest
+    # error on an explicit "gleif" request.
+    if requested in ("auto", "gleif"):
+        found = _resolve_gleif_identity(domain, lead)
+        if found is not None:
+            payload, summary = found
+            stored = upsert_company_profile(
+                domain,
+                provider="gleif",
+                status="resolved",
+                company_name=summary.get("name") or lead.get("company"),
+                summary=summary,
+                raw=payload,
+                org_id=org,
+            )
+            if not (lead.get("company") or "").strip() and summary.get("name"):
+                update_lead(lead_id, company=summary.get("name"))
+            updated_lead = get_lead(lead_id) or lead
+            add_event(lead_id, "company_profile.resolved", {
+                "provider": "gleif", "domain": domain,
+                "company": summary.get("name"), "lei": summary.get("lei"),
+                "free": True, "attempts": attempts,
+            })
+            return {
+                "ok": True,
+                "cached": False,
+                "provider": "gleif",
+                "free": True,
+                "domain": domain,
+                "lead": updated_lead,
+                "company_profile": stored,
+                "attempts": attempts,
+            }
+        if requested == "gleif":
+            raise ValueError("gleif found no record for this company name")
+    from core.quotas import claim_provider
+
     for chosen in _ordered_company_profile_providers(provider):
+        if not claim_provider(org, chosen, "company_profile"):
+            attempts.append({"provider": chosen, "error": "provider quota reached or free plan"})
+            continue
         try:
             payload, summary = _resolve_company_profile_once(chosen, domain, lead)
             stored = upsert_company_profile(
@@ -1193,6 +1304,7 @@ def resolve_company_profile(lead_id: str, provider: str = "auto", force: bool = 
                 company_name=summary.get("name") or lead.get("company"),
                 summary=summary,
                 raw=payload,
+                org_id=org,
             )
             if summary.get("name") or summary.get("domain"):
                 update_lead(
@@ -1225,6 +1337,7 @@ def resolve_company_profile(lead_id: str, provider: str = "auto", force: bool = 
         company_name=lead.get("company"),
         summary={},
         raw={"error": last_error, "attempts": attempts},
+        org_id=org,
     )
     add_event(lead_id, "company_profile.failed", {"provider": provider, "domain": domain, "error": last_error, "attempts": attempts})
     return {
@@ -1262,6 +1375,10 @@ def resolve_contact(lead_id: str, provider: str = "prospeo", force: bool = False
     person_id = metadata.get("prospeo_person_id")
     if not person_id:
         raise ValueError("prospeo contact resolution requires a stored prospeo_person_id")
+    from core.quotas import claim_provider
+
+    if not claim_provider(lead.get("org_id") or 0, chosen, "contact_resolution"):
+        raise ValueError(f"{chosen} provider quota reached or free plan")
     client = ProspeoClient()
     try:
         payload = client.enrich_person(str(person_id))
@@ -1325,6 +1442,10 @@ def enrich_lead(lead_id: str, provider: str = "hunter") -> dict:
         raise ValueError("lead not found")
     if lead["stage"] == "suppressed":
         raise ValueError("suppressed leads cannot be enriched")
+    from core.quotas import claim_provider
+
+    if not claim_provider(lead.get("org_id") or 0, chosen, "enrich"):
+        raise ValueError(f"{chosen} provider quota reached or free plan")
     if chosen == "lusha":
         client = LushaClient()
         try:
@@ -2480,6 +2601,13 @@ def send_approved(draft_id: str) -> dict:
     draft = get_draft(draft_id)
     if not draft:
         raise ValueError("draft not found")
+    from core.quotas import org_plan
+
+    lead = get_lead(draft["lead_id"])
+    if lead and org_plan(lead.get("org_id")) == "free":
+        raise PermissionError(
+            "real cold outreach is not included on the free plan; use the daily publish loop or upgrade"
+        )
     if draft["status"] == "send_unknown":
         raise ValueError(
             "send outcome is unknown; reconcile this draft (mark sent or release) before sending again"

@@ -20,22 +20,29 @@ Approval and sending are separate actions. Suppression, bounces, replies, and
 meetings stop the follow-up sequence. Contact and company resolution are cached;
 `force=true` spends another credit.
 
-## Publishing lifecycle: G1 to attribution
+## Publishing lifecycle: manual post to attribution
 
 ```text
-brief (objective/buyer/topic/platforms)
-  -> G1 package (knowledge/*.json validates copy)       (engines/g1)
-  -> YOUR script review (approve / regenerate)
-  -> G2 media search + acquire + render                  (engines/g2, FFmpeg)
-  -> variant selection
-  -> G3 draft-only Buffer handoff + R2 upload            (engines/g3, g3.env)
+operator uploads carousel images or one MP4        (Content page)
+  -> POST /company/marketing/manual-posts/session
+  -> /manual-posts/{id}/assets -> /manual-posts/{id}/finalize
+  -> backend caption + tracked URL (?utm_campaign, campaign_id, post_id)
+  -> G3 draft-only Buffer handoff + R2 upload       (engines/g3, g3.env)
   -> YOUR Buffer approval -> publish
-  -> tracked URL (?utm_campaign, campaign_id, post_id)
-  -> form submit -> lead -> company -> opportunity
+  -> POST /manual-posts/{id}/buffer-confirm          (provider verdict)
+  -> tracked URL -> form submit -> lead -> company -> opportunity
 ```
 
-Campaigns waiting for review must be approved or regenerated, not retried.
-`marketing_manual_posts` carries `campaign_id/post_id/tracked_url/source_detail`;
-leads store the same fields verbatim for post-level attribution.
-See [Product Tour](product-tour.md), [First Sales Outreach](first-outreach.md),
-and [First Marketing Campaign](first-campaign.md).
+Generated campaigns and video production were removed. Manual posts are the only
+marketing path; a Buffer draft or scheduled post is never labelled published
+unless the provider reports it sent.
+
+**Publisher seam.** The manual post stores a `publisher` (default `buffer`) and
+provider-neutral `publisher_*` metadata. `services/publishers/` exposes one
+small port: `accounts`, `draft`, `schedule`, `confirm`, `insights`.
+`BufferPublisher` calls the existing G3 functions unchanged; `WebhookPublisher`
+posts a signed JSON contract to `PUBLISHER_WEBHOOK_URL` and exposes media
+through short-lived signed URLs. A Buffer draft or scheduled post is never
+labelled published unless the provider says `sent`. `marketing_manual_posts` carries
+`campaign_id/post_id/tracked_url/source_detail`; leads store the same fields
+verbatim for post-level attribution.

@@ -22,11 +22,6 @@ GATED_ROUTES = [
     "/company/monitor/run",
     "/company/monitor/run/api",
     # P0-2: marketing approvals and external publishing
-    "/company/marketing/campaigns/camp_1/variants/var_1/select",
-    "/company/marketing/campaigns/camp_1/drafts",
-    "/company/marketing/campaigns/camp_1/approve-script",
-    "/company/marketing/campaigns/camp_1/regenerate-script",
-    "/company/marketing/campaigns/camp_1/retry",
     "/company/marketing/manual-posts/post_1/buffer-schedule",
 ]
 

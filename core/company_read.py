@@ -33,7 +33,7 @@ def _strings(value: Any) -> list[str]:
     return [item.strip() for item in value if isinstance(item, str) and item.strip()] if isinstance(value, list) else []
 
 
-def _collect() -> dict[str, dict[str, Any]]:
+def _collect(org_id: int | None = None) -> dict[str, dict[str, Any]]:
     companies: dict[str, dict[str, Any]] = {}
 
     def bucket(company_id: str, *, domain: str | None, name: str | None) -> dict[str, Any]:
@@ -53,15 +53,23 @@ def _collect() -> dict[str, dict[str, Any]]:
         return companies[company_id]
 
     with connect() as connection:
+        profile_where = "" if org_id is None else " WHERE org_id = ?"
+        profile_values = [] if org_id is None else [int(org_id)]
         profiles = connection.execute(
             "SELECT domain, company_name, provider, status, summary_json, fetched_at, updated_at "
-            "FROM sales_company_profiles"
+            "FROM sales_company_profiles" + profile_where,
+            profile_values,
         ).fetchall()
+        lead_where = "WHERE (company IS NOT NULL OR company_domain IS NOT NULL)"
+        lead_values = []
+        if org_id is not None:
+            lead_where += " AND (org_id = ? OR org_id IS NULL)" if int(org_id) == 0 else " AND org_id = ?"
+            lead_values.append(int(org_id))
         leads = connection.execute(
             "SELECT id, full_name, job_title, email, company, company_domain, country, "
             "source, stage, updated_at, metadata_json FROM sales_leads "
-            "WHERE company IS NOT NULL OR company_domain IS NOT NULL "
-            "ORDER BY updated_at DESC, id DESC"
+            + lead_where + " ORDER BY updated_at DESC, id DESC",
+            lead_values,
         ).fetchall()
 
     for row in profiles:
@@ -123,9 +131,9 @@ def _collect() -> dict[str, dict[str, Any]]:
 
 def list_company_records(
     *, page: int, page_size: int, query: str, view: str, sort: str,
-    industry: str = "", country: str = "",
+    industry: str = "", country: str = "", org_id: int | None = None,
 ) -> tuple[list[dict[str, Any]], int, dict[str, int]]:
-    values = list(_collect().values())
+    values = list(_collect(org_id).values())
     metrics = {
         "total": len(values),
         "candidates": sum(bool(item["candidate"]) for item in values),
@@ -159,6 +167,8 @@ def list_company_records(
     return [{key: item[key] for key in SUMMARY_FIELDS} for item in slice_], total, metrics
 
 
-def get_company_record(company_id: str) -> dict[str, Any] | None:
-    item = _collect().get(company_id)
+def get_company_record(
+    company_id: str, org_id: int | None = None
+) -> dict[str, Any] | None:
+    item = _collect(org_id).get(company_id)
     return dict(item) if item else None

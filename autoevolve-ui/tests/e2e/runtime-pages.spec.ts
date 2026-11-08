@@ -13,9 +13,9 @@ test('every operator route renders with successful API reads and no browser erro
   await page.getByLabel('Password').fill('browser-secret')
   await page.getByRole('button', { name: 'Sign in' }).click()
   const pages = [
-    ['/onboarding', 'First-run setup'], ['/home', 'Home'], ['/contacts', 'Contacts'],
+    ['/onboarding', 'Set the company context.'], ['/home', 'Home'], ['/contacts', 'Contacts'],
     ['/research', 'Research'], ['/companies', 'Companies'], ['/outreach', 'Outreach'],
-    ['/replies', 'Replies'], ['/meetings', 'Meetings'], ['/campaigns', 'Campaigns'],
+    ['/replies', 'Replies'], ['/meetings', 'Meetings'],
     ['/content', 'Content'], ['/integrations', 'Integrations'], ['/settings', 'Settings'],
   ] as const
   for (const [path, heading] of pages) {

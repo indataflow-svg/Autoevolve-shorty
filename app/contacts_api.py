@@ -9,6 +9,13 @@ from core.sales_store import get_lead, list_contacts_page
 
 router = APIRouter(prefix="/company/sales/contacts", tags=["contacts"])
 
+
+def _org() -> int:
+    from core.state import get_active_org
+
+    active = get_active_org()
+    return int(active["id"]) if active else 0
+
 Stage = Literal[
     "new", "enriched", "qualified", "draft_ready", "approved", "contacted",
     "scheduled", "replied", "won", "lost", "suppressed",
@@ -113,13 +120,14 @@ def contacts(
 ):
     items, total, metrics = list_contacts_page(
         page=page, page_size=page_size, stage=stage, query=q.strip(), sort=sort,
+        org_id=_org(),
     )
     return {"items": items, "total": total, "page": page, "page_size": page_size, "metrics": metrics}
 
 
 @router.get("/{contact_id}", response_model=ContactDetail)
 def contact(contact_id: str):
-    value = get_lead(contact_id)
+    value = get_lead(contact_id, org_id=_org())
     if value is None:
         raise HTTPException(404, "contact not found")
     value["last_touch_at"] = (value.get("latest_interaction") or {}).get("created_at")

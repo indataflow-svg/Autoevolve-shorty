@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GROUPS: list[tuple[str, list[str]]] = [
     ("Core state and models", ["core/*.py"]),
     ("Support services", ["services/*.py"]),
-    ("Video pipeline package", ["services/video/*.py"]),
+    ("Publisher adapters", ["services/publishers/*.py"]),
     ("Agents", ["agents/*.py"]),
     ("HTTP surface", ["app/*.py"]),
     ("Operations scripts", ["scripts/*.py"]),

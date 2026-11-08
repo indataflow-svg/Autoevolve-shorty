@@ -16,13 +16,13 @@
 </p>
 
 Company Core is a self-hosted sales and marketing operations workspace. It combines lead intake,
-prospect research, contact enrichment, email drafting and delivery, campaign production, media
-assembly, publishing handoff, approval queues, and activity history in one FastAPI application.
+prospect research, contact enrichment, email drafting and delivery, manual social-post preparation,
+Buffer publishing handoff, approval queues, and activity history in one FastAPI application.
 
 > Naming: this repository is `AutoEvolve`; `Company Core` is the application name used in the
-> dashboard, config keys (`COMPANY_CORE_*`, `company-core-g1/g2/g3`), and docs.
+> dashboard, config keys (`COMPANY_CORE_*`, `company-core-g3`), and docs.
 
-The repository includes the complete application and its G1/G2/G3 marketing engines. External
+The repository includes the complete application and its G3 publishing bridge. External
 providers are optional: configure only the integrations you intend to use. The dashboard starts
 without provider keys (`make doctor` shows `optional / disabled`); model-backed actions need an
 AI gateway (see `docs/keys.md`), other features need only their own integration.
@@ -30,7 +30,7 @@ AI gateway (see `docs/keys.md`), other features need only their own integration.
 ## Product at a glance
 
 Company Core gives operators a React workspace instead of scattering research, enrichment,
-drafts, approvals, and campaign state across unrelated tools.
+drafts, approvals, and manual-post state across unrelated tools.
 
 ### Discover companies and resolve the right contact
 
@@ -51,13 +51,14 @@ external provider.
 
 ![Company Core company intelligence workspace](docs/assets/company-core-lead-intelligence.png)
 
-The same workspace also handles marketing campaign direction, scripts, scene assets, carousel and
-video uploads, Buffer draft handoff, attribution, and operating history. See the
+The same workspace also handles manual carousel or video uploads, backend captions and tracked
+links, Buffer draft/schedule handoff, attribution, and operating history. See the
 [product tour](docs/product-tour.md) for the page-by-page workflow.
 
 ## Quick start
 
-Requirements: Python 3.12+, GNU Make, OpenSSL, and FFmpeg. Python 3.12 is required by the bundled
+Requirements: Python 3.12+, GNU Make, and OpenSSL. FFmpeg is optional (manual posts are uploaded,
+not rendered). Python 3.12 is required by the bundled
 OpenHands coding SDK. Node.js 22 is required to build the React UI; it also runs the optional
 Cloudflare email Worker. Docker is optional.
 
@@ -86,14 +87,19 @@ npm --prefix autoevolve-ui run build
 If `python3` is older than 3.12 but `python3.12` is installed, run
 `make setup PYTHON=python3.12`.
 
-`make setup` creates isolated virtual environments, installs the application and media engines,
+`make setup` creates isolated virtual environments, installs the application and the G3 engine,
 copies safe configuration templates, and generates local authentication secrets. It never
 overwrites an existing `.env`. The npm steps build the complete operator UI served by FastAPI.
 Install Node.js 22 separately and verify `node --version` before running them.
 
 You can start immediately with `make dev` and open <http://localhost:8787> (redirects to Home).
 Sign in using `DASHBOARD_USER` and `DASHBOARD_PASSWORD` from the private `.env`; begin at
-`/onboarding`. No provider keys are needed to open the UI. Research, enrichment, drafting,
+`/onboarding`. No provider keys are needed to open the UI.
+
+The public website lives in the separate `indoha-commits/website-autoevolve`
+repository. It owns marketing, signup, sign-in, verification, and the Cloudflare
+Pages Function; see [Website authentication](docs/authentication.md). Configure
+`AUTH_*` and `APP_ENCRYPTION_KEY` before exposing the backend. Research, enrichment, drafting,
 sending, and publishing require their corresponding provider configuration. Provider failures
 are displayed explicitly. To enable model-backed actions, choose an AI backend below.
 
@@ -172,8 +178,8 @@ Open <http://localhost:8787> and sign in with `DASHBOARD_USER` and `DASHBOARD_PA
 private `.env`. API documentation is available at <http://localhost:8787/docs>.
 
 If `make doctor` reports optional providers as disabled, startup can continue. Model-backed actions
-require the selected AI endpoint; prospecting, email, media search, publishing, and calendar actions
-require only their corresponding optional integrations.
+require the selected AI endpoint; prospecting, email, publishing, and calendar actions require only
+their corresponding optional integrations.
 
 ## Add your brand assets
 
@@ -182,23 +188,22 @@ binary. Configure your own assets before generating publishable media:
 
 1. Replace `static/company-core-logo.svg` or point `COMPANY_BRAND_LOGO_URL` to a public HTTPS logo.
    Use a PNG for outbound email because email-client SVG support is inconsistent.
-2. Put an owned product screenshot or video under `engines/g2/assets/references/` and set
-   `MARKETING_G2_SHOWCASE` to its path. This appears in the product showcase scene.
-3. Put an owned end-card image under the same directory and set `MARKETING_G2_OUTRO` to its path.
-   A portrait 1080x1920 image is recommended for short-form video.
-4. Update the approved company facts and claims in `engines/g1/knowledge/` before generating a
-   campaign. G1 treats these files as the source of truth for product copy.
+2. Upload the carousel images or single MP4 you own through **Content → New manual post**. The
+   backend builds the caption, CTA, and tracked link from the filenames and your destination URL.
+3. Keep Buffer/R2 credentials in `engines/g3/config/g3.env`. The app never returns those keys;
+   scheduling is a separate, founder-authorized step.
 
-The placeholder paths `replace-with-your-showcase.mp4` and `replace-with-your-outro.png` do not
-exist by design. This prevents a new installation from publishing another company's branding.
+The repository contains no generated campaign or video assets. Publishing uses only media you
+upload.
 
 ## Capabilities
 
 - Sales: website and campaign lead intake, company discovery, contact resolution, enrichment,
   qualification, editable AI email drafts, approval, Resend delivery, reply events, and meeting
   tracking.
-- Marketing: campaign planning, carousel and video asset workflows, AI scene planning, Pexels and
-  Pixabay retrieval, voice options, caption variants, manual asset upload, and Buffer handoff.
+- Marketing: manual carousel/video upload, backend captions and tracked links, Buffer draft,
+  schedule, provider confirmation, and post-level attribution. Buffer is the default
+  publisher; an optional signed webhook can connect another scheduler.
 - Operations: unified queues, status filters, direct actions, project workspaces, health checks,
   and persisted workflow activity.
 - Research and coding: web research, repository intelligence, and optional OpenHands-backed coding
@@ -222,7 +227,7 @@ conversation history. The supplied `.gitignore` excludes these by default.
 Start with the [Documentation Index](docs/index.md), then:
 
 - [First Sales Outreach](docs/first-outreach.md): installation check through approved Resend delivery.
-- [First Marketing Campaign](docs/first-campaign.md): brief through media review and Buffer draft.
+- [Publishers](docs/publishers.md): Buffer default and the signed webhook scheduler contract.
 - [API Keys](docs/keys.md): where to get each key and how to verify it.
 - [Provider Setup](docs/providers.md): minimum keys, feature mapping, and credit-saving behavior.
 - [Product Tour](docs/product-tour.md): what each operator page is responsible for.
@@ -244,9 +249,7 @@ Start with the [Documentation Index](docs/index.md), then:
 agents/                         founder, growth, research, sales, and coding agents
 app/                            FastAPI routes, authentication, intake, and webhooks
 core/                           state, SQLite stores, projects, branding, and configuration
-services/                       sales providers, email, media, monitoring, and workers
-engines/g1                      campaign and content package generation
-engines/g2                      media acquisition, voice, and rendering
+services/                       sales providers, email, publishing bridge, monitoring, and workers
 engines/g3                      Buffer publishing handoff and R2 media hosting
 autoevolve-ui/                  React/Vite operator UI, generated API contract, browser tests
 autoevolve-ui-agent-pack/       approved reference images and implementation specifications

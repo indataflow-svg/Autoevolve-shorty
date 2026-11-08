@@ -28,11 +28,10 @@ def new_id(prefix: str) -> str:
 
 def active_org_id() -> int:
     try:
-        with connect() as db:
-            row = db.execute(
-                "SELECT value FROM settings WHERE key='active_org_id'"
-            ).fetchone()
-        return int(row["value"]) if row and str(row["value"]).isdigit() else 0
+        from core.state import get_active_org
+
+        org = get_active_org()
+        return int(org["id"]) if org else 0
     except Exception:
         return 0
 

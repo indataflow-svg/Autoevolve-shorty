@@ -111,13 +111,28 @@ class GovernanceLimits(BaseModel):
     max_duration_days: int = 30
 
     @classmethod
-    def load(cls) -> "GovernanceLimits":
-        return cls(
-            max_spend_usd=float(os.getenv("VALIDATION_MAX_SPEND_USD", "0") or 0),
-            max_actions=int(os.getenv("VALIDATION_MAX_ACTIONS", "1") or 1),
-            max_outreach_contacts=int(os.getenv("VALIDATION_MAX_OUTREACH", "50") or 50),
-            max_duration_days=int(os.getenv("VALIDATION_MAX_DURATION_DAYS", "30") or 30),
-        )
+    def load(cls, org_id: int | None = None) -> "GovernanceLimits":
+        values = {
+            "max_spend_usd": float(os.getenv("VALIDATION_MAX_SPEND_USD", "0") or 0),
+            "max_actions": int(os.getenv("VALIDATION_MAX_ACTIONS", "1") or 1),
+            "max_outreach_contacts": int(os.getenv("VALIDATION_MAX_OUTREACH", "50") or 50),
+            "max_duration_days": int(os.getenv("VALIDATION_MAX_DURATION_DAYS", "30") or 30),
+        }
+        if org_id is not None:
+            from core.state import get_org_limits
+
+            stored = get_org_limits(int(org_id))
+            for key in values:
+                if key in stored and stored[key] is not None:
+                    values[key] = stored[key]
+            from core.quotas import org_plan
+
+            if org_plan(org_id) == "free":
+                values["max_spend_usd"] = 0.0
+                values["max_actions"] = 1
+                values["max_outreach_contacts"] = min(int(values["max_outreach_contacts"]), 20)
+                values["max_duration_days"] = min(int(values["max_duration_days"]), 14)
+        return cls(**values)
 
 
 class ResolvedAction(BaseModel):
@@ -156,6 +171,7 @@ def validate_plan(
     *,
     plan_id: str = "",
     limits: GovernanceLimits | None = None,
+    org_id: int = 0,
 ) -> tuple[GovernanceDecision, ValidationPlan]:
     """Decide whether a plan may become a workflow. Returns (decision, plan).
 
@@ -163,7 +179,7 @@ def validate_plan(
     the founder's context is demoted to an assumption before anything is checked,
     so a hallucinated customer or result can never reach a workflow step.
     """
-    caps = limits or GovernanceLimits.load()
+    caps = limits or GovernanceLimits.load(org_id)
     reasons: list[str] = []
     warnings: list[str] = []
 
@@ -296,7 +312,7 @@ def validate_plan(
             from core.evidence import resolve_research_terms
 
             try:
-                terms = resolve_research_terms()
+                terms = resolve_research_terms(org_id)
             except ValueError as exc:
                 reasons.append(str(exc))
                 terms = {}
@@ -355,6 +371,7 @@ class GovernanceRecord(BaseModel):
     """A persisted governance decision plus the lifecycle it has reached."""
 
     id: str
+    org_id: int = 0
     plan_id: str
     status: Literal["valid", "blocked"]
     reasons: list[str] = Field(default_factory=list)
@@ -390,10 +407,16 @@ def new_governance_id() -> str:
     return f"gov_{uuid.uuid4().hex[:12]}"
 
 
-def record_from_decision(decision: GovernanceDecision, record_id: str | None = None) -> GovernanceRecord:
+def record_from_decision(
+    decision: GovernanceDecision,
+    record_id: str | None = None,
+    *,
+    org_id: int = 0,
+) -> GovernanceRecord:
     timestamp = now_iso()
     return GovernanceRecord(
         id=record_id or new_governance_id(),
+        org_id=org_id,
         plan_id=decision.plan_id,
         status=decision.status,
         reasons=decision.reasons,
@@ -414,6 +437,7 @@ def init_governance_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS validation_workflows (
                 id TEXT PRIMARY KEY,
+                org_id INTEGER NOT NULL DEFAULT 0,
                 plan_id TEXT NOT NULL,
                 status TEXT NOT NULL,
                 reasons_json TEXT NOT NULL,
@@ -431,6 +455,24 @@ def init_governance_db() -> None:
             )
             """
         )
+        columns = {
+            row[1] for row in db.execute("PRAGMA table_info(validation_workflows)").fetchall()
+        }
+        if "org_id" not in columns:
+            db.execute(
+                "ALTER TABLE validation_workflows ADD COLUMN org_id INTEGER NOT NULL DEFAULT 0"
+            )
+            try:
+                from core.state import get_active_org
+
+                active = get_active_org()
+                if active:
+                    db.execute(
+                        "UPDATE validation_workflows SET org_id = ? WHERE org_id = 0",
+                        (int(active["id"]),),
+                    )
+            except Exception:
+                pass
 
 
 def save_governance(record: GovernanceRecord) -> GovernanceRecord:
@@ -439,11 +481,11 @@ def save_governance(record: GovernanceRecord) -> GovernanceRecord:
     timestamp = now_iso()
     with connect() as db:
         db.execute(
-            "INSERT INTO validation_workflows (id, plan_id, status, reasons_json, warnings_json, "
+            "INSERT INTO validation_workflows (id, org_id, plan_id, status, reasons_json, warnings_json, "
             "required_approval, resolved_actions_json, grounding_json, limits_json, workflow_id, "
             "approved_at, executed_at, execution_json, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(id) DO UPDATE SET status = excluded.status, "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET org_id = excluded.org_id, status = excluded.status, "
             "reasons_json = excluded.reasons_json, warnings_json = excluded.warnings_json, "
             "required_approval = excluded.required_approval, "
             "resolved_actions_json = excluded.resolved_actions_json, "
@@ -452,7 +494,7 @@ def save_governance(record: GovernanceRecord) -> GovernanceRecord:
             "executed_at = excluded.executed_at, execution_json = excluded.execution_json, "
             "updated_at = excluded.updated_at",
             (
-                record.id, record.plan_id, record.status,
+                record.id, record.org_id, record.plan_id, record.status,
                 json.dumps(document["reasons"], ensure_ascii=False),
                 json.dumps(document["warnings"], ensure_ascii=False),
                 1 if record.required_approval else 0,
@@ -471,6 +513,7 @@ def _from_row(row) -> GovernanceRecord:
     document = dict(row)
     return GovernanceRecord.model_validate({
         "id": document["id"],
+        "org_id": document.get("org_id") or 0,
         "plan_id": document["plan_id"],
         "status": document["status"],
         "reasons": json.loads(document["reasons_json"] or "[]"),
@@ -502,12 +545,14 @@ def get_governance(governance_id: str) -> GovernanceRecord | None:
         return None
 
 
-def latest_governance() -> GovernanceRecord | None:
-    """The most recent decision, so the lifecycle survives a reload."""
+def latest_governance(org_id: int = 0) -> GovernanceRecord | None:
+    """The most recent decision for one org, so the lifecycle survives a reload."""
     init_governance_db()
     with connect() as db:
         row = db.execute(
-            "SELECT * FROM validation_workflows ORDER BY created_at DESC, rowid DESC LIMIT 1"
+            "SELECT * FROM validation_workflows WHERE org_id = ? "
+            "ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (int(org_id),),
         ).fetchone()
     if not row:
         return None

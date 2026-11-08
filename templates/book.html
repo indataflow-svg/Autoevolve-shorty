@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ 'Meeting confirmed' if confirmed else 'Pick a time' }} · {{ company_name }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: #d9e1ec;
+      --accent: #5E6AD2;
+      --accent-dark: #4957c6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #ffffff 0%, var(--bg) 55%, #edf2fa 100%);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+    }
+    .wrap { max-width: 680px; margin: 0 auto; padding: 40px 20px 56px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 32px;
+      box-shadow: 0 20px 60px rgba(17, 24, 39, 0.08);
+    }
+    .brand { width: 168px; max-width: 100%; height: auto; display: block; margin-bottom: 24px; }
+    .eyebrow {
+      color: var(--accent); font-size: 12px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 10px;
+    }
+    h1 { margin: 0 0 14px; font-size: 32px; line-height: 1.15; }
+    p { margin: 0 0 14px; color: var(--muted); font-size: 16px; line-height: 1.7; }
+    .slots { list-style: none; margin: 22px 0 8px; padding: 0; display: grid; gap: 12px; }
+    .slots li { margin: 0; }
+    .slot {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      border: 1px solid var(--line); border-radius: 14px; padding: 15px 18px;
+      font-size: 16px; font-weight: 700; color: var(--text); text-decoration: none;
+    }
+    .slot:hover { border-color: var(--accent); }
+    .slot .go { color: var(--accent); font-size: 14px; white-space: nowrap; }
+    .done {
+      background: #f0fdf4; border: 1px solid #bbebd0; color: #14683c;
+      border-radius: 14px; padding: 16px 18px; margin: 20px 0 8px; font-size: 15px; line-height: 1.6;
+    }
+    .error { background: #fef3f2; border: 1px solid #fecdca; color: #b42318; border-radius: 12px; padding: 12px 14px; margin-bottom: 18px; font-size: 14px; }
+    footer { margin-top: 20px; text-align: center; color: var(--muted); font-size: 13px; }
+    @media (max-width: 560px) {
+      .wrap { padding: 22px 14px 40px; }
+      .card { padding: 22px 18px; border-radius: 18px; }
+      h1 { font-size: 25px; }
+      .slot { flex-direction: column; align-items: flex-start; gap: 6px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="card">
+      <img class="brand" src="{{ company_logo_url }}" alt="{{ company_name }}">
+      {% if error %}
+      <p class="error" role="alert">{{ error }}</p>
+      {% endif %}
+      {% if confirmed %}
+      <p class="eyebrow">{{ company_name }}</p>
+      <h1>You're confirmed.</h1>
+      <div class="done"><strong>{{ confirmed }}</strong><br>It is now on our side as a scheduled meeting. A calendar follow-up with the call details follows separately; you can close this page.</div>
+      {% elif already %}
+      <p class="eyebrow">{{ company_name }}</p>
+      <h1>Already confirmed.</h1>
+      <div class="done">{{ already }}</div>
+      {% else %}
+      <p class="eyebrow">{{ company_name }}</p>
+      <h1>Pick a time that works</h1>
+      <p>{{ note or 'Choose one of the times below and we will hold it on our side.' }}</p>
+      <ul class="slots">
+        {% for slot in slots %}
+        <li>
+          <form method="post" action="/book/{{ lead_id }}">
+            <input type="hidden" name="slot" value="{{ loop.index0 }}">
+            <button class="slot" type="submit" style="width:100%; background:#fff; cursor:pointer; font-family:inherit;">
+              <span>{{ slot }}</span><span class="go">Choose this time →</span>
+            </button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    <footer>This link was sent to you by {{ company_name }}. Nothing is booked until you choose a time above.</footer>
+  </main>
+</body>
+</html>

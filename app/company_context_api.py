@@ -1,8 +1,8 @@
-"""Canonical company context endpoints over the existing onboarding store.
+"""Canonical company context endpoints used by Get Started and the workspace.
 
-Reading returns the normalized context that onboarding produced (or an empty,
-explicitly-incomplete context before onboarding runs) together with the initial
-route AutoEvolve resolved for it. Writing replaces that canonical record. Writes
+Reading returns the normalized per-org context, or an empty explicitly
+incomplete context before Get Started runs, together with the initial route
+AutoEvolve resolved for it. Writing replaces that canonical record. Writes
 require the founder action token like every other founder-only mutation; reads
 require dashboard authentication.
 """
@@ -17,13 +17,11 @@ from core.company_context import (
     CompanyContext,
     CompanyContextSections,
     ContextStatus,
-    context_from_onboarding,
     get_company_context,
     has_any_fact,
     save_company_context,
 )
 from core.marketing_routing import RouteState, stored_route_state
-from core.state import get_onboarding_program
 
 router = APIRouter(prefix="/company", tags=["company-context"])
 
@@ -36,27 +34,7 @@ class CompanyContextView(RouteState):
 
 
 def load_company_context() -> CompanyContext:
-    """Return the stored context, backfilling from an already-confirmed program.
-
-    Programs confirmed before this layer existed hold the same founder answers in
-    the onboarding record, so an existing company is projected into the
-    canonical context once instead of being asked to type it again.
-    """
-    stored = get_company_context()
-    if stored:
-        return stored
-    program = get_onboarding_program()
-    confirmed = program.get("company_context") if isinstance(program, dict) else None
-    if not isinstance(confirmed, dict):
-        return CompanyContext()
-    try:
-        return save_company_context(context_from_onboarding(
-            start=program.get("company") or {}, confirm=confirmed,
-        ))
-    except ValueError:
-        # A stored answer that no longer normalizes is left to the founder to
-        # re-enter rather than being repaired by guessing.
-        return CompanyContext()
+    return get_company_context() or CompanyContext()
 
 
 def _context_view(context: CompanyContext) -> CompanyContextView:
@@ -74,8 +52,7 @@ def _context_view(context: CompanyContext) -> CompanyContextView:
 
 @router.get("/context", response_model=CompanyContextView)
 def read_company_context():
-    # load_company_context() returns the stored record, backfills an existing
-    # confirmed program once, or reports an empty context before onboarding.
+    # Get Started writes this record; a missing record is explicitly incomplete.
     return _context_view(load_company_context())
 
 

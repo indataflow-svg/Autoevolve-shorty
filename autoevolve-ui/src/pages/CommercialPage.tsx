@@ -6,12 +6,14 @@ import type { CAccount } from '../api/commercial'
 import { companyContext, setupTrigger } from '../api/companyContext'
 import { CompanyDataDialog, saveCompanyContextAnswers } from '../components/CompanyDataCards'
 import { SetupWizard } from './commercial/wizard'
+import { ScoresTab } from './commercial/scores'
 import { AccountsSection } from './commercial/accounts'
 import { IcpSection } from './commercial/icp'
 import { PipelineSection } from './commercial/pipeline'
+import { FormsSection } from './commercial/forms'
 import { IntegrationsSection } from './commercial/integrations'
 
-const TABS = ['Setup', 'Accounts', 'ICPs & Qualification', 'Pipeline', 'Integrations'] as const
+const TABS = ['Setup', 'Scores', 'Accounts', 'ICPs & Qualification', 'Pipeline', 'Forms', 'Integrations'] as const
 type Tab = typeof TABS[number]
 
 export function CommercialPage() {
@@ -63,7 +65,7 @@ export function CommercialPage() {
       <div className="page-heading"><div>
         <p className="eyebrow">Commercial workspace</p>
         <h1>Customers, pipeline, and proof</h1>
-        <p className="lede">One workspace for setup, accounts, qualification, pipeline, and integrations — every number from the backend, every action confirmed before it counts.</p>
+        <p className="lede">Setup, accounts, qualification, pipeline, integrations — backend numbers, confirmed actions.</p>
       </div></div>
       <label className="onboarding-token">Founder action token
         <input type="password" autoComplete="off" aria-label="Founder action token" value={token} onChange={e => setToken(e.target.value)} />
@@ -80,11 +82,14 @@ export function CommercialPage() {
       {dialogOpen && ctxView.data && <CompanyDataDialog
         view={ctxView.data} busy={saveState.busy} savedTick={saveState.savedTick} band={trigger === 'unknown' ? 'incomplete' : trigger}
         onClose={closeDialog} onSave={touched => void saveCards(touched)} />}
-      {tab === 'Setup' && <SetupWizard credentials={credentials} token={token} />}
+      {tab === 'Setup' && <SetupWizard credentials={credentials} token={token} onScores={() => setTab('Scores')}
+        onTab={t => setTab(t as typeof tab)} onCompanyData={() => { setDismissed(false); setDialogOpen(true) }} />}
+      {tab === 'Scores' && <ScoresTab credentials={credentials} onCompanyData={() => { setDismissed(false); setDialogOpen(true) }} />}
       {tab === 'Accounts' && <AccountsSection credentials={credentials} token={token} onQualify={qualifyFromAccounts} />}
       {tab === 'ICPs & Qualification' && <IcpSection credentials={credentials} token={token}
         presetAccount={presetAccount} onPresetConsumed={() => setPresetAccount(null)} />}
       {tab === 'Pipeline' && <PipelineSection credentials={credentials} token={token} />}
+      {tab === 'Forms' && <FormsSection credentials={credentials} token={token} />}
       {tab === 'Integrations' && <IntegrationsSection credentials={credentials} token={token} />}
     </div></main></div>
   </AppShell>

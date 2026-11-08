@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from agents.researcher import run_research
-from agents.growth import prepare_campaign_brief
 
 from core.models import cloud_model
 
@@ -25,8 +24,6 @@ from core.state import (
     complete_task,
     fail_task,
 )
-from core.marketing_store import create_campaign
-from services.marketing_worker import spawn as spawn_marketing_worker
 
 
 PROMPT = (
@@ -41,7 +38,6 @@ class FounderDecision(BaseModel):
         "answer",
         "research",
         "future_coding",
-        "future_marketing",
         "future_sales",
     ]
 
@@ -260,59 +256,6 @@ asks another question about an existing org.
             )
 
             raise
-
-    if decision.action == "future_marketing":
-        if org_record is None:
-            (
-                org_record,
-                org_path,
-            ) = ensure_project(
-                decision.org_name
-                or (active_org or {}).get("name")
-                or os.getenv("COMPANY_NAME", "Company Core")
-            )
-
-        brief = await prepare_campaign_brief(
-            decision.task or message,
-            brand=(org_record or {}).get("slug") or (active_org or {}).get("slug"),
-        )
-        task = create_task(
-            org_id=org_record["id"],
-            agent="growth",
-            task_type="campaign",
-            input_text=brief.execution_summary,
-            priority=decision.priority,
-            requires_approval=False,
-        )
-        campaign = create_campaign(
-            org_id=org_record["id"],
-            task_id=task["id"],
-            request=message,
-            objective=brief.objective,
-            buyer=brief.buyer,
-            topic=brief.topic,
-            social_platforms=brief.social_platforms,
-            video_platform=brief.video_platform,
-        )
-        spawn_marketing_worker(campaign["id"])
-        return {
-            "type": "marketing_queued",
-            "org": org_record,
-            "campaign": {
-                "id": campaign["id"],
-                "status": "queued",
-                "objective": brief.objective,
-                "buyer": brief.buyer,
-                "topic": brief.topic,
-                "social_platforms": brief.social_platforms,
-                "video_platform": brief.video_platform,
-            },
-            "founder": decision.model_dump(),
-            "message": (
-                "Campaign accepted. Growth, Media, and rendering now run in the "
-                "background. Video variants will appear in the campaign review panel."
-            ),
-        }
 
     return {
         "type": decision.action,

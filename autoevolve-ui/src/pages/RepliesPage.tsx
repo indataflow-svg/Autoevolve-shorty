@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createColumnHelper } from '@tanstack/react-table'
-import { ArrowRight, ChevronLeft, ChevronRight, Inbox, Mail, MessageCircle, ShieldAlert } from 'lucide-react'
+import { ArrowRight, ChevronLeft, ChevronRight, ClipboardList, Inbox, Mail, MessageCircle, ShieldAlert } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { createReplyDraft, repliesPage, replyDetail, syncResendInbox, type InboxSyncResult, type ReplyItem } from '../api/workflows'
+import { createReplyDraft, replyDetail, repliesPage, requestMeeting, syncResendInbox, type InboxSyncResult, type ReplyItem } from '../api/workflows'
 import { useCredentials } from '../app/Auth'
 import { AppShell } from '../components/Shell'
 import { DataState, LoadingRows, RightDrawer, StateBadge } from '../components/Primitives'
@@ -14,13 +14,58 @@ const column = createColumnHelper<ReplyRow>()
 const views = [
   { label: 'All replies', value: 'all', count: 'total' },
   { label: 'Latest inbound', value: 'latest', count: 'latest' },
+  { label: 'Form submissions', value: 'submissions', count: 'submissions' },
   { label: 'Suppressed contacts', value: 'suppressed', count: 'suppressed' },
 ] as const
+
+function MeetingRequestForm({ leadId, email, answers, done }: { leadId: string; email: string | null; answers: Record<string, unknown> | null; done: () => void }) {
+  const credentials = useCredentials()
+  const [token, setToken] = useState('')
+  const [note, setNote] = useState('')
+  // Prefill the first offered time from a form answer that looks like a time.
+  const requested = Object.entries(answers || {}).find(([label, value]) =>
+    /time|when|slot|date/i.test(label) && typeof value === 'string' && value.length <= 120)
+  const requestedValue = requested ? String(requested[1] ?? '') : ''
+  const [slot1, setSlot1] = useState(requestedValue)
+  const [slot2, setSlot2] = useState('')
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+  const [result, setResult] = useState<{ message: string; warning: string | null | undefined } | null>(null)
+
+  async function submit() {
+    const slots = [slot1.trim(), slot2.trim()].filter(Boolean)
+    if (!slots.length) { setError('Offer at least one time slot.'); return }
+    if (!token.trim()) { setError('Enter the founder action token.'); return }
+    setError(''); setPending(true)
+    try {
+      const response = await requestMeeting(credentials, leadId, { slots, note: note.trim() || undefined }, token)
+      setResult({ message: response.message, warning: response.warning })
+      setToken('')
+      if (!response.warning) done()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Meeting request failed.') }
+    finally { setPending(false) }
+  }
+
+  if (result) return <section className="detail-card"><h3>Booking request</h3>
+    <p className="success-message" role="status">{result.message}</p>
+    {result.warning && <p className="operational-note" role="alert">{result.warning}</p>}
+  </section>
+
+  return <section className="detail-card"><h3>Create meeting — email booking link</h3>
+    <p className="operational-note">Offer times to {email || 'this contact'}. Nothing is booked until they pick one on the emailed page; their choice appears in Meetings.</p>
+    <label className="operational-label">First option<input value={slot1} onChange={event => setSlot1(event.target.value)} placeholder="Tue 10:00 (their timezone)" maxLength={120} /></label>
+    <label className="operational-label">Second option (optional)<input value={slot2} onChange={event => setSlot2(event.target.value)} maxLength={120} /></label>
+    <label className="operational-label">Note (optional)<textarea value={note} onChange={event => setNote(event.target.value)} maxLength={400} /></label>
+    <label className="operational-label">Founder action token<input type="password" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} /></label>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <button className="button primary" onClick={submit} disabled={pending}>{pending ? 'Sending…' : 'Send booking request'}</button>
+  </section>
+}
 
 function InboxSyncControl({ done }: { done: () => void }) {
   const credentials = useCredentials()
   const [token, setToken] = useState('')
-  const [to, setTo] = useState('sales@hello.indataflow.com')
+  const [to, setTo] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<InboxSyncResult | null>(null)
@@ -41,7 +86,7 @@ function InboxSyncControl({ done }: { done: () => void }) {
   const duplicates = result?.ingested.filter(item => item.duplicate).length || 0
   return <section className="detail-card"><h3>Mirror Resend inbox</h3>
     <p className="operational-note">Pulls recently received emails into inbound replies through the same path as the webhook — re-syncs are no-op duplicates. Senders that match no lead are reported below, not dropped silently.</p>
-    <label className="operational-label">Only this recipient<input value={to} onChange={event => setTo(event.target.value)} placeholder="sales@hello.indataflow.com — blank checks every recipient" maxLength={320} /></label>
+    <label className="operational-label">Only this recipient<input value={to} onChange={event => setTo(event.target.value)} placeholder="sales@autoevolve.site — blank checks every recipient" maxLength={320} /></label>
     <label className="operational-label">Founder action token<input type="password" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} /></label>
     {error && <p className="form-error" role="alert">{error}</p>}
     {result && <><p className="success-message" role="status">Checked {result.checked}: {result.ingested.length} ingested ({duplicates} already stored){result.unmatched.length ? `, ${result.unmatched.length} unmatched` : ''}{result.errors.length ? `, ${result.errors.length} failed` : ''}.</p>
@@ -81,21 +126,30 @@ function ReplyDrawer({ id, close }: { id: number; close: () => void }) {
     finally { setPending(false) }
   }
 
-  return <RightDrawer title="Reply details" onClose={close} className="workflow-drawer">
+  const isForm = reply?.channel === 'form'
+  return <RightDrawer title={isForm ? 'Form submission' : 'Reply details'} onClose={close} className="workflow-drawer">
     {detail.isPending ? <LoadingRows label="Loading reply" /> : detail.isError && !reply ? <DataState title="Reply unavailable" detail={detail.error.message} retry={() => detail.refetch()} /> : reply ? <>
-      <div className="drawer-identity"><span className="provider-icon"><MessageCircle size={24} /></span><div className="drawer-name"><h2>{reply.company || 'Company not recorded'}</h2><p>{reply.contact_name || reply.email || 'Contact not recorded'}</p></div></div>
-      <div className="drawer-status"><StateBadge tone={reply.lead_stage === 'suppressed' ? 'red' : reply.is_latest_interaction ? 'blue' : 'neutral'}>{reply.lead_stage === 'suppressed' ? 'Contact suppressed' : reply.is_latest_interaction ? 'Latest interaction: inbound' : 'Earlier inbound reply'}</StateBadge></div>
-      <div className="drawer-tabs"><button aria-selected="true">Message</button></div>
+      <div className="drawer-identity"><span className="provider-icon">{isForm ? <ClipboardList size={24} /> : <MessageCircle size={24} />}</span><div className="drawer-name"><h2>{reply.company || 'Company not recorded'}</h2><p>{reply.contact_name || reply.email || 'Contact not recorded'}</p></div></div>
+      <div className="drawer-status"><StateBadge tone={reply.lead_stage === 'suppressed' ? 'red' : reply.is_latest_interaction ? 'blue' : 'neutral'}>{isForm ? 'Form submission' : reply.lead_stage === 'suppressed' ? 'Contact suppressed' : reply.is_latest_interaction ? 'Latest interaction: inbound' : 'Earlier inbound reply'}</StateBadge></div>
+      <div className="drawer-tabs"><button aria-selected="true">{isForm ? 'Answers' : 'Message'}</button></div>
       <div className="drawer-body">
         {detail.isError && <p className="operational-error" role="alert">Refresh failed: {detail.error.message}</p>}
-        <section className="detail-card"><h3>Original inbound message</h3><p className="operational-note">From {reply.contact_name || reply.email || 'Contact not recorded'} · <ShortDate value={reply.received_at} /></p><strong className="message-subject">{reply.subject || 'No subject'}</strong><p className="workflow-message">{reply.body || 'Message body was not recorded.'}</p></section>
-        <section className="detail-card"><h3>Saved facts</h3><dl className="company-fields"><div><dt>Contact</dt><dd>{reply.contact_name || 'Not recorded'}</dd></div><div><dt>Role</dt><dd>{reply.contact_role || 'Not recorded'}</dd></div><div><dt>Company</dt><dd>{reply.company || 'Not recorded'}</dd></div><div><dt>Email</dt><dd>{reply.email || 'Not recorded'}</dd></div><div><dt>Thread ID</dt><dd className="break-value">{reply.provider_message_id || 'Not recorded'}</dd></div></dl></section>
-        <p className="operational-note">Intent and confidence are not classified by the current backend. The message above is the original saved inbound text.</p>
+        {isForm ? <>
+          <section className="detail-card"><h3>Submitted answers</h3><p className="operational-note">Received <ShortDate value={reply.received_at} />{reply.form_slug ? ` · form: ${reply.form_slug}` : ' · external form'}</p>
+            {reply.answers && Object.keys(reply.answers).length ? <dl className="company-fields">{Object.entries(reply.answers).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{String(value)}</dd></div>)}</dl> : <p className="workflow-message">{reply.body || 'No answers were recorded.'}</p>}
+          </section>
+          <section className="detail-card"><h3>Saved facts</h3><dl className="company-fields"><div><dt>Contact</dt><dd>{reply.contact_name || 'Not recorded'}</dd></div><div><dt>Company</dt><dd>{reply.company || 'Not recorded'}</dd></div><div><dt>Email</dt><dd>{reply.email || 'Not recorded'}</dd></div></dl></section>
+        </> : <>
+          <section className="detail-card"><h3>Original inbound message</h3><p className="operational-note">From {reply.contact_name || reply.email || 'Contact not recorded'} · <ShortDate value={reply.received_at} /></p><strong className="message-subject">{reply.subject || 'No subject'}</strong><p className="workflow-message">{reply.body || 'Message body was not recorded.'}</p></section>
+          <section className="detail-card"><h3>Saved facts</h3><dl className="company-fields"><div><dt>Contact</dt><dd>{reply.contact_name || 'Not recorded'}</dd></div><div><dt>Role</dt><dd>{reply.contact_role || 'Not recorded'}</dd></div><div><dt>Company</dt><dd>{reply.company || 'Not recorded'}</dd></div><div><dt>Email</dt><dd>{reply.email || 'Not recorded'}</dd></div><div><dt>Thread ID</dt><dd className="break-value">{reply.provider_message_id || 'Not recorded'}</dd></div></dl></section>
+          <p className="operational-note">Intent and confidence are not classified by the current backend. The message above is the original saved inbound text.</p>
+        </>}
+        {reply.lead_stage !== 'suppressed' && <MeetingRequestForm key={`meeting-${reply.lead_id}`} leadId={reply.lead_id} email={reply.email} answers={reply.answers} done={() => void queryClient.invalidateQueries({ queryKey: ['meetings'] })} />}
       </div>
       <div className="drawer-footer">
         {draftId && <p className="success-message" role="status">Reply draft saved by the backend. <Link to={`/outreach?draft=${encodeURIComponent(draftId)}`}>Review it in Outreach <ArrowRight size={13} /></Link></p>}
         {error && <p className="form-error" role="alert">{error}</p>}
-        {reply.can_draft_reply ? <><label className="operational-label">Founder action token<input type="password" aria-label="Founder action token" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} /></label><button className="button primary" onClick={draft} disabled={pending || !!draftId}>{pending ? 'Creating draft…' : 'Draft reply'}</button></> : <p className="operational-note">A reply draft is available only while this remains the contact’s latest inbound interaction and the contact is eligible.</p>}
+        {reply.can_draft_reply ? <><label className="operational-label">Founder action token<input type="password" aria-label="Founder action token" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} /></label><button className="button primary" onClick={draft} disabled={pending || !!draftId}>{pending ? 'Creating draft…' : 'Draft reply'}</button></> : isForm ? <p className="operational-note">Reply drafting stays an email action. Use the meeting request above to respond with times.</p> : <p className="operational-note">A reply draft is available only while this remains the contact’s latest inbound interaction and the contact is eligible.</p>}
         <Link className="button secondary" to={`/contacts?contact=${encodeURIComponent(reply.lead_id)}`}>Open contact</Link>
       </div>
     </> : null}
@@ -117,14 +171,14 @@ export function RepliesPage() {
   const columns = [
     column.display({ id: 'company', header: 'Company', cell: info => <strong>{info.row.original.company || 'Not recorded'}</strong> }),
     column.display({ id: 'contact', header: 'Contact', cell: info => <span>{info.row.original.contact_name || info.row.original.email || 'Not recorded'}</span> }),
-    column.display({ id: 'message', header: 'Message', cell: info => <span className="cell-truncate">{info.row.original.body || info.row.original.subject || 'Body not recorded'}</span> }),
+    column.display({ id: 'message', header: 'Message', cell: info => <span className="cell-truncate">{info.row.original.channel === 'form' && <StateBadge tone="neutral">form</StateBadge>} {info.row.original.body || info.row.original.subject || 'Body not recorded'}</span> }),
     column.display({ id: 'thread', header: 'Thread state', cell: info => <StateBadge tone={info.row.original.lead_stage === 'suppressed' ? 'red' : info.row.original.is_latest_interaction ? 'blue' : 'neutral'}>{info.row.original.lead_stage === 'suppressed' ? 'suppressed' : info.row.original.is_latest_interaction ? 'latest inbound' : 'earlier reply'}</StateBadge> }),
     column.display({ id: 'received', header: 'Received', cell: info => <ShortDate value={info.row.original.received_at} /> }),
-    column.display({ id: 'action', header: 'Action', cell: info => <button className="row-action" onClick={event => { event.stopPropagation(); update({ reply: String(info.row.original.id) }) }}>{info.row.original.can_draft_reply ? 'Draft reply' : 'View message'}</button> }),
+    column.display({ id: 'action', header: 'Action', cell: info => <button className="row-action" onClick={event => { event.stopPropagation(); update({ reply: String(info.row.original.id) }) }}>{info.row.original.channel === 'form' ? 'View answers' : info.row.original.can_draft_reply ? 'Draft reply' : 'View message'}</button> }),
   ]
   return <AppShell active="Replies" query={q} onQueryChange={value => update({ q: value, page: '1', reply: null })}><div className="page-layout"><main className="page-main"><div className="page-content">
     <div className="page-heading"><div><h1>Replies</h1><p>Review original inbound email and create gated reply drafts.</p></div><div className="heading-actions"><Link to="/outreach" className="button secondary">Open Outreach <ArrowRight size={16} /></Link></div></div>
-    <WorkflowMetrics items={[{ label: 'Inbound replies', value: result?.counts.total, icon: <Inbox /> }, { label: 'Latest inbound', value: result?.counts.latest, icon: <MessageCircle /> }, { label: 'With thread ID', value: result?.counts.threaded, icon: <Mail /> }, { label: 'Suppressed contacts', value: result?.counts.suppressed, icon: <ShieldAlert /> }]} />
+    <WorkflowMetrics items={[{ label: 'Inbound replies', value: result?.counts.total, icon: <Inbox /> }, { label: 'Latest inbound', value: result?.counts.latest, icon: <MessageCircle /> }, { label: 'Form submissions', value: result?.counts.submissions, icon: <ClipboardList /> }, { label: 'Suppressed contacts', value: result?.counts.suppressed, icon: <ShieldAlert /> }]} />
     <div className="reply-summary"><button onClick={() => update({ view: 'latest', page: '1', reply: null })}><MessageCircle size={22} /><span><strong>Latest inbound on a contact</strong><small>{result?.counts.latest ?? '—'} saved replies are the most recent interaction on their contact.</small></span><ChevronRight size={17} /></button><Link to="/outreach"><Mail size={22} /><span><strong>Reply drafts live in Outreach</strong><small>Draft, approval, and send remain separate backend stages.</small></span><ArrowRight size={17} /></Link></div>
     <InboxSyncControl done={() => { void query.refetch() }} />
     <div className="table-toolbar"><div className="view-tabs">{views.map(item => <button key={item.value} className={view === item.value ? 'active' : ''} onClick={() => update({ view: item.value, page: '1', reply: null })}>{item.label} ({result?.counts[item.count] ?? 0})</button>)}</div><label className="sort-control">Sort <select aria-label="Sort replies" value={sort} onChange={event => update({ sort: event.target.value, page: '1' })}><option value="recent">Last received</option><option value="oldest">Oldest received</option><option value="company">Company A–Z</option></select></label></div>

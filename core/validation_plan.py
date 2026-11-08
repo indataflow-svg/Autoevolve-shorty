@@ -134,12 +134,15 @@ class PlanProvenance(BaseModel):
     # decline with reasons, never an override applied after the fact.
     method_hint: str | None = None
     channel_hint: str | None = None
+    input_hash: str | None = None
+    input_schema_version: str | None = None
 
 
 class ValidationPlanRecord(BaseModel):
     """A persisted plan. ``planned`` never implies the experiment happened."""
 
     id: str
+    org_id: int = 0
     status: Literal["planned"] = PLAN_STATUS
     plan: ValidationPlan
     provenance: PlanProvenance
@@ -236,6 +239,7 @@ def init_validation_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS validation_plans (
                 id TEXT PRIMARY KEY,
+                org_id INTEGER NOT NULL DEFAULT 0,
                 workflow_template TEXT NOT NULL,
                 prompt_version TEXT NOT NULL,
                 context_updated_at TEXT,
@@ -245,6 +249,24 @@ def init_validation_db() -> None:
             )
             """
         )
+        columns = {
+            row[1] for row in db.execute("PRAGMA table_info(validation_plans)").fetchall()
+        }
+        if "org_id" not in columns:
+            db.execute(
+                "ALTER TABLE validation_plans ADD COLUMN org_id INTEGER NOT NULL DEFAULT 0"
+            )
+            try:
+                from core.state import get_active_org
+
+                active = get_active_org()
+                if active:
+                    db.execute(
+                        "UPDATE validation_plans SET org_id = ? WHERE org_id = 0",
+                        (int(active["id"]),),
+                    )
+            except Exception:
+                pass
 
 
 def save_validation_plan(record: ValidationPlanRecord) -> ValidationPlanRecord:
@@ -252,12 +274,13 @@ def save_validation_plan(record: ValidationPlanRecord) -> ValidationPlanRecord:
     init_validation_db()
     with connect() as db:
         db.execute(
-            "INSERT INTO validation_plans (id, workflow_template, prompt_version, "
-            "context_updated_at, status, plan_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(id) DO UPDATE SET plan_json = excluded.plan_json, "
-            "status = excluded.status",
+            "INSERT INTO validation_plans (id, org_id, workflow_template, prompt_version, "
+            "context_updated_at, status, plan_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET org_id = excluded.org_id, "
+            "plan_json = excluded.plan_json, status = excluded.status",
             (
                 record.id,
+                record.org_id,
                 record.plan.workflow_template,
                 record.provenance.prompt_version,
                 record.provenance.context_updated_at,
@@ -273,37 +296,48 @@ def build_plan_record(
     plan: ValidationPlan,
     provenance: PlanProvenance,
     grounding: GroundingReport,
+    *,
+    org_id: int = 0,
 ) -> ValidationPlanRecord:
     return ValidationPlanRecord(
-        id=new_plan_id(), plan=plan, provenance=provenance,
+        id=new_plan_id(), org_id=org_id, plan=plan, provenance=provenance,
         grounding=grounding, created_at=now_iso(),
     )
 
 
-def get_validation_plan(plan_id: str) -> ValidationPlanRecord | None:
+def get_validation_plan(
+    plan_id: str, org_id: int | None = None
+) -> ValidationPlanRecord | None:
+    init_validation_db()
+    query = "SELECT plan_json, org_id FROM validation_plans WHERE id = ?"
+    values: list[object] = [plan_id]
+    if org_id is not None:
+        query += " AND org_id = ?"
+        values.append(int(org_id))
+    with connect() as db:
+        row = db.execute(query, values).fetchone()
+    if not row:
+        return None
+    try:
+        record = ValidationPlanRecord.model_validate(json.loads(row["plan_json"]))
+        return record.model_copy(update={"org_id": int(row["org_id"] or 0)})
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError):
+        return None
+
+
+def get_latest_validation_plan(org_id: int = 0) -> ValidationPlanRecord | None:
+    """The newest plan for one org, so the UI can show current thinking."""
     init_validation_db()
     with connect() as db:
         row = db.execute(
-            "SELECT plan_json FROM validation_plans WHERE id = ?", (plan_id,)
+            "SELECT plan_json, org_id FROM validation_plans WHERE org_id = ? "
+            "ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (int(org_id),),
         ).fetchone()
     if not row:
         return None
     try:
-        return ValidationPlanRecord.model_validate(json.loads(row["plan_json"]))
-    except (json.JSONDecodeError, ValueError):
-        return None
-
-
-def get_latest_validation_plan() -> ValidationPlanRecord | None:
-    """The newest plan, so the UI can show the current thinking after a reload."""
-    init_validation_db()
-    with connect() as db:
-        row = db.execute(
-            "SELECT plan_json FROM validation_plans ORDER BY created_at DESC, rowid DESC LIMIT 1"
-        ).fetchone()
-    if not row:
-        return None
-    try:
-        return ValidationPlanRecord.model_validate(json.loads(row["plan_json"]))
-    except (json.JSONDecodeError, ValueError, sqlite3.DatabaseError):
+        record = ValidationPlanRecord.model_validate(json.loads(row["plan_json"]))
+        return record.model_copy(update={"org_id": int(row["org_id"] or 0)})
+    except (json.JSONDecodeError, ValueError, sqlite3.DatabaseError, KeyError, TypeError):
         return None

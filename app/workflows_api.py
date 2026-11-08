@@ -23,6 +23,20 @@ from services.workflow_runner import WorkflowValidationError, pause_workflow, ru
 router = APIRouter(prefix="/company/workflows", tags=["workflows"])
 
 
+def _org() -> int:
+    from core.state import get_active_org
+
+    active = get_active_org()
+    return int(active["id"]) if active else 0
+
+
+def _owned(workflow: Workflow) -> Workflow:
+    org = _org()
+    if workflow.org_id not in (0, org):
+        raise HTTPException(404, "workflow not found")
+    return workflow
+
+
 class WorkflowCreateRequest(BaseModel):
     name: str
     objective: str = ""
@@ -37,6 +51,10 @@ class WorkflowRunRequest(BaseModel):
 
 @router.post("", response_model=Workflow, status_code=201, dependencies=[Depends(verify_founder_action)])
 def create_workflow(payload: WorkflowCreateRequest):
+    from core.state import get_active_org
+
+    active = get_active_org()
+    org_id = int(active["id"]) if active else 0
     try:
         workflow = workflow_store.build_workflow(
             name=payload.name,
@@ -44,6 +62,7 @@ def create_workflow(payload: WorkflowCreateRequest):
             steps=payload.steps,
             trigger=payload.trigger,
             success_metric=payload.success_metric,
+            org_id=org_id,
         )
     except ValueError as exc:
         raise HTTPException(400, f"invalid workflow: {exc}") from exc
@@ -59,7 +78,12 @@ def list_workflows(
     limit: int = Query(50, ge=1, le=200),
     status: str | None = Query(None),
 ):
-    return workflow_store.list_workflows(limit=limit, status=status)
+    from core.state import get_active_org
+
+    active = get_active_org()
+    return workflow_store.list_workflows(
+        limit=limit, status=status, org_id=int(active["id"]) if active else 0
+    )
 
 
 @router.get("/{workflow_id}", response_model=Workflow)
@@ -67,13 +91,25 @@ def get_workflow(workflow_id: str):
     workflow = workflow_store.get_workflow(workflow_id)
     if workflow is None:
         raise HTTPException(404, "workflow not found")
-    return workflow
+    return _owned(workflow)
 
 
 @router.post("/{workflow_id}/run", response_model=Workflow, dependencies=[Depends(verify_founder_action)])
 def run(workflow_id: str, payload: WorkflowRunRequest | None = None):
+    workflow = workflow_store.get_workflow(workflow_id)
+    if workflow is None:
+        raise HTTPException(404, "workflow not found")
+    _owned(workflow)
+    from core.quotas import QuotaExceeded, enforce_quota, record_usage, retry_after_seconds
+
     try:
-        return run_workflow(workflow_id, resume=bool(payload and payload.resume))
+        enforce_quota(_org(), "runs")
+    except QuotaExceeded as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(retry_after_seconds(exc))}) from exc
+    try:
+        result = run_workflow(workflow_id, resume=bool(payload and payload.resume))
+        record_usage(_org(), "runs", f"{result.id}:{result.updated_at}")
+        return result
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     except WorkflowValidationError as exc:
@@ -82,6 +118,10 @@ def run(workflow_id: str, payload: WorkflowRunRequest | None = None):
 
 @router.post("/{workflow_id}/pause", response_model=Workflow, dependencies=[Depends(verify_founder_action)])
 def pause(workflow_id: str):
+    workflow = workflow_store.get_workflow(workflow_id)
+    if workflow is None:
+        raise HTTPException(404, "workflow not found")
+    _owned(workflow)
     try:
         return pause_workflow(workflow_id)
     except LookupError as exc:
@@ -93,4 +133,4 @@ def get_state(workflow_id: str):
     workflow = workflow_store.get_workflow(workflow_id)
     if workflow is None:
         raise HTTPException(404, "workflow not found")
-    return workflow.state
+    return _owned(workflow).state

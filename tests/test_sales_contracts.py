@@ -260,7 +260,8 @@ class SalesContractsTest(unittest.TestCase):
         lead, _ = upsert_lead({"company": "Example Logistics", "company_domain": "https://example.com", "source": "prospeo"})
 
         with patch.dict(os.environ, {"CE_API_KEY": "ce", "PDL_API_KEY": "pdl"}, clear=False):
-            with patch("services.sales_service.CompanyEnrichClient") as ce_mock, patch("services.sales_service.PeopleDataLabsClient") as pdl_mock:
+            with patch("services.sales_service.CompanyEnrichClient") as ce_mock, patch("services.sales_service.PeopleDataLabsClient") as pdl_mock, patch("services.sales_service.gleif_service") as gleif_mock:
+                gleif_mock.resolve_identity.return_value = None
                 ce_mock.return_value.enrich_company.side_effect = CompanyEnrichError("ce down", 502)
                 pdl_mock.return_value.enrich_company.return_value = {
                     "display_name": "Example Logistics",
@@ -302,7 +303,9 @@ class SalesContractsTest(unittest.TestCase):
         lead, _ = upsert_lead({"company": "Example Logistics", "company_domain": "https://example.com", "source": "prospeo"})
 
         with patch.dict(os.environ, {"CE_API_KEY": "test-company-enrich-key"}, clear=False), \
-             patch("services.sales_service.CompanyEnrichClient") as CompanyEnrichClientMock:
+             patch("services.sales_service.CompanyEnrichClient") as CompanyEnrichClientMock, \
+             patch("services.sales_service.gleif_service") as gleif_mock:
+            gleif_mock.resolve_identity.return_value = None
             client = CompanyEnrichClientMock.return_value
             client.enrich_company.return_value = {
                 "name": "Example Logistics",

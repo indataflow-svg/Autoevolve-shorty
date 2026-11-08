@@ -75,14 +75,9 @@ def init_db() -> None:
                 value TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS service_discovery_runs (
-                id TEXT PRIMARY KEY,
-                state TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
             CREATE TABLE IF NOT EXISTS service_provider_requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                org_id INTEGER NOT NULL DEFAULT 0,
                 provider TEXT NOT NULL,
                 action TEXT NOT NULL,
                 started_at TEXT NOT NULL
@@ -99,7 +94,18 @@ def init_db() -> None:
             """
         )
         _migrate_project_to_org(conn)
+        # Removed features: drop the old Service Discovery run table and the
+        # global legacy onboarding program so upgraded databases retain neither.
+        conn.execute("DROP TABLE IF EXISTS service_discovery_runs")
+        conn.execute("DELETE FROM settings WHERE key = 'v2_onboarding_program'")
         _migrate_org_domain(conn)
+        provider_cols = {
+            row[1] for row in conn.execute("PRAGMA table_info(service_provider_requests)").fetchall()
+        }
+        if "org_id" not in provider_cols:
+            conn.execute(
+                "ALTER TABLE service_provider_requests ADD COLUMN org_id INTEGER NOT NULL DEFAULT 0"
+            )
 
 
 def _migrate_project_to_org(conn: sqlite3.Connection) -> None:
@@ -147,12 +153,19 @@ def _migrate_org_domain(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(buffer_orgs)").fetchall()}
     if "domain" not in cols:
         conn.execute("ALTER TABLE buffer_orgs ADD COLUMN domain TEXT NOT NULL DEFAULT ''")
+    if "plan" not in cols:
+        # Existing deployments are the operator's own org. New signups will
+        # pass plan='free' explicitly.
+        conn.execute("ALTER TABLE buffer_orgs ADD COLUMN plan TEXT NOT NULL DEFAULT 'paid'")
+    if "limits_json" not in cols:
+        conn.execute(
+            "ALTER TABLE buffer_orgs ADD COLUMN limits_json TEXT NOT NULL DEFAULT '{}'"
+        )
 
 
 VALID_CAPABILITIES = (
     "sales_prospecting",
     "ai_drafts",
-    "marketing_campaigns",
     "buffer_publishing",
     "inbound_intake",
     "coding",
@@ -200,47 +213,28 @@ def set_setup_step(step: str) -> None:
         )
 
 
-def get_onboarding_program() -> dict | None:
-    """The single first-run sales program, stored with existing setup settings."""
+def get_network_contribution() -> bool:
+    """Anonymized-pool opt-in. Default opted out: nothing is shared ever
+    unless the founder explicitly opts in."""
     with connect() as conn:
-        row = conn.execute("SELECT value FROM settings WHERE key = 'v2_onboarding_program'").fetchone()
-    return json.loads(row[0]) if row else None
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key = 'worlddata_contribution'").fetchone()
+        return str(row[0]).lower() in ("1", "true", "opt_in", "opted_in") if row else False
 
 
-def save_onboarding_program(program: dict) -> None:
+def set_network_contribution(opt_in: bool) -> bool:
     with connect() as conn:
         conn.execute(
-            "INSERT INTO settings (key, value) VALUES ('v2_onboarding_program', ?) "
+            "INSERT INTO settings (key, value) VALUES ('worlddata_contribution', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (json.dumps(program, ensure_ascii=False),),
+            ("opt_in" if opt_in else "opt_out",),
         )
+    return get_network_contribution()
 
 
-def get_service_discovery_run(run_id: str) -> dict | None:
-    with connect() as conn:
-        row = conn.execute("SELECT state FROM service_discovery_runs WHERE id = ?", (run_id,)).fetchone()
-    return json.loads(row[0]) if row else None
-
-
-def list_service_discovery_runs(limit: int = 10) -> list[dict]:
-    with connect() as conn:
-        rows = conn.execute(
-            "SELECT state FROM service_discovery_runs ORDER BY created_at DESC, rowid DESC LIMIT ?",
-            (min(max(limit, 1), 50),),
-        ).fetchall()
-    return [json.loads(row[0]) for row in rows]
-
-
-def save_service_discovery_run(run: dict) -> None:
-    with connect() as conn:
-        conn.execute(
-            "INSERT INTO service_discovery_runs (id, state, created_at) VALUES (?, ?, ?) "
-            "ON CONFLICT(id) DO UPDATE SET state = excluded.state",
-            (run["id"], json.dumps(run, ensure_ascii=False), run["created_at"]),
-        )
-
-
-def claim_service_provider_request(provider: str, action: str, limit_24h: int) -> bool:
+def claim_service_provider_request(
+    provider: str, action: str, limit_24h: int, org_id: int = 0
+) -> bool:
     """Reserve one request against a conservative rolling local provider cap."""
     if limit_24h <= 0:
         return False
@@ -251,14 +245,15 @@ def claim_service_provider_request(provider: str, action: str, limit_24h: int) -
     with connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         used = conn.execute(
-            "SELECT COUNT(*) FROM service_provider_requests WHERE provider = ? AND action = ? AND started_at >= ?",
-            (provider, action, cutoff),
+            "SELECT COUNT(*) FROM service_provider_requests "
+            "WHERE org_id = ? AND provider = ? AND action = ? AND started_at >= ?",
+            (int(org_id or 0), provider, action, cutoff),
         ).fetchone()[0]
         if used >= limit_24h:
             return False
         conn.execute(
-            "INSERT INTO service_provider_requests (provider, action, started_at) VALUES (?, ?, ?)",
-            (provider, action, now.isoformat()),
+            "INSERT INTO service_provider_requests (org_id, provider, action, started_at) VALUES (?, ?, ?, ?)",
+            (int(org_id or 0), provider, action, now.isoformat()),
         )
     return True
 
@@ -332,6 +327,8 @@ def create_org(
     env_prefix: str = "BUFFER_",
     organization_id: str = "",
     domain: str = "",
+    plan: str = "paid",
+    limits: dict | None = None,
 ) -> dict:
     timestamp = now_iso()
     with connect() as conn:
@@ -349,8 +346,8 @@ def create_org(
                 row["domain"] = domain
             return row
         cursor = conn.execute(
-            "INSERT INTO buffer_orgs (name, slug, env_prefix, organization_id, domain, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (name, slug, env_prefix, organization_id, domain, timestamp, timestamp),
+            "INSERT INTO buffer_orgs (name, slug, env_prefix, organization_id, domain, plan, limits_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (name, slug, env_prefix, organization_id, domain, plan, json.dumps(limits or {}), timestamp, timestamp),
         )
         row = conn.execute(
             "SELECT * FROM buffer_orgs WHERE id = ?", (cursor.lastrowid,)
@@ -362,6 +359,42 @@ def get_org(org_id: int) -> Optional[dict]:
     with connect() as conn:
         row = conn.execute("SELECT * FROM buffer_orgs WHERE id = ?", (org_id,)).fetchone()
         return dict(row) if row else None
+
+
+LIMIT_KEYS = {"max_spend_usd", "max_actions", "max_outreach_contacts", "max_duration_days"}
+
+
+def get_org_limits(org_id: int) -> dict:
+    org = get_org(int(org_id))
+    if not org:
+        return {}
+    try:
+        value = json.loads(org.get("limits_json") or "{}")
+    except (ValueError, TypeError):
+        return {}
+    return {key: value[key] for key in LIMIT_KEYS if key in value} if isinstance(value, dict) else {}
+
+
+def set_org_limits(org_id: int, limits: dict) -> dict:
+    org = get_org(int(org_id))
+    if not org:
+        raise ValueError("org not found")
+    cleaned = {}
+    for key, value in limits.items():
+        if key not in LIMIT_KEYS:
+            raise ValueError(f"unknown governance limit: {key}")
+        if value is None:
+            continue
+        if key in {"max_actions", "max_outreach_contacts", "max_duration_days"}:
+            cleaned[key] = max(0, int(value))
+        else:
+            cleaned[key] = max(0.0, float(value))
+    with connect() as conn:
+        conn.execute(
+            "UPDATE buffer_orgs SET limits_json = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(cleaned), now_iso(), int(org_id)),
+        )
+    return cleaned
 
 
 def get_org_by_slug(slug: str) -> Optional[dict]:
@@ -386,6 +419,15 @@ def set_active_org(org_id: int) -> None:
 
 
 def get_active_org() -> Optional[dict]:
+    from core.auth_context import current_org_id
+
+    scoped = current_org_id.get()
+    if scoped:
+        with connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM buffer_orgs WHERE id = ?", (int(scoped),)
+            ).fetchone()
+            return dict(row) if row else None
     with connect() as conn:
         setting = conn.execute(
             "SELECT value FROM settings WHERE key = 'active_org_id'"

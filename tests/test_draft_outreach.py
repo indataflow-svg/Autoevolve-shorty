@@ -118,14 +118,13 @@ class DraftGovernanceTests(DraftBase):
         self.assertEqual([item.action for item in decision.resolved_actions], ["simulate_outreach"])
 
     def test_a_registered_action_governance_does_not_authorize_is_refused(self):
-        # The runner could execute g1_strategy; a validation plan must not reach it.
-        self.assertIn("g1_strategy", WORKFLOW_ACTIONS)
-        self.assertNotIn("g1_strategy", GOVERNED_ACTIONS)
-        with patch.dict("core.plan_governance.METHOD_ACTIONS", {"side_venture": ("g1_strategy", "x")}):
+        # An action the runner does not register cannot be reached by a plan.
+        self.assertNotIn("side_venture_action", WORKFLOW_ACTIONS)
+        with patch.dict("core.plan_governance.METHOD_ACTIONS", {"side_venture": ("side_venture_action", "x")}):
             decision = self.govern(self.draft_plan(method="side_venture"))
         self.assertEqual(decision.status, "blocked")
         self.assertTrue(
-            any("not authorized by governance" in reason for reason in decision.reasons),
+            any("is not a registered workflow action" in reason for reason in decision.reasons),
             decision.reasons,
         )
 

@@ -9,9 +9,14 @@ Read-only by construction: this module has no INSERT/UPDATE path.
 """
 from __future__ import annotations
 
+import copy
 import json
+import os
 import re
+import threading
+import time
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 
@@ -23,7 +28,7 @@ def _safe_json(text: Any, default: Any) -> Any:
     return parsed if isinstance(parsed, type(default)) else default
 
 
-def collect_evidence(org: int = 0) -> dict[str, Any]:
+def _collect_evidence(org: int = 0) -> dict[str, Any]:
     """Assemble the evidence union for one organization. Never raises on
     missing tables: a store that is absent is unknown evidence, not zero."""
     from core import commercial_store
@@ -32,7 +37,7 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
 
     evidence: dict[str, Any] = {"org_id": org}
 
-    context = get_company_context()
+    context = get_company_context(org)
     if context is None:
         evidence["context"] = {"present": False}
     else:
@@ -62,8 +67,8 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
                 "SELECT id, name, status FROM offer_profiles WHERE org_id=?", (org,))]
         if table("icp_profiles"):
             icps = [dict(r) for r in db.execute(
-                "SELECT id, name, status, version, criteria_json FROM icp_profiles WHERE org_id=?",
-                (org,))]
+                "SELECT id, name, status, version, criteria_json, exclusions_json, weights_json "
+                "FROM icp_profiles WHERE org_id=?", (org,))]
         account_domains: set[str] = set()
         if table("commercial_accounts"):
             accounts = [dict(r) for r in db.execute(
@@ -73,7 +78,14 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
                                for a in accounts if (a.get("domain") or "").strip()}
         evidence["offers"] = offers
         evidence["icps"] = [
-            {**i, "criteria_count": len(_safe_json(i.get("criteria_json"), []))} for i in icps
+            {
+                **i,
+                "criteria": _safe_json(i.get("criteria_json"), []),
+                "exclusions": _safe_json(i.get("exclusions_json"), []),
+                "weights": _safe_json(i.get("weights_json"), {}),
+                "criteria_count": len(_safe_json(i.get("criteria_json"), [])),
+            }
+            for i in icps
         ]
         industries = Counter(a.get("industry") or "unknown" for a in accounts)
         evidence["accounts"] = {
@@ -88,9 +100,10 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
         leads = {"total": 0, "by_stage": {}, "by_source": {}, "unlinked_domains": [],
                  "candidates": 0, "candidate_domains": []}
         if table("sales_leads"):
+            lead_where = "(org_id=? OR org_id IS NULL)" if org == 0 else "org_id=?"
             rows = [dict(r) for r in db.execute(
                 "SELECT id, email, full_name, company, company_domain, stage,"
-                " source, metadata_json FROM sales_leads")]
+                f" source, metadata_json FROM sales_leads WHERE {lead_where}", (org,))]
             leads["total"] = len(rows)
             leads["by_stage"] = dict(Counter(r.get("stage") or "new" for r in rows))
             leads["by_source"] = dict(Counter(r.get("source") or "unknown" for r in rows))
@@ -149,7 +162,11 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
         # Drafts awaiting dispatch: approved, unsent, and still sendable.
         drafts = {"total": 0, "approved_unsent": 0, "by_status": {}}
         if table("sales_drafts"):
-            rows = [dict(r) for r in db.execute("SELECT id, status FROM sales_drafts")]
+            lead_where = "(l.org_id=? OR l.org_id IS NULL)" if org == 0 else "l.org_id=?"
+            rows = [dict(r) for r in db.execute(
+                "SELECT d.id, d.status FROM sales_drafts d "
+                "JOIN sales_leads l ON l.id = d.lead_id "
+                f"WHERE {lead_where}", (org,))]
             drafts["total"] = len(rows)
             drafts["by_status"] = dict(Counter(r.get("status") or "draft" for r in rows))
             drafts["approved_unsent"] = sum(
@@ -159,16 +176,26 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
         # Engagement: what the market said back, per channel where known.
         engagement = {"replies": 0, "meetings": 0, "inbound": 0, "channels": {}}
         if table("sales_events"):
+            if org == 0:
+                event_where = "(e.lead_id IS NULL OR l.org_id=? OR l.org_id IS NULL)"
+            else:
+                event_where = "l.org_id=?"
             for row in db.execute(
-                    "SELECT event, COUNT(*) AS n FROM sales_events GROUP BY event"):
+                    "SELECT e.event, COUNT(*) AS n FROM sales_events e "
+                    "LEFT JOIN sales_leads l ON l.id = e.lead_id "
+                    f"WHERE {event_where} GROUP BY e.event", (org,)):
                 if row["event"] == "lead.replied":
                     engagement["replies"] = row["n"]
                 elif row["event"] == "meeting.scheduled":
                     engagement["meetings"] = row["n"]
         if table("sales_interactions"):
+            lead_where = "(l.org_id=? OR l.org_id IS NULL)" if org == 0 else "l.org_id=?"
             out: Counter = Counter()
             inn: Counter = Counter()
-            for row in db.execute("SELECT direction, channel FROM sales_interactions"):
+            for row in db.execute(
+                    "SELECT i.direction, i.channel FROM sales_interactions i "
+                    "JOIN sales_leads l ON l.id = i.lead_id "
+                    f"WHERE {lead_where}", (org,)):
                 channel = (row["channel"] or "unknown").strip().lower() or "unknown"
                 if row["direction"] == "inbound":
                     inn[channel] += 1
@@ -184,10 +211,24 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
         evidence["engagement"] = engagement
 
         # Governed history: what we tried and what it measured.
+        # Migrate lazily: an old test/fixture may create the table without org_id.
+        try:
+            from core.validation_plan import init_validation_db
+
+            init_validation_db()
+        except Exception:
+            pass
+        try:
+            from core.plan_governance import init_governance_db
+
+            init_governance_db()
+        except Exception:
+            pass
         history: list[dict] = []
         plan_limits: dict[str, Any] = {}
         if table("validation_plans"):
-            for row in db.execute("SELECT id, plan_json FROM validation_plans"):
+            for row in db.execute(
+                    "SELECT id, plan_json FROM validation_plans WHERE org_id=?", (org,)):
                 try:
                     limits = (json.loads(row["plan_json"] or "{}").get("limits") or {})
                 except ValueError:
@@ -197,11 +238,12 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
             for row in db.execute(
                     "SELECT id, plan_id, status, workflow_id, approved_at,"
                     " executed_at, execution_json FROM validation_workflows"
-                    " ORDER BY created_at DESC, rowid DESC LIMIT 20"):
+                    " WHERE org_id=? ORDER BY created_at DESC, rowid DESC LIMIT 20", (org,)):
                 execution = _safe_json(row["execution_json"], {})
                 observation = (execution.get("validation_events")
                                if isinstance(execution, dict) else None) or {}
                 steps = execution.get("steps", []) if isinstance(execution, dict) else []
+                first_output = (steps[0].get("output") or {}) if steps else {}
                 history.append({
                     "governance_id": row["id"],
                     "plan_id": row["plan_id"],
@@ -210,8 +252,11 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
                     "approved": bool(row["approved_at"]),
                     "executed": bool(row["executed_at"]),
                     "action": (steps[0].get("action") if steps else None),
-                    "targets": ((steps[0].get("output") or {}).get("targets")
-                                if steps else None),
+                    "channel": first_output.get("channel"),
+                    "targets": first_output.get("targets"),
+                    "sent": first_output.get("sent") or 0,
+                    "replies": first_output.get("replies") or 0,
+                    "meetings": first_output.get("meetings") or 0,
                     "events_observed": bool(observation.get("observed")),
                     "events_count": observation.get("count", 0),
                     "duration_days": (plan_limits.get(row["plan_id"]) or {}).get("duration_days"),
@@ -233,7 +278,61 @@ def collect_evidence(org: int = 0) -> dict[str, Any]:
             })
         evidence["channels"] = channels
 
+    # World data: free public records cached by the ingest script. Absent
+    # world data is unknown evidence, never zero — every consumer already
+    # handles the not-present shape.
+    try:
+        from core import worlddata_store
+
+        evidence["world"] = worlddata_store.sources_summary()
+    except Exception:
+        evidence["world"] = {"present": False, "records": 0, "sources": []}
+
     return evidence
+
+
+# Short-lived read cache. Every suggester, and both benchmark endpoints on a
+# Commercial page load, rebuild this union; it was the single most expensive
+# thing the app did, twice per page. It is read-only, so it is cached per
+# (org, database fingerprint). The fingerprint is the database files'
+# mtime+size, which means any committed write invalidates the entry at once —
+# this is not a TTL cache that serves stale counts, and the key includes the
+# organization so one tenant's evidence can never satisfy another's request.
+# Set EVIDENCE_CACHE_SECONDS=0 to disable.
+EVIDENCE_CACHE_SECONDS = float(os.environ.get("EVIDENCE_CACHE_SECONDS", "5"))
+_evidence_cache: dict[tuple, tuple[float, dict[str, Any]]] = {}
+_evidence_lock = threading.Lock()
+
+
+def _database_fingerprint() -> tuple:
+    from core.state import DB_PATH
+
+    parts: list[tuple[int, int]] = []
+    for suffix in ("", "-wal"):
+        try:
+            stat = Path(f"{DB_PATH}{suffix}").stat()
+            parts.append((stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            parts.append((0, 0))
+    return tuple(parts)
+
+
+def collect_evidence(org: int = 0) -> dict[str, Any]:
+    """Cached read of the evidence union (see ``_collect_evidence``)."""
+    if EVIDENCE_CACHE_SECONDS <= 0:
+        return _collect_evidence(org)
+    key = (org, _database_fingerprint())
+    now = time.monotonic()
+    with _evidence_lock:
+        hit = _evidence_cache.get(key)
+        if hit is not None and now - hit[0] < EVIDENCE_CACHE_SECONDS:
+            return copy.deepcopy(hit[1])
+    value = _collect_evidence(org)
+    with _evidence_lock:
+        for stale in [existing for existing in _evidence_cache if existing[0] == org]:
+            del _evidence_cache[stale]
+        _evidence_cache[key] = (now, copy.deepcopy(value))
+    return value
 
 
 def resolve_research_terms(org: int = 0) -> dict[str, Any]:
@@ -311,21 +410,28 @@ def _research_keywords(lead: dict) -> list[str]:
     return [str(k) for k in include] if isinstance(include, list) else [str(include)]
 
 
-def _active_icp_industries(org: int) -> list[dict[str, Any]]:
-    """Industry values of every non-archived ICP. Archived profiles are
+def _active_icps(org: int) -> list[dict[str, Any]]:
+    """Every non-archived ICP with its full fit criteria. Archived profiles are
     history, not guidance, and never steer suggestions."""
     from core import commercial_store
 
     with commercial_store.connect() as db:
         try:
             rows = db.execute(
-                "SELECT id, name, criteria_json FROM icp_profiles"
+                "SELECT id, name, criteria_json, exclusions_json, weights_json"
+                " FROM icp_profiles"
                 " WHERE org_id=? AND status != 'archived'", (org,)).fetchall()
         except Exception:
             return []
+    return [dict(r) for r in rows]
+
+
+def _active_icp_industries(org: int) -> list[dict[str, Any]]:
+    """Industry values of every non-archived ICP. Kept for callers that only
+    need the vocabulary; suggestions use the full criteria via _active_icps."""
     out = []
-    for row in rows:
-        values = [str(rule.get("value")).strip() for rule in _safe_json(row["criteria_json"], [])
+    for row in _active_icps(org):
+        values = [str(rule.get("value")).strip() for rule in _safe_json(row.get("criteria_json"), [])
                   if isinstance(rule, dict) and str(rule.get("field") or "").lower() == "industry"
                   and str(rule.get("value") or "").strip()]
         if values:
@@ -333,19 +439,73 @@ def _active_icp_industries(org: int) -> list[dict[str, Any]]:
     return out
 
 
-def _match_icps(entry: dict[str, Any], icps: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """Link a candidate to the ICPs whose industry vocabulary it already speaks.
+def _candidate_from_enrichment(entry: dict[str, Any],
+                               enrichment: dict[str, Any] | None) -> dict[str, Any]:
+    """Build the account-shaped dict a manual researcher would judge: enriched
+    company truth (industry/size/country) mapped onto ICP fields. No keywords,
+    no name guessing — unknown stays unknown."""
+    industry = (enrichment or {}).get("industry") or ""
+    size = (enrichment or {}).get("size") or ""
+    country = (enrichment or {}).get("country") or ""
+    candidate = {
+        "company_name": entry.get("top_name") or entry.get("domain") or "",
+        "domain": entry.get("domain") or "",
+        "industry": industry,
+        "company_size": size,
+        "region": country,
+    }
+    candidate["attributes_json"] = json.dumps(
+        {"industry": industry, "company_size": size, "region": country})
+    return candidate
 
-    Compares both directions (criterion in keyword, keyword in criterion) so a
-    broad ICP value and a narrow research keyword still find each other. Pure
-    string overlap on recorded vocabulary — never inference.
+
+def _match_icps(entry: dict[str, Any], icps: list[dict[str, Any]],
+                enrichment: dict[str, Any] | None = None) -> list[dict[str, str]]:
+    """Link a candidate to ICPs using the same deterministic fit the registry
+    uses — evaluated on enriched company truth, never on the research query
+    vocabulary that surfaced the lead.
+
+    Back-compat: when called as _match_icps(entry, industry_list) without
+    enrichment (older tests/callers), fall back to the legacy keyword overlap
+    so those paths keep working. suggest_accounts always passes full ICP rows
+    plus enrichment, which takes the verified path below.
     """
+    from core import commercial_store
+
+    full_rows = [i for i in icps if isinstance(i, dict) and "criteria_json" in i]
+    if full_rows and enrichment is not None:
+        candidate = _candidate_from_enrichment(entry, enrichment)
+        hits = []
+        for icp in full_rows:
+            try:
+                res = commercial_store.evaluate_fit(candidate, icp)
+            except Exception:
+                continue
+            if res.get("disqualified") or res.get("grade") in ("unfit", "unknown"):
+                continue
+            if isinstance(res.get("score"), int) and res["score"] < 40:
+                continue
+            if res.get("grade") not in ("fit", "partial"):
+                continue
+            matched_on = next(
+                (str(e.get("expected")) for e in res.get("explanations", [])
+                 if e.get("result") == "match" and e.get("field") == "industry"),
+                (enrichment or {}).get("industry") or f"fit {res.get('score')}",
+            )
+            hits.append({"icp_id": icp["id"], "icp_name": icp["name"],
+                         "on": str(matched_on)})
+        return hits
+    if full_rows and enrichment is None:
+        # No company truth yet: unverified, never a match. The query that
+        # found the lead must not count as evidence it fits the ICP.
+        return []
+    # Legacy vocabulary path (keyword overlap) for old callers.
     hay = [k for k in (entry.get("keywords") or []) if k]
     hay += [t for name in (entry.get("company_names") or [])
             for t in re.split(r"[^a-z0-9]+", name.lower()) if len(t) >= 3]
     hits = []
     for icp in icps:
-        for value in icp["values"]:
+        for value in icp.get("values", []):
             v = value.lower()
             if v and any(v in h or h in v for h in hay if h):
                 hits.append({"icp_id": icp["icp_id"], "icp_name": icp["icp_name"], "on": value})
@@ -410,28 +570,41 @@ def _excerpt(summary: dict[str, Any], source: Any, cached: bool) -> dict[str, An
 def suggest_accounts(org: int = 0, enrich_budget: int = 5) -> dict[str, Any]:
     """Propose accounts from evidence nobody has claimed yet.
 
-    Sources, in order: lead domains with no account (strongest first by lead
-    count and engagement), then research-candidate domains. Exact domain match
-    against the registry excludes; similar names without a shared domain are
-    never merged, only proposed side by side with their reasons.
+    Sources, in order: verified ICP fits first (enriched company truth scored
+    with the same evaluate_fit the registry uses), then everything else by
+    lead count and engagement. Research-candidate flag and query vocabulary
+    never count as fit evidence — the manual action this automates is judging
+    the enriched profile against the ICP. Exact domain match against the
+    registry excludes; similar names without a shared domain are never merged,
+    only proposed side by side with their reasons.
     """
     evidence = collect_evidence(org)
     known = {(a.get("domain") or "").strip().lower() for a in
              _accounts_full(org) if (a.get("domain") or "").strip()}
-    icps = _active_icp_industries(org)
-    ranked = []
-    for entry in evidence["leads"]["unlinked_domains"]:
-        if entry["domain"] in known:
-            continue
-        matches = _match_icps(entry, icps)
-        ranked.append((0 if matches else 1, -entry["lead_count"], entry, matches))
-    ranked.sort(key=lambda r: (r[0], r[1]))
+    icps = _active_icps(org)
+    unclaimed = [e for e in evidence["leads"]["unlinked_domains"]
+                 if e["domain"] not in known]
+    # Enrich best-first (lead count) so the fixed budget lands on the
+    # strongest evidence; cached profiles cost nothing.
+    unclaimed.sort(key=lambda e: -e["lead_count"])
     budget = {"left": max(0, enrich_budget)}
+    enriched_by: dict[str, dict[str, Any] | None] = {}
+    for entry in unclaimed:
+        enriched_by[entry["domain"]] = _enrichment_excerpt(entry["domain"], budget)
+    ranked = []
+    for entry in unclaimed:
+        enrichment = enriched_by[entry["domain"]]
+        matches = _match_icps(entry, icps, enrichment)
+        ranked.append((0 if matches else 1, -entry["lead_count"], entry, matches,
+                       enrichment))
+    ranked.sort(key=lambda r: (r[0], r[1]))
     suggestions: list[dict[str, Any]] = []
-    for _, _, entry, matches in ranked:
+    for _, _, entry, matches, enrichment in ranked:
         reason = _reason_for(entry)
         if matches:
             reason += f" Matches ICP {', '.join(sorted({m['icp_name'] for m in matches}))}."
+        elif enrichment is None:
+            reason += " Unverified against your ICPs (no company data yet)."
         else:
             reason += " Outside your ICPs."
         suggestions.append({
@@ -439,7 +612,7 @@ def suggest_accounts(org: int = 0, enrich_budget: int = 5) -> dict[str, Any]:
             "domain": entry["domain"],
             "industry": None,
             "icp_matches": matches,
-            "enrichment": _enrichment_excerpt(entry["domain"], budget),
+            "enrichment": enrichment,
             "evidence": {
                 "lead_count": entry["lead_count"],
                 "lead_ids": entry["lead_ids"],

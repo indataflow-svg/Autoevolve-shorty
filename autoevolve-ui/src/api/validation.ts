@@ -70,16 +70,6 @@ export type WorkflowSuggestions = {
   caps: Record<string, number>
 }
 
-export type CampaignSuggestion = {
-  video_prompt: { lines: Array<{ slot: string; text: string; source: string }>; omitted: Array<{ slot: string; missing_field: string; note: string }> }
-  campaign: { path: string; rationale: string; evidence_refs: string[] }
-  provider: { channel: string | null; via: string; rationale: string; reply_rate: number | null; rate_basis: string }
-}
-
 /** Rank the next runs from evidence. Advisory: plans, governs, runs nothing. */
 export const suggestWorkflows = (credentials: Credentials) =>
   api<WorkflowSuggestions>('/company/automation/suggest', credentials, { method: 'POST', body: '{}' })
-
-/** Propose video lines, campaign path, and provider from evidence. Advisory only. */
-export const suggestCampaign = (credentials: Credentials) =>
-  api<CampaignSuggestion>('/company/automation/suggest-campaign', credentials, { method: 'POST', body: '{}' })

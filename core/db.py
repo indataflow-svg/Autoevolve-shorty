@@ -13,6 +13,11 @@ Notes:
   connections and third-party code agree on the behaviour.
 - ``foreign_keys`` is per-connection and must run on every connect.
 - ``journal_mode=WAL`` is persistent per file and idempotent.
+- ``synchronous=NORMAL`` is the SQLite-recommended pairing with WAL: commits
+  are durable against process crashes, and an OS/power loss can only lose the
+  most recent transaction, never corrupt the database. The default (``FULL``)
+  fsyncs the WAL on every commit, which serialises the single writer for no
+  additional safety under WAL.
 
 Engines under ``engines/`` keep a byte-identical local copy of this function
 (``_open``) because their runtimes are launched independently and must not
@@ -35,6 +40,7 @@ def open_db(
 ) -> sqlite3.Connection:
     connection = sqlite3.connect(path, timeout=timeout)
     connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA synchronous=NORMAL")
     connection.execute("PRAGMA foreign_keys=ON")
     connection.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
     if row_factory is not None:

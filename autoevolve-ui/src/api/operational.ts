@@ -68,3 +68,72 @@ export function connectBuffer(
     body: JSON.stringify(payload),
   }, token)
 }
+
+export type QuotaItem = {
+  kind: string; plan: string; used: number; limit: number; remaining: number; reset_at: string
+}
+export type QuotasView = { plan: string; quotas: Record<string, QuotaItem> }
+export type GovernanceLimitsView = {
+  plan: string
+  max_spend_usd: number
+  max_actions: number
+  max_outreach_contacts: number
+  max_duration_days: number
+  overrides: Record<string, number>
+}
+
+export const quotasView = (credentials: Credentials) =>
+  api<QuotasView>('/company/ui/quotas', credentials)
+
+export const limitsView = (credentials: Credentials) =>
+  api<GovernanceLimitsView>('/company/ui/limits', credentials)
+
+export function saveLimits(
+  credentials: Credentials,
+  payload: { max_spend_usd?: number; max_actions?: number; max_outreach_contacts?: number; max_duration_days?: number },
+  token: string,
+) {
+  return api<GovernanceLimitsView>('/company/ui/limits', credentials, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }, token)
+}
+
+export type PublisherCatalogItem = {
+  name: string
+  label: string
+  capabilities: { draft: boolean; schedule: boolean; confirm: boolean; insights: boolean; platforms: string[] }
+}
+export type WebhookConnectionView = {
+  org_id: number
+  provider: string
+  url: string
+  account: string
+  label: string
+  platforms: string[]
+  updated_at: string
+  configured: boolean
+  secret_set: boolean
+}
+export type PublisherConnectionsView = {
+  publishers: PublisherCatalogItem[]
+  webhook: WebhookConnectionView | null
+}
+
+export const publisherConnectionsView = (credentials: Credentials) =>
+  api<PublisherConnectionsView>('/company/ui/publishers', credentials)
+
+export function saveWebhookConnection(
+  credentials: Credentials,
+  payload: { url: string; secret: string; account: string; label: string; platforms: string },
+  token?: string,
+) {
+  return api<{ webhook: WebhookConnectionView }>('/company/ui/publishers/webhook', credentials, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }, token)
+}
+
+export function deleteWebhookConnection(credentials: Credentials, token?: string) {
+  return api<{ webhook: null }>('/company/ui/publishers/webhook', credentials, { method: 'DELETE' }, token)
+}

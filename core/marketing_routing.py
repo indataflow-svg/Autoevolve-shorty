@@ -53,7 +53,7 @@ INITIAL_ROUTES: tuple[InitialRoute, ...] = (
 
 
 class RouteState(BaseModel):
-    """Flat routing fields for typed API views (context route, onboarding, home)."""
+    """Flat routing fields for typed API views (context route, Get Started, home)."""
 
     marketing_stage: MarketingStage | None = None
     next_stage: NextStage | None = None
@@ -80,7 +80,7 @@ def route_for_stage(stage: str | None) -> InitialRoute:
     """Return the route for one starting stage, or explain why there is none."""
     if not stage:
         raise UnsupportedMarketingStage(
-            "marketing_stage is not recorded yet; complete onboarding to set a starting state"
+            "marketing_stage is not recorded yet; complete Get Started to set a starting state"
         )
     for route in INITIAL_ROUTES:
         if route.marketing_stage == stage:
@@ -99,10 +99,10 @@ def resolve_initial_route(context: object | None) -> InitialRoute:
     mapping has no ``state`` and is rejected below.
     """
     if context is None:
-        raise LookupError("no company context is stored; complete onboarding first")
+        raise LookupError("no company context is stored; complete Get Started first")
     state = getattr(context, "state", None)
     if state is None:
-        raise LookupError("company context has no recorded state; complete onboarding first")
+        raise LookupError("company context has no recorded state; complete Get Started first")
     return route_for_stage(state.marketing_stage)
 
 

@@ -1,6 +1,6 @@
 # G3 Publishing Engine
 
-G3 validates G2 handoffs, uploads media to S3-compatible storage such as Cloudflare R2, and creates
+G3 validates the manual-post handoff, uploads media to S3-compatible storage such as Cloudflare R2, and creates
 drafts or explicitly scheduled posts in Buffer. Scheduling is a separate command and requires the
 founder action token at the FastAPI boundary. G3 does not claim that a scheduled post was published.
 

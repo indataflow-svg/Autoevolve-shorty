@@ -1,3 +1,5 @@
+> **Historical document.** The legacy ProgramState onboarding API described here was removed; Get Started now uses `/company/context`. See [Functionality Reference](FUNCTIONALITY.md).
+
 # V2 closure: operator UI and first-run workflow
 
 React under `autoevolve-ui/` is the operator UI. FastAPI remains the authority for

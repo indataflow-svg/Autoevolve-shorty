@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import httpx
+from fastapi.testclient import TestClient
 
 from app.api import app
 import core.sales_store as sales_store
@@ -76,5 +77,28 @@ def test_typed_operational_views_keep_configuration_and_public_links_honest():
                 "SALES_CALENDAR_BOOKING_URL": "",
             }):
                 asyncio.run(check_routes())
+        finally:
+            state.DB_PATH, sales_store.DB_PATH = old_paths
+
+
+def test_workspace_lead_forms_link_defaults_to_the_hosted_form():
+    """With COMPANY_FORMS_URL unset, the Lead forms link must point at the
+    real hosted form (/f/contact) instead of the dead /contact fallback."""
+    with tempfile.TemporaryDirectory() as directory:
+        old_paths = state.DB_PATH, sales_store.DB_PATH
+        state.DB_PATH = sales_store.DB_PATH = Path(directory) / "company.db"
+        try:
+            state.init_db()
+            with patch.dict(os.environ, {
+                "DASHBOARD_USER": "founder", "DASHBOARD_PASSWORD": "secret",
+                "COMPANY_PUBLIC_URL": "http://public.test",
+                "COMPANY_FORMS_URL": "",
+            }):
+                client = TestClient(app)
+                settings = client.get("/company/ui/settings", auth=("founder", "secret"))
+                assert settings.status_code == 200, settings.text
+                links = {item["id"]: item for item in settings.json()["public_links"]}
+                assert links["forms"]["url"] == "http://public.test/f/contact"
+                assert links["forms"]["state"] == "configured"
         finally:
             state.DB_PATH, sales_store.DB_PATH = old_paths
